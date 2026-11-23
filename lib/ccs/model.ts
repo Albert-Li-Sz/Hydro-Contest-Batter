@@ -11,11 +11,12 @@
  * (lib/live/model.ts, lib/live/scoreboard.ts), so every surface agrees.
  */
 import type { BoardData } from '../board';
-import { schoolGroup, schoolName } from '../board';
+import { enhanceBoard, schoolGroup, schoolName } from '../board';
 import { buildContestInfo, buildRuns, type LiveBoard, type LiveSource } from '../live/model';
 import { computeScoreboard, runsByTeam, sameScore, standingsAtRuns } from '../live/scoreboard';
 import type { RunInfo } from '../live/types';
 import { awardsFor, type BoardSettings } from '../settings';
+import { resultsFinal, specialAwardResults } from '../special-awards';
 import { isPending, judgementTypeOf, judgementTypes, simplifiedOf } from './judgement-types';
 import {
     abstime, type Account, type Award, type Clarification, type Commentary, type Contest, type FileRef, type Group, type Judgement,
@@ -530,6 +531,15 @@ function buildAwards(source: CcsSource, view: View, teams: Team[]): Award[] {
         if (group.id === 'official' || group.id === 'unofficial') continue;
         const members = official.filter((team) => team.groups.includes(group.id)).map((team) => team.id);
         awards.push({ id: `group-winner-${group.id}`, citation: `${group.displayName}第一名`, team_ids: leaders(members) });
+    }
+    // 特别奖, from the data this view sees: none while the freeze hides results from it.
+    const data = view === 'full' ? source.full : source.public;
+    const times = contestTimes(source);
+    if (source.settings.specialAwards.length && (view === 'full' || !times.publicFrozen) && resultsFinal(data, times.ended)) {
+        const board = enhanceBoard(data, source.settings, { identity: view === 'full' || source.settings.showIdentity });
+        for (const award of specialAwardResults(board, source.settings)) {
+            if (award.teamIds.length) awards.push({ id: `special-${award.id}`, citation: award.name, team_ids: toCcs(award.teamIds) });
+        }
     }
     // Administrators may take over any award (POST/PUT/PATCH/DELETE awards).
     const known = new Set(teams.map((team) => team.id));

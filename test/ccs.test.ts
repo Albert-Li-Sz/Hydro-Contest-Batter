@@ -65,6 +65,20 @@ describe('CCS 2026-01 objects', () => {
         source.full.submissions.push({ submission_id: 'pending-earlier', team_id: award.team_ids![0], problem_id: problem, timestamp: 1, status: 'PENDING' });
         expect(buildObjects(structuredClone(source), 'full').awards.find(item => item.id === award.id)?.team_ids).toEqual([]);
     });
+    it('publishes special awards only when the results are final and visible', () => {
+        const source = ccsFixture();
+        source.settings.specialAwards = [{ id: 'last', name: '顽强拼搏奖', kind: 'lastAccept', board: 'all', rank: 1, teamIds: [], unofficial: false, ties: true }];
+        const special = (view: 'public' | 'full') => buildObjects(structuredClone(source), view).awards.find(item => item.id === 'special-last');
+        expect(special('public')).toMatchObject({ citation: '顽强拼搏奖', team_ids: ['3'] });
+        source.contest.lockAt = source.contest.beginAt + 3600_000;
+        expect(special('public')).toBeUndefined();
+        expect(special('full')?.team_ids).toEqual(['3']);
+        source.contest.unlocked = true;
+        source.public.submissions[0].status = 'PENDING';
+        expect(special('public')).toBeUndefined();
+        source.now = source.contest.endAt - 1;
+        expect(special('full')).toBeUndefined();
+    });
     it('validates calendar times, safe relative times and IDs', () => {
         expect(parseAbstime('2026-02-30T00:00:00.000Z')).toBeNull();
         expect(parseAbstime('2026-13-01T00:00:00.000Z')).toBeNull();

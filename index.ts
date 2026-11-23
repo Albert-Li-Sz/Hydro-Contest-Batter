@@ -15,12 +15,14 @@ import { applyScreens } from './lib/screens-routes';
 import { applyLive } from './lib/live/routes';
 import { applyMonitor } from './lib/monitor-routes';
 import { applyOverview } from './lib/overview-routes';
+import { applyResults } from './lib/results-routes';
 import { applyCcs } from './lib/ccs/routes';
 import { applyManage } from './lib/manage-routes';
 import { applyPrintServers } from './lib/print-routes';
 import { applyBalloons } from './lib/balloon-routes';
 import { ContestLinks } from './lib/links';
 import { applyPresence } from './lib/presence-routes';
+import { displaySpecialAwards } from './lib/special-awards';
 
 export const name = 'scoreboard-xcpcio-plus';
 export const Config = Schema.object({
@@ -60,6 +62,7 @@ const status = new Map<number, string>([
     [STATUS.STATUS_IGNORED, 'REJECTED'], [STATUS.STATUS_CANCELED, 'CANCELED'],
 ]);
 const maskedResults = ['WRONG_ANSWER', 'TIME_LIMIT_EXCEEDED', 'MEMORY_LIMIT_EXCEEDED', 'RUNTIME_ERROR', 'OUTPUT_LIMIT_EXCEEDED', 'HACKED'];
+const boardStatus = (code: number) => status.get(code) || 'JUDGEMENT_FAILED';
 
 /** `identity` adds the display name and school, which Hydro treats as private user information. */
 export async function loadContestData(tdoc: Tdoc, realtime: boolean, identity = false, staffResults = false): Promise<BoardData> {
@@ -94,7 +97,7 @@ export async function loadContestData(tdoc: Tdoc, realtime: boolean, identity = 
             const timestamp = submitted - start;
             const problemId = tdoc.pids.indexOf(record.pid);
             if (problemId < 0 || timestamp < 0 || timestamp >= limit) continue;
-            let result = status.get(record.status) || 'JUDGEMENT_FAILED';
+            let result = boardStatus(record.status);
             if (!staffResults && !ended && maskedResults.includes(result)) {
                 result = 'REJECTED';
             }
@@ -103,6 +106,7 @@ export async function loadContestData(tdoc: Tdoc, realtime: boolean, identity = 
             submissions.push({
                 submission_id: `${record.rid}`, team_id: `${entry.uid}`, problem_id: problemId,
                 timestamp, status: result,
+                ...staffResults && typeof record.score === 'number' ? { score: record.score } : {},
             });
         }
     }
@@ -164,17 +168,23 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
         handler.response.addHeader('Cache-Control', 'no-store');
         // Same rule as Hydro's native board, plus the per-contest opt-in for everyone else.
         const identity = settings.showIdentity || (!publicView && handler.user.hasPerm(PERM.PERM_VIEW_USER_PRIVATE_INFO));
+        const ended = ContestModel.isDone(tdoc);
+        const frozen = ContestModel.isLocked(tdoc) && !realtime;
+        const board = async () => {
+            const data = await loadContestData(tdoc, realtime, identity);
+            return displaySpecialAwards(enhanceBoard(data, settings, { identity }), settings, ended, frozen);
+        };
         if (json || handler.request.json) {
             if (!publicView) {
-                handler.response.body = enhanceBoard(await loadContestData(tdoc, realtime, identity), settings, { identity });
+                handler.response.body = await board();
                 return;
             }
-            const key = `${settingsKey(tdoc.domainId, `${tdoc.docId}`)}@${settingsVersion.get(settings) ?? 0}`;
+            const key = `${settingsKey(tdoc.domainId, `${tdoc.docId}`)}@${settingsVersion.get(settings) ?? 0}:${ended}:${frozen}`;
             const now = Date.now();
             for (const [cached, entry] of publicCache) if (entry.expires <= now) publicCache.delete(cached);
             let entry = publicCache.get(key);
             if (!entry) {
-                entry = { expires: now + publicTtl, body: loadContestData(tdoc, false, identity).then((data) => enhanceBoard(data, settings, { identity })) };
+                entry = { expires: now + publicTtl, body: board() };
                 entry.body.catch(() => publicCache.delete(key));
                 publicCache.set(key, entry);
             }
@@ -296,8 +306,9 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     const balloons = applyBalloons(ctx, { loadSettings, links });
     applyScreens(ctx, { loadSettings, loadData: loadContestData, machines: monitor.machines, balloons: balloons.screen, links });
     applyOverview(ctx, { loadSettings, loadData: loadContestData });
+    const results = applyResults(ctx, { loadSettings, loadData: loadContestData, statusOf: boardStatus });
     applyCcs(ctx, { loadSettings, loadData: loadContestData });
-    applyManage(ctx, { machines: monitor.machines, links });
+    applyManage(ctx, { machines: monitor.machines, links, beforeRejudge: results.beforeRejudge });
     applyPresence(ctx);
     applyPrintServers(ctx, { receipts: balloons.receipts });
     if (config.live !== false) {

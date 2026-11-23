@@ -6,6 +6,7 @@ Hydro OJ 的 ACM 比赛榜单、滚榜、大屏与直播插件，集成 XCPCIO �
 
 - 默认仅主榜，学校榜、参赛类型榜及手动榜由管理员配置。
 - 各榜独立设置全部奖项（固定名额或按有效队伍比例），同分规则可选 Hydro 或 ICPC 区域赛，榜单、滚榜、大屏与直播共用规则，打星选手可单独允许获一血奖。
+- 特别奖支持指定分榜名次、最后一个通过、有过题的最后一名和手动指定，获奖名单可在增强榜、滚榜、CCS API 和成绩导出中查看。
 - 支持封榜展示、实时榜和可配置的公开访问。
 - 支持只滚所选榜单，或将所选分榜设为正式参赛、其余选手设为非正式参赛。
 - 每位管理员可独立创建滚榜会话，进度保存至 MongoDB，支持刷新恢复，默认永久保留。
@@ -24,11 +25,11 @@ Hydro OJ 的 ACM 比赛榜单、滚榜、大屏与直播插件，集成 XCPCIO �
 
 需要 Node.js 22+ 和 Hydro 5.x。请使用运行 Hydro 的系统用户，在主服务所在环境执行。
 
-下载完整安装包 `hydro-scoreboard-xcpcio-plus-1.15.0.tgz`，解压到固定目录，注册 addon 后重启。安装包包含预构建页面、字体和完整校徽。
+下载完整安装包 `hydro-scoreboard-xcpcio-plus-1.16.0.tgz`，解压到固定目录，注册 addon 后重启。安装包包含预构建页面、字体和完整校徽。
 
 ```bash
 mkdir -p "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
-tar -xzf hydro-scoreboard-xcpcio-plus-1.15.0.tgz \
+tar -xzf hydro-scoreboard-xcpcio-plus-1.16.0.tgz \
   -C "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus" --strip-components=1
 hydrooj addon add "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 pm2 restart hydrooj
@@ -42,7 +43,7 @@ pm2 restart hydrooj
 
 ```bash
 mkdir -p xcpcio-update
-tar -xzf hydro-scoreboard-xcpcio-plus-1.15.0.tgz -C xcpcio-update
+tar -xzf hydro-scoreboard-xcpcio-plus-1.16.0.tgz -C xcpcio-update
 bash xcpcio-update/package/install.sh install
 
 # 升级时下载并解压新包，运行新包中的脚本
@@ -81,6 +82,7 @@ bash "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus/install.sh" uninstall
 - **机位监控**：同样的管理员从比赛右侧菜单的“机位监控”进入，详见 [机位监控](docs/usage.md#机位监控)。
 - **评测监控**：同样的管理员从比赛右侧菜单的“评测监控”进入，页面每 3 秒刷新。
 - **赛况总览**：同样的管理员从比赛右侧菜单的“赛况总览”进入，按 F 或点击页面全屏，适合在接待处或领导视察时投屏。
+- **成绩与导出**：在比赛菜单保存成绩快照、按分榜比较名次和奖项变化，导出成绩与获奖名单 CSV，或下载 Hydro 的全部比赛代码。详见 [成绩与导出](docs/usage.md#成绩与导出)。
 - **直播**：同样的管理员从比赛右侧菜单的“直播”进入，复制“直播画面”链接添加为 OBS 浏览器源（1920×1080），再打开“导播台”切换画面内容。导播台需要 Hydro 登录，多名导播可同时操作；直播画面链接免登录，可随时作废重建。
 
 榜单类大屏使用与公开榜相同的数据：开赛前不显示，封榜后冻结，选手名显示 Hydro 中的显示名，按“向所有观众显示学校”决定是否显示学校。滚榜观众画面与主持端一致，显示选手名与学校，链接请只在场馆使用。作废链接后旧链接立即失效。

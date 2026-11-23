@@ -4,7 +4,7 @@ import {
     type SeatRow, scopeLabel,
 } from './manage/seats';
 import { ManageError } from './manage/users';
-import { hasSeat, IP_LOGIN, IP_LOGIN_CACHE_MS, type IpLoginDoc, seatText } from './onsite';
+import { hasSeat, IP_LOGIN, type IpLoginDoc, seatText } from './onsite';
 
 const TYPE_CONTEST = 30;
 
@@ -130,7 +130,7 @@ export function createSeatStore(ctx: Context) {
     }
 
     async function signOut(uids: number[]) {
-        for (const uid of uids) await TokenModel.delByUid(uid);
+        for (const uid of uids) await TokenModel.delByUid(uid, TokenModel.TYPE_SESSION);
     }
 
     /** Backs the rows up, then removes their seats, IP login and sessions as asked. */
@@ -141,12 +141,6 @@ export function createSeatStore(ctx: Context) {
         if (plan.teamSeats.length) await raw('vuser').updateMany({ _id: { $in: plan.teamSeats } }, { $unset: { seat: '' } });
         const ips = plan.ips.length ? (await ipLogins.deleteMany({ _id: { $in: plan.ips } })).deletedCount : 0;
         await signOut(plan.sessions);
-        // onsite-toolkit keeps signing removed addresses in for up to a minute from its cache, and a
-        // session it makes then survives the entry: sign those accounts out once more after that.
-        if (plan.sessions.length && plan.ips.length) {
-            const again = setTimeout(() => { signOut(plan.sessions).catch(() => null); }, IP_LOGIN_CACHE_MS + 10_000);
-            (again as { unref?: () => void }).unref?.();
-        }
         if (plan.userSeats.length || plan.teamSeats.length) forgetAccounts();
         return { backup: String(saved._id), seats: plan.userSeats.length + plan.teamSeats.length, ips, sessions: plan.sessions.length };
     }

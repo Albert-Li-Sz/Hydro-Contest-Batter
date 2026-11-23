@@ -20,6 +20,7 @@ const themed = [
     `${contest}/scoreboard/xcpcio-plus`, `${contest}/xcpcio-settings`, `${contest}/resolver`, `${contest}/screens`,
     `${contest}/live`, `${contest}/live/capture`, `${contest}/monitor`, `${contest}/presence`, `${contest}/overview`, `${contest}/balloons`,
     '/manage/xcpcio-users', '/manage/xcpcio-users#seats', '/manage/xcpcio-judges', '/manage/xcpcio-rejudge', '/manage/xcpcio-printers',
+    `${contest}/results`,
 ];
 const plain = [`${contest}/live-capture/me?as=1`, `${contest}/problems?as=1`, `${contest}/presence?phase=before`,
     ...['controls', 'capture', 'scoreboard', 'ticker', 'teamSpotlight', 'contestInfo'].map((page) => `${contest}/live/admin/${page}`), `${contest}/live/admin`];
@@ -206,6 +207,26 @@ async function interactions(browser, base) {
         check(where, listed, 'the restore dialog lists no backups');
         await seatPage.keyboard.press('Escape');
         await checkLayout(seatPage, where);
+        // 特别奖: a new award picks its rule; 指定队伍 swaps the board for a team picker.
+        where = 'special awards';
+        const awardBoard = await open(context, base, `${contest}/xcpcio-public`, where);
+        check(where, await awardBoard.locator('#xp-special').isHidden(), 'an award is displayed before it has been configured');
+        const settingsPage = await open(context, base, `${contest}/xcpcio-settings`, where);
+        await settingsPage.waitForTimeout(800);
+        await settingsPage.getByRole('button', { name: '＋ 添加特别奖' }).click();
+        const special = settingsPage.locator('.xp-special-card').last();
+        check(where, await special.getByLabel('榜单').isVisible(), 'a rank award shows no board');
+        await special.getByLabel('获奖方式').selectOption('manual');
+        check(where, await special.getByLabel('添加获奖队伍').isVisible() && await special.getByLabel('榜单').isHidden(), 'the team picker did not replace the board');
+        await special.getByLabel('获奖方式').selectOption('lastAccept');
+        await special.getByLabel('特别奖名称').fill('顽强拼搏奖');
+        await settingsPage.getByRole('button', { name: '保存设置', exact: true }).click();
+        await settingsPage.locator('#xp-saved').waitFor({ state: 'visible' });
+        await checkLayout(settingsPage, where);
+        await awardBoard.getByText('顽强拼搏奖', { exact: true }).waitFor({ state: 'visible', timeout: 15000 });
+        check(where, (await awardBoard.locator('#xp-special').innerText()).includes('陈言'), 'the public board shows the wrong winner');
+        const frozenAwardData = await context.request.get(`${base}${contest}/xcpcio-public?json=true&frozen=1`);
+        check(where, !(await frozenAwardData.json()).contest.medal.all.hydroSpecialAwards, 'the frozen board published special awards');
         // 机位监控: the seat map, the alerts, and a computer's details.
         where = 'presence';
         const presence = await open(context, base, `${contest}/presence`, where);
@@ -215,6 +236,26 @@ async function interactions(browser, base) {
         await presence.locator('.presence-alert button').first().click();
         check(where, await presence.locator('dialog.presence-dialog[open] dl').isVisible(), 'the details did not open');
         await presence.keyboard.press('Escape');
+        // 成绩与导出: save an immutable baseline, compare outcomes, and export awards including 特别奖.
+        where = 'contest results';
+        const results = await open(context, base, `${contest}/results`, where);
+        await results.getByLabel('快照名称').fill('冒烟快照');
+        await results.getByRole('button', { name: '拍快照' }).click();
+        await results.getByRole('status').filter({ hasText: '快照已保存' }).waitFor();
+        check(where, await results.locator('#results-no-changes').isVisible(), 'new snapshot differs from the current standings');
+        await results.getByLabel('对比基准').selectOption('demo-rejudge-snapshot');
+        await results.getByRole('button', { name: '应用', exact: true }).click();
+        await results.locator('#results-submissions').waitFor();
+        check(where, (await results.locator('#results-submissions').innerText()).includes('WA → AC'), 'changed judgement is missing');
+        check(where, (await results.locator('#results-comparison tbody tr').count()) > 0, 'changed rows are missing');
+        const standingsLink = await results.getByRole('link', { name: '下载成绩 CSV' }).getAttribute('href');
+        const standingsFile = await context.request.get(base + standingsLink);
+        check(where, (await standingsFile.body()).subarray(0, 3).toString('hex') === 'efbbbf', 'standings CSV has no UTF-8 BOM');
+        const awardsLink = await results.getByRole('link', { name: '下载获奖名单 CSV' }).getAttribute('href');
+        const awardsFile = await context.request.get(base + awardsLink);
+        check(where, (await awardsFile.text()).includes('"顽强拼搏奖",3,"陈言"'), 'awards CSV omits the special award winner');
+        check(where, (await results.getByRole('link', { name: '下载全部代码' }).getAttribute('href')).endsWith('/code?all=true'), 'full native code export link is missing');
+        await checkLayout(results, where);
         // Print management follows changes made elsewhere without reloading (its poll is 30 s).
         where = 'printers push';
         const printers = await open(context, base, '/manage/xcpcio-printers', where);

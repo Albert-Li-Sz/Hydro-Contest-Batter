@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Environment } from 'nunjucks';
-import type { BoardData } from '../lib/board';
+import { type BoardData, enhanceBoard } from '../lib/board';
+import { specialAwardResults } from '../lib/special-awards';
 import type { BoardSettings } from '../lib/settings';
 import { toScriptJson } from '../lib/settings';
 import { defaultResolverConfig, parseResolverConfig, prepareResolver, ResolverError, resolverBoards, resolverCodeBase } from '../lib/resolver-data';
@@ -50,7 +51,9 @@ export function createResolverPreview(env: Environment, logoNames: Record<string
                 const input = JSON.parse(body.config);
                 const board = boards.find((item) => item.id === input?.boardId);
                 const config = parseResolverConfig(input, defaultResolverConfig({ ...settings, medals: board?.medals || settings.medals }, ended));
-                const payload = prepareResolver(data, boards, config, { contestId: 'demo', ended, capturedAt: new Date(), logoNames });
+                const payload = prepareResolver(data, boards, config, {
+                    contestId: 'demo', ended, capturedAt: new Date(), logoNames, special: specialAwardResults(enhanceBoard(data, settings), settings),
+                });
                 if (url.pathname.endsWith('/preview')) json({ game: payload.game, config: payload.config, overview: payload.overview });
                 else {
                     const session = await sessions.create(scope, payload);

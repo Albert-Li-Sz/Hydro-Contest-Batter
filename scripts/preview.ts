@@ -4,6 +4,7 @@ import path from 'node:path';
 import nunjucks from 'nunjucks';
 import { automaticBoards, enhanceBoard, reservedBoardNames } from '../lib/board';
 import { checkBoardNames, defaultSettings, normalizeSettings, pruneMembers, toScriptJson } from '../lib/settings';
+import { displaySpecialAwards } from '../lib/special-awards';
 import { demoData, demoRoster } from '../test/fixture';
 import { defaultProfileFields, rosterFields } from '../lib/roster';
 import { teamData, wideData } from '../preview/fixtures';
@@ -13,6 +14,7 @@ import { createLivePreview } from '../preview/live';
 import { createMonitorPreview } from '../preview/monitor';
 import { createPresencePreview } from '../preview/presence';
 import { createOverviewPreview } from '../preview/overview';
+import { createResultsPreview } from '../preview/results';
 import { createCcsPreview, previewCcsId } from '../preview/ccs';
 import { createManagePreview } from '../preview/manage';
 import { createPrintersPreview } from '../preview/printers';
@@ -37,6 +39,7 @@ const screensPreview = createScreensPreview(env, logoNames, pluginVersion, previ
 const monitorPreview = createMonitorPreview(env, pluginVersion, demoData);
 const presencePreview = createPresencePreview(env, pluginVersion, demoData);
 const overviewPreview = createOverviewPreview(env, pluginVersion);
+const resultsPreview = createResultsPreview(env, pluginVersion);
 const managePreview = createManagePreview(env, pluginVersion);
 // 气球配送 tickets print on the receipt printers of the print servers preview, which takes them from it.
 const balloonsPreview = createBalloonsPreview(env, pluginVersion, demoData, () => printersPreview.receiptPrinters());
@@ -59,7 +62,12 @@ const server = http.createServer(async (request, response) => {
         // ?fixture=team: a team contest (Hydro 5.1), teams with members.
         const displayData = url.searchParams.get('fixture') === 'wide' ? wideData() : url.searchParams.get('fixture') === 'team' ? teamData() : data;
         const displayDefaults = { ...defaults, hideSubmissions: url.searchParams.get('running') === '1',  tdoc: { title: displayData.contest.contest_name } };
+        const boardResponse = () => {
+            const board = enhanceBoard(displayData, settings, { identity: settings.showIdentity });
+            return displaySpecialAwards(board, settings, url.searchParams.get('running') !== '1', url.searchParams.get('frozen') === '1');
+        };
         const fixtureQuery = ['wide', 'team'].includes(url.searchParams.get('fixture') || '') ? `&fixture=${url.searchParams.get('fixture')}` : '';
+        const boardQuery = fixtureQuery + ['running', 'frozen'].filter((key) => url.searchParams.get(key) === '1').map((key) => `&${key}=1`).join('');
         if (await ccsPreview.handle(request, response, url)) return;
         if (await resolverPreview(request, response, url, displayData, settings)) return;
         if (await screensPreview(request, response, url, displayData, settings)) return;
@@ -67,6 +75,7 @@ const server = http.createServer(async (request, response) => {
         if (await monitorPreview(request, response, url)) return;
         if (await presencePreview(request, response, url)) return;
         if (await overviewPreview(request, response, url)) return;
+        if (await resultsPreview.handle(request, response, url, displayData, settings)) return;
         if (await printersPreview(request, response, url)) return;
         if (await balloonsPreview.handle(request, response, url)) return;
         if (await managePreview(request, response, url)) return;
@@ -85,11 +94,12 @@ const server = http.createServer(async (request, response) => {
         // Hydro's 解除封榜 (operation=unlock on the native scoreboard route), back to the board like this.back().
         if (request.method === 'POST' && url.pathname === `${base}/scoreboard`) {
             unlocked = true;
+            await resultsPreview.unlock(displayData, settings);
             response.writeHead(303, { Location: request.headers.referer || boardUrl }).end(); return;
         }
         if (request.method !== 'GET') { response.writeHead(405).end(); return; }
         if (url.pathname === '/api/board') {
-            response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(enhanceBoard(displayData, settings, { identity: settings.showIdentity }))); return;
+            response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(boardResponse())); return;
         }
         if (url.pathname === settingsUrl) {
             response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(env.render('xcpcio_plus_settings.html', {
@@ -108,16 +118,17 @@ const server = http.createServer(async (request, response) => {
             if (!settings.publicAccess) { response.writeHead(404).end('Public scoreboard is disabled'); return; }
             if (['true', '1', 'on'].includes(url.searchParams.get('realtime') || '')) { response.writeHead(403).end('Realtime results require authorization'); return; }
             if (url.searchParams.get('json') === 'true' || request.headers.accept?.includes('application/json')) {
-                response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(enhanceBoard(displayData, settings, { identity: settings.showIdentity }))); return;
+                response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(boardResponse())); return;
             }
             response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(env.render('xcpcio_plus_board.html', {
                 ...displayDefaults, ...manifest, settingsUrl: null,
-                runtimeJson: toScriptJson({ dataSource: `${publicUrl}?json=true${fixtureQuery}#allInOne=true`, refreshInterval: 5000 }),
+                runtimeJson: toScriptJson({ dataSource: `${publicUrl}?json=true${boardQuery}#allInOne=true`, refreshInterval: 5000 }),
             })); return;
         }
         if (url.pathname === boardUrl) {
             response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(env.render('xcpcio_plus_board.html', {
-                ...displayDefaults, ...manifest, settingsUrl, unlock: unlocked ? null : { url: `${base}/scoreboard`, ready: true }, runtimeJson: toScriptJson({ dataSource: '/api/board#allInOne=true', refreshInterval: 5000 }),
+                ...displayDefaults, ...manifest, settingsUrl, unlock: unlocked ? null : { url: `${base}/scoreboard`, ready: true },
+                runtimeJson: toScriptJson({ dataSource: `/api/board?json=true${boardQuery}#allInOne=true`, refreshInterval: 5000 }),
             })); return;
         }
         if (url.pathname.startsWith('/hydro-xcpcio/') || url.pathname.startsWith('/hydro-resolver/') || url.pathname.startsWith('/hydro-live/')) {

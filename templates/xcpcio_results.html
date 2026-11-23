@@ -1,0 +1,113 @@
+{% set page_name = 'contest_xcpcio_results' %}
+{% extends "layout/basic.html" %}
+{% macro rank(row) %}{% if row %}{{ row.rank if row.rank else '*' }}{% else %}—{% endif %}{% endmacro %}
+{% macro metric(row, field) %}{% if row %}{{ row[field] }}{% else %}—{% endif %}{% endmacro %}
+{% macro awards(row, field) %}{% if row and row[field].length %}{{ row[field] | join('、') }}{% else %}—{% endif %}{% endmacro %}
+{% macro difference(left, right, field) %}
+  <span{% if left[field] != right[field] %} class="results-cell--changed"{% endif %}>{{ metric(left, field) }} → {{ metric(right, field) }}</span>
+{% endmacro %}
+{% macro award_difference(left, right, field) %}
+  <span{% if (left[field] | join('、')) != (right[field] | join('、')) %} class="results-cell--changed"{% endif %}>{{ awards(left, field) }} → {{ awards(right, field) }}</span>
+{% endmacro %}
+{% block content %}
+<link rel="stylesheet" href="{{ codeBase }}/hydro-results.css">
+<div class="row results" id="contest-results"><div class="medium-12 columns">
+  <section class="section visible">
+    <div class="section__header results-title">
+      <div><h1 class="section__title">成绩与导出</h1><p>{{ tdoc.title }}</p></div>
+      <a class="button" href="{{ contestUrl }}">返回比赛</a>
+    </div>
+    <div class="section__body">
+      <form class="results-form" method="post" action="{{ base }}">
+        <label>快照名称（可选）<input type="text" class="textbox" name="snapshotName" maxlength="80"></label>
+        <button class="button primary" type="submit">拍快照</button>
+        {% if saved %}<strong role="status">快照已保存</strong>{% endif %}
+      </form>
+    </div>
+  </section>
+  <section class="section visible">
+    <div class="section__header"><h2 class="section__title">查看与比较</h2></div>
+    <div class="section__body">
+      <form class="results-form" method="get" action="{{ base }}">
+        <label>分榜<select class="select" name="board">
+          {% for board in boards %}<option value="{{ board.id }}"{% if board.id == selectedBoard %} selected{% endif %}>{{ board.name }}</option>{% endfor %}
+        </select></label>
+        <label>对比基准<select class="select" name="before">
+          <option value="">不比较</option>
+          {% for option in options %}{% if option.id != 'current' %}<option value="{{ option.id }}"{% if option.id == beforeId %} selected{% endif %}>{{ option.name }}</option>{% endif %}{% endfor %}
+        </select></label>
+        <label>成绩来源<select class="select" name="after">
+          {% for option in options %}<option value="{{ option.id }}"{% if option.id == afterId %} selected{% endif %}>{{ option.name }}</option>{% endfor %}
+        </select></label>
+        <label>比较范围<select class="select" name="filter">
+          <option value="changed"{% if not allRows %} selected{% endif %}>只显示有变化</option>
+          <option value="all"{% if allRows %} selected{% endif %}>显示全部</option>
+        </select></label>
+        <button class="button primary" type="submit">应用</button>
+      </form>
+      {% if approximate %}<p class="results-note" role="status">历史重测使用现有队伍、分榜和奖项规则还原已记录的判定。只能还原插件批量重测中有记录的变化。</p>{% endif %}
+      <div class="results-tools">
+        {% if exportable %}
+          <a class="button" href="{{ base }}/export/standings?{{ exportQuery }}">下载成绩 CSV</a>
+          <a class="button" href="{{ base }}/export/awards?{{ exportQuery }}">下载获奖名单 CSV</a>
+        {% else %}<span class="results-note">所选成绩来源中没有此分榜。</span>{% endif %}
+        <a class="button" href="{{ nativeCode }}">下载全部代码</a>
+        <span class="results-note">{% if isFinal %}所选成绩已定榜{% else %}所选成绩暂定{% endif %}</span>
+      </div>
+    </div>
+    <div class="results-table" tabindex="0" role="region" aria-label="{% if comparison %}成绩对比{% else %}成绩表{% endif %}">
+      {% if comparison %}
+        {% if changes.length %}
+        <table class="data-table" id="results-comparison">
+          <thead><tr><th scope="col">队伍</th><th scope="col">名次</th><th scope="col">过题数</th><th scope="col">罚时（秒）</th><th scope="col">奖牌</th><th scope="col">一血</th><th scope="col">特别奖</th></tr></thead>
+          <tbody>
+          {% for row in changes %}
+            <tr>
+              <th scope="row">{{ row.name }}</th>
+              <td><span{% if row.before.rank != row.after.rank %} class="results-cell--changed"{% endif %}>{{ rank(row.before) }} → {{ rank(row.after) }}</span></td>
+              <td>{{ difference(row.before, row.after, 'solved') }}</td>
+              <td>{{ difference(row.before, row.after, 'penalty') }}</td>
+              <td>{{ award_difference(row.before, row.after, 'medals') }}</td>
+              <td>{{ award_difference(row.before, row.after, 'firsts') }}</td>
+              <td>{{ award_difference(row.before, row.after, 'specials') }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}<p class="results-empty" id="results-no-changes">所选分榜没有变化。</p>{% endif %}
+      {% else %}
+        {% if result.rows.length %}
+        <table class="data-table" id="results-standings">
+          <thead><tr><th scope="col">名次</th><th scope="col">队伍 / 学校</th><th scope="col">过题数</th><th scope="col">罚时（秒）</th><th scope="col">奖牌</th><th scope="col">一血</th><th scope="col">特别奖</th></tr></thead>
+          <tbody>
+          {% for row in result.rows %}
+            <tr><td>{{ rank(row) }}</td><th scope="row">{{ row.name }} <small>{{ row.school }}</small></th><td>{{ row.solved }}</td><td>{{ row.penalty }}</td><td>{{ awards(row, 'medals') }}</td><td>{{ awards(row, 'firsts') }}</td><td>{{ awards(row, 'specials') }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}<p class="results-empty">所选分榜暂无队伍。</p>{% endif %}
+      {% endif %}
+    </div>
+  </section>
+  {% if comparison %}
+  <section class="section visible">
+    <div class="section__header"><h2 class="section__title">受影响的提交（{{ comparison.submissions.length }}）</h2></div>
+    {% if comparison.submissions.length %}
+    <div class="results-table" tabindex="0" role="region" aria-label="受影响的提交">
+      <table class="data-table" id="results-submissions">
+        <thead><tr><th scope="col">提交</th><th scope="col">队伍</th><th scope="col">题号</th><th scope="col">提交时间（秒）</th><th scope="col">判定</th><th scope="col">分数</th></tr></thead>
+        <tbody>
+        {% for row in comparison.submissions %}
+          <tr>
+            <th scope="row"><a href="{{ submissionsUrl }}{{ row.id }}">{{ row.id }}</a></th><td>{{ row.team }}</td><td>{{ row.problem }}</td><td>{{ row.time }}</td>
+            <td>{{ row.before }} → {{ row.after }}</td><td>{{ row.beforeScore if row.beforeScore != null else '—' }} → {{ row.afterScore if row.afterScore != null else '—' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<p class="results-empty">没有判定或分数变化的提交。</p>{% endif %}
+  </section>
+  {% endif %}
+</div></div>
+{% endblock %}

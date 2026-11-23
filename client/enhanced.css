@@ -119,6 +119,8 @@
 .xp-status { border-color: var(--xp-green); }
 .xp-page .xp-restored { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 0 0 20px; }
 .xp-page .xp-board-body { padding: 12px 24px 20px; }
+.xp-page .xp-special:not([hidden]) { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 8px 0 2px; font-size: 14px; overflow-wrap: anywhere; }
+.xp-page .xp-special strong { color: var(--xp-medal-gold-bar); font-weight: 600; margin-right: 4px; }
 .xp-board-footnote { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 24px; padding-top: 10px; }
 .xp-page .xp-board-footnote .xp-muted { margin: 0; font-size: 12px; }
 
@@ -364,6 +366,17 @@
 .xp-board .xp-board-header { margin-top: 0; }
 .xp-board .xp-board-title { flex: 1 1 240px; font-weight: 500; }
 .xp-board .xp-delete { color: #d34c65; }
+.xp-special-card .xp-line { margin: 10px 0 0; }
+.xp-special-card .xp-board-header .select { flex: 0 1 200px; width: auto; }
+.xp-special-card .xp-line > .select { flex: 0 1 260px; width: auto; }
+.xp-special-card .xp-inline { display: inline-flex; align-items: center; gap: 6px; }
+.xp-special-card .xp-rank { width: 80px; margin: 0; }
+.xp-special-card .xp-special-teams .xp-search { flex: 1 1 260px; margin: 0; }
+.xp-special-card .xp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.xp-special-card .xp-chips:empty { display: none; }
+.xp-special-card .xp-chip { display: inline-flex; align-items: center; gap: 2px; padding: 2px 4px 2px 10px; border-radius: 12px; font-size: 13px; background: var(--xp-hover); border: 1px solid var(--xp-border); }
+.xp-special-card .xp-chip-remove { border: 0; background: none; color: inherit; cursor: pointer; padding: 0 6px; line-height: 1; height: auto; min-height: 0; margin: 0; opacity: .6; }
+.xp-special-card .xp-chip-remove:hover { opacity: 1; }
 .xp-board details { margin-top: 16px; }
 .xp-board summary { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; cursor: pointer; color: var(--xp-primary); font-weight: 500; font-size: 14px; border: 1px solid color-mix(in srgb, var(--xp-primary) 45%, var(--xp-border)); border-radius: 4px; list-style: none; }
 .xp-board summary:hover { background: var(--xp-hover); }

@@ -38,8 +38,32 @@ export interface BoardAwards {
 export type TieBreak = 'hydro' | 'icpc';
 export const tieBreaks: readonly TieBreak[] = ['hydro', 'icpc'];
 
+/**
+ * 特别奖, named by the organiser and given by rule:
+ * rank: the team placed `rank` on `board` (最佳女队 = 女队榜第 1 名);
+ * lastAccept: the team with the contest's last first accept (顽强拼搏奖, one reading);
+ * lastSolver: the lowest-placed team that solved something (顽强拼搏奖, the other reading);
+ * manual: the teams chosen by hand.
+ * Rule-based awards require an accept. For the two persistence awards, only official teams qualify.
+ * With `ties`, teams the ranking rule cannot separate (or accepts in the same second) all get it.
+ */
+export type SpecialKind = 'rank' | 'lastAccept' | 'lastSolver' | 'manual';
+export const specialKinds: readonly SpecialKind[] = ['rank', 'lastAccept', 'lastSolver', 'manual'];
+
+export interface SpecialAward {
+    id: string;
+    name: string;
+    kind: SpecialKind;
+    board: string;
+    rank: number;
+    teamIds: string[];
+    unofficial: boolean;
+    ties: boolean;
+}
+
 export interface BoardSettings extends BoardAwards {
     tieBreak: TieBreak;
+    specialAwards: SpecialAward[];
     boardAwards: Record<string, BoardAwards>;
     schoolBoards: boolean;
     participationBoards: boolean;
@@ -59,6 +83,7 @@ export const defaultSettings: BoardSettings = {
     goldCitation: '金奖', silverCitation: '银奖', bronzeCitation: '铜奖',
     medalSameScore: true, firstSolve: false, podiumEnabled: false, unofficialFirstSolve: false,
     tieBreak: 'hydro',
+    specialAwards: [],
     boardAwards: {},
     schoolBoards: false,
     participationBoards: false,
@@ -115,6 +140,42 @@ function normalizeAwards(input: Record<string, unknown>, fallback: BoardAwards):
 
 export type BoardRules = BoardAwards & { tieBreak: TieBreak };
 
+const boardIdPattern = /^(all|official|unofficial|school-[a-f0-9]{16}|manual-[a-z0-9][a-z0-9_-]{0,47})$/;
+
+function specialAwards(value: unknown, manualIds: Set<string>): SpecialAward[] {
+    if (value === undefined) return [];
+    if (!Array.isArray(value) || value.length > 20) throw new Error('特别奖必须是数组，最多 20 个');
+    const ids = new Set<string>();
+    return value.flatMap((item, index): SpecialAward[] => {
+        const award = object(item, `特别奖 ${index + 1}`);
+        if (typeof award.id !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,31}$/.test(award.id) || ids.has(award.id)) throw new Error('特别奖标识无效或重复');
+        ids.add(award.id);
+        if (typeof award.name !== 'string' || !award.name.trim() || award.name.trim().length > 40) throw new Error('特别奖名称应为 1 至 40 个字符');
+        const name = award.name.trim();
+        if (!specialKinds.includes(award.kind as SpecialKind)) throw new Error(`特别奖“${name}”的类型无效`);
+        const kind = award.kind as SpecialKind;
+        const board = award.board === undefined ? 'all' : award.board;
+        if (typeof board !== 'string' || !boardIdPattern.test(board)) throw new Error(`特别奖“${name}”的榜单无效`);
+        // An award on a deleted manual board goes with it, as the board's own award rules do.
+        if (kind !== 'manual' && board.startsWith('manual-') && !manualIds.has(board.slice('manual-'.length))) return [];
+        const rank = award.rank === undefined ? 1 : award.rank;
+        if (typeof rank !== 'number' || !Number.isSafeInteger(rank) || rank < 1 || rank > 1000) throw new Error(`特别奖“${name}”的名次应为 1 至 1000 的整数`);
+        const teamIds = award.teamIds === undefined ? [] : award.teamIds;
+        if (!Array.isArray(teamIds) || teamIds.length > 100 || teamIds.some((id) => typeof id !== 'string' || !/^-?\d{1,16}$/.test(id))) {
+            throw new Error(`特别奖“${name}”的队伍必须是 Hydro 用户 ID，最多 100 个`);
+        }
+        if (kind === 'manual' && !teamIds.length) throw new Error(`特别奖“${name}”需要指定获奖队伍`);
+        for (const key of ['unofficial', 'ties'] as const) {
+            if (award[key] !== undefined && typeof award[key] !== 'boolean') throw new Error(`${key} 必须是布尔值`);
+        }
+        return [{
+            id: award.id, name, kind, board: kind === 'manual' ? 'all' : board, rank: kind === 'rank' ? rank : 1,
+            teamIds: kind === 'manual' ? [...new Set(teamIds as string[])] : [],
+            unofficial: kind === 'rank' && award.unofficial === true, ties: award.ties !== false,
+        }];
+    });
+}
+
 /** Medals of each tier for a board with `eligible` official teams that solved something (before capping). */
 export function medalCounts(rules: Pick<BoardAwards, 'medals' | 'medalBasis'>, eligible: number): Medals {
     if (rules.medalBasis !== 'ratio') return rules.medals;
@@ -169,7 +230,7 @@ export function normalizeSettings(value: unknown): BoardSettings {
     const overrides = input.boardAwards === undefined ? {} : object(input.boardAwards, '分榜奖项');
     const boardAwards: Record<string, BoardAwards> = {};
     for (const [id, value] of Object.entries(overrides)) {
-        if (!/^(all|official|unofficial|school-[a-f0-9]{16}|manual-[a-z0-9][a-z0-9_-]{0,47})$/.test(id)) throw new Error('分榜奖项标识无效');
+        if (!boardIdPattern.test(id)) throw new Error('分榜奖项标识无效');
         // A deleted manual board takes its award rules with it (also for settings saved before this rule).
         if (id.startsWith('manual-') && !ids.has(id.slice('manual-'.length))) continue;
         boardAwards[id] = normalizeAwards(object(value, '分榜奖项'), awards);
@@ -177,6 +238,7 @@ export function normalizeSettings(value: unknown): BoardSettings {
     return {
         ...awards, boardAwards,
         tieBreak: input.tieBreak === 'icpc' ? 'icpc' : 'hydro',
+        specialAwards: specialAwards(input.specialAwards, ids),
         schoolBoards: input.schoolBoards === true,
         participationBoards: input.participationBoards === true,
         manualBoards,

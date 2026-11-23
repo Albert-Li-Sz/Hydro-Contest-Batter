@@ -3,7 +3,8 @@ import path from 'node:path';
 import {
     ContestModel, Context, Handler, NotFoundError, ObjectId, param, PERM, Tdoc, Types,
 } from 'hydrooj';
-import type { BoardData } from './board';
+import { type BoardData, enhanceBoard } from './board';
+import { specialAwardResults } from './special-awards';
 import type { BoardSettings } from './settings';
 import { toScriptJson } from './settings';
 import { defaultResolverConfig, parseResolverConfig, prepareResolver, ResolverError, resolverAssetBase, resolverBoards, resolverCodeBase } from './resolver-data';
@@ -62,6 +63,7 @@ export function applyResolver(ctx: Context, dependencies: {
             try {
                 return prepareResolver(data, boards, config, {
                     contestId: this.scope.contestId, ended, capturedAt: new Date(), logoNames,
+                    special: specialAwardResults(enhanceBoard(data, settings, { identity: true }), settings),
                 });
             } catch (error) {
                 // Upstream validates input size before generating potentially large step sets.

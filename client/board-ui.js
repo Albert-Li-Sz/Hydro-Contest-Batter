@@ -3,6 +3,7 @@
 const app = document.getElementById('app');
 if (app) {
     let awardRules;
+    let specialText;
     window.addEventListener('hydro-xcpcio-awards', (event) => {
         awardRules = event.detail.rules;
         const podium = document.getElementById('xp-podium');
@@ -14,6 +15,20 @@ if (app) {
         }
         const first = document.querySelector('#xp-legend .xp-first');
         if (first) first.parentElement.hidden = !awardRules?.firstSolve;
+        const special = document.getElementById('xp-special');
+        const awards = event.detail.special || [];
+        const text = JSON.stringify(awards);
+        if (special && text !== specialText) {
+            specialText = text;
+            special.hidden = !awards.length;
+            special.replaceChildren(...awards.map((award) => {
+                const item = document.createElement('span');
+                const name = document.createElement('strong');
+                name.textContent = award.name;
+                item.append(name, ` ${award.teams}`);
+                return item;
+            }));
+        }
     });
     // Below this width identity and score share one column (see enhanced.css).
     const mobile = matchMedia('(max-width: 1023px)');

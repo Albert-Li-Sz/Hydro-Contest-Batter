@@ -5,11 +5,10 @@ import { isIP } from 'node:net';
  * - the seat on the account document (`user.seat`, set by its onsiteImport; Hydro 5.1 teams may
  *   carry one on their virtual user, `vuser.seat`);
  * - IP login in the global `iplogin` collection, `{ _id: ip, uid }`, one account per address. Its
- *   `handler/init` hook signs every request from that address in as the account, and caches hits
- *   for 60 seconds per process, so a removed entry still works for up to a minute.
+ *   `handler/init` hook signs requests from that address in as the account. Each hit refreshes
+ *   its process-local 60-second cache, so active clients can keep stale entries alive.
  */
 export const IP_LOGIN = 'iplogin';
-export const IP_LOGIN_CACHE_MS = 60_000;
 
 export interface IpLoginDoc {
     _id: string;

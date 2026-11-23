@@ -6,6 +6,7 @@ import {
 } from 'hydrooj';
 import type { ContestLinks } from './links';
 import type { MonitorMachine } from './monitor';
+import { applyIpLoginGuard } from './ip-login-guard';
 import { createSeatStore, contestKeyOf } from './seat-store';
 import {
     backupFile, backupOf, normalizeBackup, normalizeClearOptions, normalizeSeatEdit, normalizeSeatQuery, scopeLabel, selectSeatRows,
@@ -56,6 +57,8 @@ export function applyManage(ctx: Context, dependencies: {
     machines: (now: number) => Promise<MonitorMachine[]>;
     /** The contests' no-login links (lib/links.ts), revoked from the 座位与 IP tab. */
     links: ContestLinks<Tdoc>;
+    /** Capture every affected ACM contest before any of its records enter a new judging. */
+    beforeRejudge: (domainId: string, contests: string[], jobId: string, operator: number) => Promise<void>;
 }) {
     const codeBase = resolverCodeBase(JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8')).version);
     // Hydro's own collections without typings for these fields; queries mirror Hydro's models.
@@ -65,6 +68,7 @@ export function applyManage(ctx: Context, dependencies: {
     const on = ctx.on.bind(ctx) as unknown as (name: string, listener: (...args: any[]) => unknown) => () => void;
     const forgetUser = (udoc: unknown) => (UserModel as unknown as { _deleteUserCache?: (doc: unknown) => void })._deleteUserCache?.(udoc);
     const seats = createSeatStore(ctx);
+    applyIpLoginGuard(ctx);
 
     abstract class ManageHandler extends Handler {
         async prepare() {
@@ -725,6 +729,8 @@ export function applyManage(ctx: Context, dependencies: {
                 pids: selection.pids, statuses: selection.statuses, skipAccepted: selection.skipAccepted, operator: this.user._id,
                 createdAt: new Date(), finishedAt: null, total: records.length, queued: 0, failed: [],
             };
+            const affectedContests = [...new Set(records.flatMap((record) => record.contest ? [String(record.contest)] : []))];
+            await dependencies.beforeRejudge(target, affectedContests, String(jobId), this.user._id);
             await jobs.insertOne(job);
             for (const [pid, group] of groupByProblem(records)) {
                 const pdoc = await ProblemModel.get(target, pid);

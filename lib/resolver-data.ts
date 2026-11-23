@@ -1,3 +1,4 @@
+import type { SpecialResult } from './special-awards';
 import type { BoardData } from './board';
 import { enhanceBoard } from './board';
 import type { BoardAwards, BoardSettings } from './settings';
@@ -95,7 +96,7 @@ export function parseResolverConfig(raw: unknown, defaults: ResolverConfig): Res
 
 export function prepareResolver(
     data: BoardData, boards: ResolverBoard[], config: ResolverConfig,
-    context: { contestId: string; ended: boolean; capturedAt: Date; logoNames: Record<string, string> },
+    context: { contestId: string; ended: boolean; capturedAt: Date; logoNames: Record<string, string>; special?: SpecialResult[] },
 ): ResolverPayload {
     const board = boards.find((item) => item.id === config.boardId);
     if (!board) throw new ResolverError('所选分榜已不存在，请刷新配置页');
@@ -146,7 +147,10 @@ export function prepareResolver(
         startTime: new Date(data.contest.start_time * 1000).toISOString(), durationMs,
         freezeDurationMs: durationMs - freezeAtSeconds * 1000, scoringMode: 'hydro', tieBreak: board.awards.tieBreak ?? 'hydro', penaltyMinutes: 20,
         unofficialFirstSolve: board.awards.unofficialFirstSolve, firstSolveEnabled: config.firstSolve,
-        teams, problems, submissions, awards: [],
+        // 特别奖 are presented with each winner, after the medals (ICPC Tools' honors awards).
+        teams, problems, submissions, awards: (context.special || []).map((award) => ({
+            id: `special-${award.id}`, citation: award.name, teamIds: award.teamIds.filter((id) => selectedIds.has(id)), displayMode: 'detail', awardType: 'honors',
+        })).filter((award) => award.teamIds.length),
     };
     const effectiveConfig = { ...config, rehearsal };
     const game = buildGame(snapshot, {

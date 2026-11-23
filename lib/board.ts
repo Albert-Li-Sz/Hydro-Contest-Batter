@@ -19,6 +19,8 @@ export interface BoardSubmission {
     problem_id: number;
     timestamp: number;
     status: string;
+    /** Present in the staff projection only, to compare rejudged scores. */
+    score?: number | null;
     [key: string]: unknown;
 }
 

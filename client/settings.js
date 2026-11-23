@@ -275,7 +275,7 @@ if (root) {
         remove.addEventListener('click', () => {
             const label = name.value.trim() || '未命名分榜';
             if (selected.size && !confirm(`删除“${label}”及其 ${selected.size} 名成员？保存后生效。`)) return;
-            editors.splice(editors.indexOf(editor), 1); card.remove(); markDirty(); updateAddButton(); checkNames(); refreshAwardEditors();
+            editors.splice(editors.indexOf(editor), 1); card.remove(); markDirty(); updateAddButton(); checkNames(); refreshAwardEditors(); refreshSpecialBoards();
         });
         title.append(name, remove); card.append(title);
         const details = make('details', undefined, 'xp-member-picker'); details.open = !board.name;
@@ -414,8 +414,119 @@ if (root) {
     addButton.addEventListener('click', () => {
         if (editors.length >= 50) return;
         addBoard({ id: `g-${crypto.randomUUID().slice(0, 8)}`, name: '', teamIds: [] });
-        editors.at(-1).name.focus(); markDirty(); updateAddButton(); refreshAwardEditors();
+        editors.at(-1).name.focus(); markDirty(); updateAddButton(); refreshAwardEditors(); refreshSpecialBoards();
     });
+    // 特别奖: a name, how the winner is found, and on which board.
+    const specialKinds = [['rank', '分榜名次'], ['lastAccept', '最后一个通过'], ['lastSolver', '有过题的最后一名'], ['manual', '指定队伍']];
+    const specialEditors = [];
+    const specialList = document.getElementById('xp-specials');
+    const addSpecialButton = document.getElementById('xp-add-special');
+    const teamLabel = (team) => `${team.name}${team.organization && team.organization !== '未填写学校' ? ` · ${team.organization}` : ''}`;
+    const teamById = new Map(teams.map((team) => [team.team_id, team]));
+    const teamChoices = make('datalist');
+    teamChoices.id = 'xp-special-team-choices';
+    for (const team of teams) teamChoices.append(new Option(teamLabel(team), `${teamLabel(team)} #${team.team_id}`));
+    specialList.after(teamChoices);
+    function boardChoices() {
+        return [{ id: 'all', name: '主榜' },
+            ...(data.automaticBoards || []).filter((board) => document.getElementById(board.kind === 'school' ? 'xp-schools' : 'xp-participation').checked),
+            ...editors.map((editor) => ({ id: `manual-${editor.board.id}`, name: editor.name.value.trim() || '未命名分榜' }))];
+    }
+    function refreshSpecialBoards() {
+        const choices = boardChoices();
+        for (const editor of specialEditors) {
+            const current = editor.board.value || editor.award.board;
+            editor.board.replaceChildren(...choices.map((board) => new Option(board.name, board.id, false, board.id === current)));
+            // Preserve the selection even if a switch disabled the board, or saving should remove the award.
+            if (current && !choices.some((board) => board.id === current)) {
+                const label = current.startsWith('manual-') ? '分榜已删除，保存后移除此奖' : '所选分榜当前不可用';
+                editor.board.add(new Option(label, current, false, true));
+            }
+        }
+    }
+    function addSpecial(award) {
+        const card = make('div', undefined, 'xp-board xp-special-card');
+        const head = make('div', undefined, 'xp-line xp-board-header');
+        const name = make('input', undefined, 'textbox xp-board-title');
+        name.type = 'text'; name.required = true; name.maxLength = 40; name.value = award.name;
+        name.placeholder = '最佳女队'; name.setAttribute('aria-label', '特别奖名称');
+        const kind = make('select'); kind.setAttribute('aria-label', '获奖方式');
+        for (const [value, text] of specialKinds) kind.append(new Option(text, value, false, value === award.kind));
+        const remove = make('button', '删除', 'xp-delete'); remove.type = 'button';
+        head.append(name, kind, remove);
+        const rule = make('div', undefined, 'xp-line');
+        const board = make('select'); board.setAttribute('aria-label', '榜单');
+        const rankLabel = make('label', undefined, 'xp-inline');
+        const rank = make('input', undefined, 'textbox xp-rank'); rank.type = 'number'; rank.min = '1'; rank.max = '1000'; rank.step = '1'; rank.value = String(award.rank || 1);
+        rank.setAttribute('aria-label', '名次');
+        rankLabel.append('第', rank, '名');
+        const unofficial = make('input'); unofficial.type = 'checkbox'; unofficial.checked = !!award.unofficial;
+        const ties = make('input'); ties.type = 'checkbox'; ties.checked = award.ties !== false;
+        const unofficialLabel = make('label', undefined, 'checkbox'); unofficialLabel.append(unofficial, make('span', '打星队伍可获'));
+        const tiesLabel = make('label', undefined, 'checkbox'); tiesLabel.append(ties, make('span', '并列同奖'));
+        rule.append(board, rankLabel, unofficialLabel, tiesLabel);
+        // 指定队伍: chosen from the participants by name or school.
+        const picked = new Set(award.teamIds || []);
+        const pick = make('div', undefined, 'xp-line xp-special-teams');
+        const chips = make('div', undefined, 'xp-chips');
+        const search = make('input', undefined, 'textbox xp-search'); search.type = 'search'; search.placeholder = '队伍名称或学校';
+        search.setAttribute('aria-label', '添加获奖队伍');
+        search.setAttribute('list', teamChoices.id);
+        const renderChips = () => {
+            chips.replaceChildren(...[...picked].map((id) => {
+                const team = teamById.get(id);
+                const label = team ? teamLabel(team) : `当前参赛名单中无队伍 #${id}`;
+                const chip = make('span', label, 'xp-chip');
+                const drop = make('button', '×', 'xp-chip-remove'); drop.type = 'button'; drop.setAttribute('aria-label', `移除${team?.name ?? id}`);
+                drop.addEventListener('click', () => { picked.delete(id); renderChips(); markDirty(); validate(); });
+                chip.append(drop);
+                return chip;
+            }));
+        };
+        const validate = () => {
+            search.setCustomValidity(kind.value === 'manual' && !picked.size ? '请指定获奖队伍' : '');
+            search.disabled = picked.size >= 100;
+            search.placeholder = search.disabled ? '已选满 100 支队伍' : '队伍名称或学校';
+        };
+        search.addEventListener('change', () => {
+            const id = /#(-?\d+)$/.exec(search.value)?.[1];
+            if (id && teamById.has(id)) { picked.add(id); search.value = ''; renderChips(); markDirty(); validate(); }
+        });
+        pick.append(chips, search);
+        card.append(head, rule, pick);
+        const editor = { award, card, board, read: () => ({
+            id: award.id, name: name.value.trim(), kind: kind.value, board: kind.value === 'manual' ? 'all' : board.value || 'all', rank: Number(rank.value) || 1,
+            teamIds: kind.value === 'manual' ? [...picked] : [], unofficial: kind.value === 'rank' && unofficial.checked, ties: ties.checked,
+        }) };
+        const layout = () => {
+            const manual = kind.value === 'manual';
+            rule.hidden = manual; pick.hidden = !manual;
+            rankLabel.hidden = kind.value !== 'rank';
+            unofficialLabel.hidden = kind.value !== 'rank';
+            rank.required = kind.value === 'rank';
+            validate();
+        };
+        kind.addEventListener('change', layout);
+        remove.addEventListener('click', () => {
+            specialEditors.splice(specialEditors.indexOf(editor), 1); card.remove(); markDirty(); updateSpecialButton();
+        });
+        specialEditors.push(editor);
+        specialList.append(card);
+        refreshSpecialBoards();
+        renderChips();
+        layout();
+        return editor;
+    }
+    function updateSpecialButton() { addSpecialButton.disabled = specialEditors.length >= 20; }
+    for (const award of settings.specialAwards || []) addSpecial(award);
+    updateSpecialButton();
+    addSpecialButton.addEventListener('click', () => {
+        if (specialEditors.length >= 20) return;
+        const editor = addSpecial({ id: `s-${crypto.randomUUID().slice(0, 8)}`, name: '', kind: 'rank', board: 'all', rank: 1, teamIds: [], unofficial: false, ties: true });
+        editor.card.querySelector('input').focus(); markDirty(); updateSpecialButton();
+    });
+    for (const id of ['xp-participation', 'xp-schools']) document.getElementById(id).addEventListener('change', refreshSpecialBoards);
+    specialList.closest('form').addEventListener('input', (event) => { if (event.target.classList.contains('xp-board-title') && !event.target.closest('.xp-special-card')) refreshSpecialBoards(); });
     form.addEventListener('submit', () => {
         submitting = true;
         const payload = document.getElementById('xp-payload');
@@ -433,6 +544,7 @@ if (root) {
             ccsApi: ccsApi.checked,
             ccsAutoFinalize: autoFinalize.checked,
             manualBoards: editors.map((editor) => editor.read()),
+            specialAwards: specialEditors.map((editor) => editor.read()),
         });
         store.set(payload.value);
     });
