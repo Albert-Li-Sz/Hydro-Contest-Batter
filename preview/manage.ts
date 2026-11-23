@@ -11,6 +11,7 @@ import {
 import {
     type Account, ManageError, normalizeTeamEdit, normalizeUserEdit, PRIV_EDIT_SYSTEM, PRIV_JUDGE, protectedReason, searchPattern, uidList,
 } from '../lib/manage/users';
+import { createSeatsPreview } from './seats';
 
 /** The preview administrator's password for delete confirmations (local preview only). */
 export const previewAdminPassword = 'preview-admin';
@@ -118,7 +119,11 @@ export function createManagePreview(env: Environment, version: string) {
     const isJudge = (user: PreviewUser) => user.priv !== -1 && !!(user.priv & PRIV_JUDGE);
     const page = <T>(rows: T[], number: number) => rows.slice((number - 1) * 50, number * 50);
 
+    const seatsPreview = createSeatsPreview(users, teams, contests, (password) => verify(password));
+
     async function operate(name: string, payload: any) {
+        const seatResult = seatsPreview.operate(name, payload);
+        if (seatResult !== undefined) return seatResult;
         switch (name) {
         case 'update_user': {
             const user = users.find((candidate) => candidate._id === Number(payload.uid));
@@ -215,6 +220,7 @@ export function createManagePreview(env: Environment, version: string) {
         if (pathname === '/manage/xcpcio-users/data') {
             const pattern = searchPattern(query.get('q'));
             const number = Math.max(1, Number(query.get('page')) || 1);
+            if (['seats', 'seat-backups', 'seat-backup'].includes(query.get('tab') || '')) return seatsPreview.data(query);
             if (query.get('tab') === 'teams') {
                 const rows = teams.filter((team) => !pattern || pattern.test(team.displayName) || pattern.test(team.uname));
                 return { total: rows.length, page: number, pageSize: 50, teams: page(rows, number).map((team) => ({ ...team, members: team.members.map(person), invite: team.invite.map(person) })) };

@@ -16,6 +16,7 @@ import {
 } from './balloons';
 import { gbkAvailable, receiptJob, type ReceiptJob } from './escpos';
 import { ONLINE_MS, preferenceOf, seatOf, type PrinterPreference } from './print';
+import type { ContestLinks } from './links';
 import { resolverCodeBase } from './resolver-data';
 import { awardsFor, toScriptJson, type BoardSettings } from './settings';
 import { describeTeam, isTeamEntry, loadSeats, memberIds, type TeamEntry } from './teams';
@@ -24,6 +25,8 @@ interface SettingsDoc {
     _id: string;
     settings: Partial<BalloonSettings>;
     token: string;
+    /** When the desk token was issued (absent on documents from before 1.15). */
+    tokenAt?: Date;
     /** Bumped on every change, so pages poll cheaply. */
     revision: number;
     /** The last ticket number handed out. */
@@ -109,7 +112,11 @@ function toDocSet(set: Partial<StoredBalloon>) {
     return out;
 }
 
-export function applyBalloons(ctx: Context, dependencies: { loadSettings: (tdoc: Tdoc) => Promise<BoardSettings> }) {
+export function applyBalloons(ctx: Context, dependencies: {
+    loadSettings: (tdoc: Tdoc) => Promise<BoardSettings>;
+    /** The contest's no-login links, revoked together after the contest (lib/links.ts). */
+    links?: ContestLinks<Tdoc>;
+}) {
     const root = path.join(__dirname, '..');
     const codeBase = resolverCodeBase(JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version);
     const raw = (name: string): any => ctx.db.collection(name as never);
@@ -125,11 +132,30 @@ export function applyBalloons(ctx: Context, dependencies: { loadSettings: (tdoc:
     });
 
     async function loadDoc(key: string): Promise<SettingsDoc> {
-        await settingsColl.updateOne({ _id: key }, { $setOnInsert: { settings: {}, token: newToken(), revision: 1, seq: 0 } }, { upsert: true });
+        await settingsColl.updateOne({ _id: key }, { $setOnInsert: { settings: {}, token: newToken(), tokenAt: new Date(), revision: 1, seq: 0 } }, { upsert: true });
         return settingsColl.findOne({ _id: key });
     }
     const bump = (key: string) => settingsColl.updateOne({ _id: key }, { $inc: { revision: 1 } });
+    const resetToken = async (key: string) => {
+        const token = newToken();
+        await settingsColl.updateOne({ _id: key }, { $set: { token, tokenAt: new Date() }, $inc: { revision: 1 } });
+        return token;
+    };
     const settingsOf = (doc: SettingsDoc | null, tdoc: Tdoc) => normalizeBalloonSettings(doc?.settings || {}, tdoc.pids);
+
+    dependencies.links?.add({
+        id: 'balloons', label: '气球台',
+        async status(tdoc) {
+            const doc: SettingsDoc | null = await settingsColl.findOne({ _id: contestKey(tdoc) });
+            return { count: doc ? 1 : 0, issuedAt: doc?.tokenAt ?? null };
+        },
+        // Desks poll with their token, so open ones stop at their next refresh.
+        async revoke(tdoc) {
+            if (!await settingsColl.findOne({ _id: contestKey(tdoc) }, { projection: { _id: 1 } })) return 0;
+            await resetToken(contestKey(tdoc));
+            return 1;
+        },
+    });
 
     /** Teams with what staff need: name, school, members, seat; members of a team map to it. */
     const teamCache = new Map<string, { at: number; value: Promise<Map<number, { name: string; school: string; members: string[]; seat: string; unofficial: boolean }>> }>();
@@ -525,8 +551,7 @@ export function applyBalloons(ctx: Context, dependencies: { loadSettings: (tdoc:
         async postResetToken() {
             const key = contestKey(this.tdoc);
             await loadDoc(key);
-            const token = newToken();
-            await settingsColl.updateOne({ _id: key }, { $set: { token }, $inc: { revision: 1 } });
+            const token = await resetToken(key);
             this.response.body = { deskUrl: `${contestBase(this.tdoc)}/balloon-desk/${token}` };
         }
     }

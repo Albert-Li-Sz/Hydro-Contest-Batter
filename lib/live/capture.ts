@@ -120,6 +120,8 @@ export interface CaptureDevice {
     teamUid: number | null;
     /** In the capture link. Kept readable, like the overlay token, so managers can copy links again. */
     secret: string;
+    /** When the secret was last regenerated (the creation time before that). */
+    secretAt?: Date;
     createdAt: Date;
     lastSeen: Date | null;
     /** The connection (process and socket) the device is on, null when it is not connected. */

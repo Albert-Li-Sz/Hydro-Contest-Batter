@@ -1,4 +1,4 @@
-const entryIds = ['xcpcio-resolver-entry', 'xcpcio-screens-entry', 'xcpcio-live-entry', 'xcpcio-capture-entry', 'xcpcio-monitor-entry', 'xcpcio-overview-entry', 'xcpcio-awards-entry', 'xcpcio-balloons-entry'];
+const entryIds = ['xcpcio-resolver-entry', 'xcpcio-screens-entry', 'xcpcio-live-entry', 'xcpcio-capture-entry', 'xcpcio-monitor-entry', 'xcpcio-overview-entry', 'xcpcio-awards-entry', 'xcpcio-balloons-entry', 'xcpcio-presence-entry'];
 const entries = (url, { live = true, capture = false } = {}) => [
     // One place for the boards and every award the board, the resolver, the screens and the broadcast use.
     [entryIds[6], url.replace(/\/resolver$/, '/xcpcio-settings'), 'icon-award', '榜单与奖项'],
@@ -9,6 +9,8 @@ const entries = (url, { live = true, capture = false } = {}) => [
     ...live ? [[entryIds[2], url.replace(/\/resolver$/, '/live'), 'icon-play', '直播']] : [],
     // 画面采集: contestants' screens and webcams (with the live module and its plugin setting).
     ...live && capture ? [[entryIds[3], url.replace(/\/resolver$/, '/live/capture'), 'icon-security', '画面采集']] : [],
+    // Which contestant computers are on, and which look wrong (check-in before the start).
+    [entryIds[8], url.replace(/\/resolver$/, '/presence'), 'icon-user--multiple', '机位监控'],
     [entryIds[4], url.replace(/\/resolver$/, '/monitor'), 'icon-stopwatch', '评测监控'],
     [entryIds[5], url.replace(/\/resolver$/, '/overview'), 'icon-pie-chart', '赛况总览'],
 ];
@@ -33,7 +35,7 @@ export function installResolverEntry(url, options = {}) {
         const management = document.querySelector(`a[href$="/contest/${currentContest}/management"]`);
         const anchor = (ccs || management)?.closest('li');
         if (!anchor) return;
-        // 榜单与奖项, 滚榜, 大屏, 气球配送, 直播, 评测监控 and 赛况总览 (same permission), right after CCS / management.
+        // 榜单与奖项, 滚榜, 大屏, 气球配送, 直播, 机位监控, 评测监控 and 赛况总览 (same permission), right after CCS / management.
         let previous = anchor;
         for (const [id, href, iconName, label] of entries(url, options)) {
             let entry = document.getElementById(id);

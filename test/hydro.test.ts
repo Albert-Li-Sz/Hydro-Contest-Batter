@@ -66,12 +66,13 @@ function setup(saved = new Map<string, any>(), config: Record<string, unknown> =
     const collection = {
         findOne: async ({ _id }: { _id: string }) => saved.get(_id),
         updateOne: async ({ _id }: { _id: string }, { $set }: any) => { saved.set(_id, structuredClone($set)); },
-        find: () => ({ toArray: async () => [] }),
+        find: () => { const cursor: any = { project: () => cursor, sort: () => cursor, limit: () => cursor, toArray: async () => [] }; return cursor; },
         deleteOne: async () => {},
     };
     const ctx: any = {
         db: { collection: (name: string) => (name === 'status' ? { find: () => ({ toArray: async () => state.judges }) }
-            : name.startsWith('xcpcio.resolver.') || name.startsWith('xcpcio.ccs.') || name === 'xcpcio.screens' || name.startsWith('xcpcio.live') ? resolverDb.db.collection(name as any) : collection) },
+            : name.startsWith('xcpcio.resolver.') || name.startsWith('xcpcio.ccs.') || name === 'xcpcio.screens' || name.startsWith('xcpcio.live')
+            || name === 'xcpcio.presence' || name === 'iplogin' ? resolverDb.db.collection(name as any) : collection) },
         Route: (name: string, _path: string, handler: any) => { routes.set(name, handler); },
         Connection: (name: string, _path: string, handler: any) => { routes.set(name, handler); },
         effect: vi.fn((factory: () => () => unknown) => { const stop = factory(); if (typeof stop === 'function') cleanup.push(stop); }),
@@ -96,6 +97,7 @@ function setup(saved = new Map<string, any>(), config: Record<string, unknown> =
         live: (name = '') => new (routes.get(`contest_xcpcio_live${name}`))(),
         monitor: (name = '') => new (routes.get(`contest_xcpcio_monitor${name}`))(),
         overview: (name = '') => new (routes.get(`contest_xcpcio_overview${name}`))(),
+        presence: (name = '') => new (routes.get(`contest_xcpcio_presence${name}`))(),
         resolverTables: resolverDb.tables,
         hooks: ctx.on,
         injectUI: ctx.injectUI,
@@ -117,6 +119,45 @@ beforeEach(() => {
 });
 
 describe('Hydro 数据与权限', () => {
+    it('机位监控：参赛者的页面上报在线，工作人员与未报名者不上报，管理员看到座位图与告警', async () => {
+        const now = Date.now();
+        state.ended = false;
+        state.contest.beginAt = new Date(now - 3600_000);
+        state.contest.endAt = new Date(now + 3600_000);
+        state.entries = [{ uid: 3, attend: 1, journal: [] }, { uid: 4, attend: 1, journal: [] }];
+        state.users = { 3: { _id: 3, uname: 'a', displayName: '甲队' }, 4: { _id: 4, uname: 'b', displayName: '乙队' } };
+        const app = setup();
+        app.init();
+        const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+        const beat = (user: any, hidden = false) => {
+            const handler = app.presence('_beat');
+            handler.user = { own: () => false, hasPerm: () => false, ...user };
+            handler.request = { ip: '10.0.0.5', headers: { 'user-agent': ua } };
+            handler.limitRate = vi.fn();
+            return handler.post('system', state.contest.docId, hidden).then(() => handler.response.body);
+        };
+        expect(await beat({ _id: 3 }, true)).toEqual({ ok: true, interval: 20000 });
+        expect(await beat({ _id: 10, own: () => true })).toEqual({ ok: false });
+        state.entries = [{ uid: 3, attend: 1, journal: [] }];
+        expect(await beat({ _id: 0 })).toEqual({ ok: false });
+        expect(await beat({ _id: 9 })).toEqual({ ok: false });
+        // A participant's contest page carries the reporting script.
+        const after = app.hooks.mock.calls.filter(([name]: [string]) => name === 'handler/after').map(([, listener]: [string, any]) => listener);
+        const page: any = { user: { _id: 3, own: () => false, hasPerm: () => false }, UiContext: {}, request: { ip: '10.0.0.5', headers: {} }, response: { body: { tdoc: state.contest } } };
+        for (const listener of after) await listener(page);
+        expect(page.UiContext.xcpcioPresence).toEqual({ url: `/d/system/contest/${state.contest.docId}/presence/beat`, interval: 20000 });
+        state.entries = [{ uid: 3, attend: 1, journal: [] }, { uid: 4, attend: 1, journal: [] }];
+        const data = app.presence('_data');
+        data.user.own = () => true;
+        await data.prepare('system', state.contest.docId);
+        await data.get();
+        // The last report was from a page in the background (the page view right after it is not written again).
+        expect(data.response.body.counts).toMatchObject({ online: 0, background: 1, never: 1 });
+        expect(data.response.body.alerts.map((alert: any) => `${alert.kind}:${alert.uid}`)).toEqual(['never:4']);
+        const guest = app.presence('_data');
+        await expect(guest.prepare('system', state.contest.docId)).rejects.toThrow('Forbidden');
+    });
+
     it('评测监控：只有比赛管理员可看，按队伍统计组队比赛的提交，实时跟踪每台评测机', async () => {
         state.contest.allowTeam = true;
         const begin = state.contest.beginAt.getTime() / 1000;

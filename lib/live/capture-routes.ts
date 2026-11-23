@@ -215,7 +215,7 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
         async postRegenerate(_domainId: string, input: string) {
             const doc = await device(helpers.key(this.tdoc), this.payload(input).id);
             const secret = newCaptureSecret();
-            await devices.updateOne({ _id: doc._id }, { $set: { secret } });
+            await devices.updateOne({ _id: doc._id }, { $set: { secret, secretAt: new Date() } });
             relay.kickDevice(doc._id, '采集链接已重新生成');
             this.response.body = { url: captureUrl(this.tdoc, { _id: doc._id, secret }) };
         }
@@ -588,6 +588,23 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
     return {
         mediasFor,
         directorStatus,
+        /** The contest's capture links (lib/links.ts): one per device. */
+        async linkStatus(tdoc: Tdoc) {
+            const [row] = await devices.aggregate([
+                { $match: { contestKey: helpers.key(tdoc) } },
+                { $group: { _id: null, count: { $sum: 1 }, issuedAt: { $max: { $ifNull: ['$secretAt', '$createdAt'] } } } },
+            ]).toArray();
+            return { count: row?.count || 0, issuedAt: row?.issuedAt || null };
+        },
+        /** New links for every device of the contest; capture pages open with the old ones stop. */
+        async revokeDevices(tdoc: Tdoc) {
+            const list: { _id: string }[] = await devices.find({ contestKey: helpers.key(tdoc) }).project({ _id: 1 }).toArray();
+            for (const doc of list) {
+                await devices.updateOne({ _id: doc._id }, { $set: { secret: newCaptureSecret(), secretAt: new Date() } });
+                relay.kickDevice(doc._id, '采集链接已作废');
+            }
+            return list.length;
+        },
         /** The overlay token was reset: its capture viewers stop at once in this process. */
         revoke(contestKey: string, token: string) {
             relay.closeViewers(contestKey, 4004, '直播链接已作废', (endpoint) => endpoint.kind !== 'overlay' || helpers.sameSecret(endpoint.token, token));

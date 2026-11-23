@@ -11,6 +11,7 @@ import { resolverBoards, resolverCodeBase } from './resolver-data';
 import { awardsFor } from './settings';
 import { ResolverSessions } from './resolver-sessions';
 import type { BalloonScreenData } from './balloon-routes';
+import type { ContestLinks } from './links';
 import {
     broadcastRows, decodePoster, defaultScreenConfig, groupSources, hiddenBeforeStart, intervalTypes, isPosterId, judgeScreen,
     maxPosterImages, normalizeScreenConfig, presentationItem, problemRows, saveScreenConfig, screenCategories, ScreenConfig,
@@ -24,6 +25,8 @@ import { isTeamEntry, loadSeats, memberIds, type TeamEntry } from './teams';
 interface ScreenDoc {
     _id: string;
     token: string;
+    /** When the token was issued (absent on documents from before 1.15). */
+    tokenAt?: Date;
     config: ScreenConfig;
     updatedAt: Date;
     updatedBy: number;
@@ -43,6 +46,8 @@ export function applyScreens(ctx: Context, dependencies: {
     machines: (now: number) => Promise<MonitorMachine[]>;
     /** 气球配送 (lib/balloon-routes.ts): its balloons and colours, when the contest uses it. */
     balloons?: (tdoc: Tdoc) => Promise<BalloonScreenData | null>;
+    /** The contest's no-login links, revoked together after the contest (lib/links.ts). */
+    links?: ContestLinks<Tdoc>;
 }) {
     const collection = ctx.db.collection('xcpcio.screens');
     const media = ctx.db.collection('xcpcio.screens.media');
@@ -83,11 +88,23 @@ export function applyScreens(ctx: Context, dependencies: {
         const existing = await collection.findOne({ _id: key(tdoc) });
         if (existing) return { ...existing, config: normalizeScreenConfig(existing.config) };
         if (userId === undefined) return null;
-        const doc: ScreenDoc = { _id: key(tdoc), token: newToken(), config: defaultScreenConfig(), updatedAt: new Date(), updatedBy: userId };
+        const doc: ScreenDoc = { _id: key(tdoc), token: newToken(), tokenAt: new Date(), config: defaultScreenConfig(), updatedAt: new Date(), updatedBy: userId };
         // Two administrators opening the page at once must end up with the same token.
         await collection.updateOne({ _id: doc._id }, { $setOnInsert: doc }, { upsert: true });
         return (await collection.findOne({ _id: doc._id }))!;
     }
+
+    dependencies.links?.add({
+        id: 'screens', label: '大屏',
+        async status(tdoc) {
+            const doc = await collection.findOne({ _id: key(tdoc) });
+            return { count: doc ? 1 : 0, issuedAt: doc?.tokenAt ?? null };
+        },
+        // Screens poll with their token, so open ones stop at their next refresh.
+        async revoke(tdoc) {
+            return (await collection.updateOne({ _id: key(tdoc) }, { $set: { token: newToken(), tokenAt: new Date() } })).matchedCount;
+        },
+    });
 
     async function source(tdoc: Tdoc) {
         const settings = await dependencies.loadSettings(tdoc);
@@ -197,7 +214,7 @@ export function applyScreens(ctx: Context, dependencies: {
         async postResetToken() {
             const doc = (await loadDoc(this.tdoc, this.user._id))!;
             const token = newToken();
-            await collection.updateOne({ _id: doc._id }, { $set: { token, updatedAt: new Date(), updatedBy: this.user._id } });
+            await collection.updateOne({ _id: doc._id }, { $set: { token, tokenAt: new Date(), updatedAt: new Date(), updatedBy: this.user._id } });
             this.response.body = { linkBase: `${contestBase(this.tdoc)}/screen/${token}` };
         }
 

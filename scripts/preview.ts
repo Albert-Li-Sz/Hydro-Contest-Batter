@@ -11,6 +11,7 @@ import { createResolverPreview } from '../preview/resolver';
 import { createScreensPreview } from '../preview/screens';
 import { createLivePreview } from '../preview/live';
 import { createMonitorPreview } from '../preview/monitor';
+import { createPresencePreview } from '../preview/presence';
 import { createOverviewPreview } from '../preview/overview';
 import { createCcsPreview, previewCcsId } from '../preview/ccs';
 import { createManagePreview } from '../preview/manage';
@@ -34,6 +35,7 @@ const previewDb = previewDatabase().db;
 const resolverPreview = createResolverPreview(env, logoNames, pluginVersion, previewDb);
 const screensPreview = createScreensPreview(env, logoNames, pluginVersion, previewDb);
 const monitorPreview = createMonitorPreview(env, pluginVersion, demoData);
+const presencePreview = createPresencePreview(env, pluginVersion, demoData);
 const overviewPreview = createOverviewPreview(env, pluginVersion);
 const managePreview = createManagePreview(env, pluginVersion);
 // 气球配送 tickets print on the receipt printers of the print servers preview, which takes them from it.
@@ -63,6 +65,7 @@ const server = http.createServer(async (request, response) => {
         if (await screensPreview(request, response, url, displayData, settings)) return;
         if (await livePreview.handle(request, response, url)) return;
         if (await monitorPreview(request, response, url)) return;
+        if (await presencePreview(request, response, url)) return;
         if (await overviewPreview(request, response, url)) return;
         if (await printersPreview(request, response, url)) return;
         if (await balloonsPreview.handle(request, response, url)) return;

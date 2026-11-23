@@ -2,9 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
     ContestModel, Context, DomainModel, getAlphabeticId, Handler, ObjectId, param, PRIV, ProblemModel, RecordModel, SettingModel, SystemModel,
-    TaskModel, TokenModel, Types, UserModel,
+    TaskModel, type Tdoc, TokenModel, Types, UserModel,
 } from 'hydrooj';
+import type { ContestLinks } from './links';
 import type { MonitorMachine } from './monitor';
+import { createSeatStore, contestKeyOf } from './seat-store';
+import {
+    backupFile, backupOf, normalizeBackup, normalizeClearOptions, normalizeSeatEdit, normalizeSeatQuery, scopeLabel, selectSeatRows,
+} from './manage/seats';
 import { resolverCodeBase } from './resolver-data';
 import { toScriptJson } from './settings';
 import {
@@ -49,6 +54,8 @@ interface JudgeConnection {
 export function applyManage(ctx: Context, dependencies: {
     /** Every judge machine as the monitor sees it (lib/monitor-routes.ts), built-in judge included. */
     machines: (now: number) => Promise<MonitorMachine[]>;
+    /** The contests' no-login links (lib/links.ts), revoked from the 座位与 IP tab. */
+    links: ContestLinks<Tdoc>;
 }) {
     const codeBase = resolverCodeBase(JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8')).version);
     // Hydro's own collections without typings for these fields; queries mirror Hydro's models.
@@ -57,6 +64,7 @@ export function applyManage(ctx: Context, dependencies: {
     const broadcast = (event: string, ...args: unknown[]) => (ctx as unknown as { broadcast: (e: string, ...a: unknown[]) => void }).broadcast(event, ...args);
     const on = ctx.on.bind(ctx) as unknown as (name: string, listener: (...args: any[]) => unknown) => () => void;
     const forgetUser = (udoc: unknown) => (UserModel as unknown as { _deleteUserCache?: (doc: unknown) => void })._deleteUserCache?.(udoc);
+    const seats = createSeatStore(ctx);
 
     abstract class ManageHandler extends Handler {
         async prepare() {
@@ -64,8 +72,8 @@ export function applyManage(ctx: Context, dependencies: {
             this.checkPriv(PRIV.PRIV_EDIT_SYSTEM);
         }
 
-        payload(rawPayload: string) {
-            if (rawPayload.length > 200000) throw new ManageError('请求内容过大');
+        payload(rawPayload: string, max = 200000) {
+            if (rawPayload.length > max) throw new ManageError('请求内容过大');
             try { return JSON.parse(rawPayload); } catch { throw new ManageError('请求格式无效'); }
         }
 
@@ -134,6 +142,17 @@ export function applyManage(ctx: Context, dependencies: {
             uids.push(udoc._id);
         }
         return uids;
+    }
+
+    /** The 座位与 IP tab's selection: one contest or the whole site, narrowed by room, filter and search. */
+    async function seatSelection(domainId: string, input: { contest?: unknown; zone?: unknown; filter?: unknown; q?: unknown }) {
+        const key = typeof input.contest === 'string' ? input.contest : '';
+        const scope = key ? await seats.contest(key) : null;
+        if (key && !scope) throw new ManageError('比赛不存在', 404);
+        const query = normalizeSeatQuery(input);
+        const all = await seats.rows(scope, domainId);
+        const meta = { contest: scope ? { domainId: scope.domainId, tid: String(scope.docId), title: scope.title } : null, ...query };
+        return { scope, all, meta, ...selectSeatRows(all, query) };
     }
 
     // ---------------------------------------------------------------- Users and teams
@@ -241,6 +260,51 @@ export function applyManage(ctx: Context, dependencies: {
         }
 
         @param('payload', Types.String)
+        async postUpdateSeat(_domainId: string, rawPayload: string) {
+            const edit = normalizeSeatEdit(this.payload(rawPayload));
+            this.response.body = await seats.update(edit, edit.kind === 'user' ? edit.ips : null);
+        }
+
+        @param('payload', Types.String)
+        async postBackupSeats(domainId: string, rawPayload: string) {
+            const selection = await seatSelection(domainId, this.payload(rawPayload));
+            const data = backupOf(selection.rows);
+            if (!data.seats.length && !data.ips.length) throw new ManageError('当前列表没有座位或 IP 登录');
+            const doc = await seats.saveBackup(data, scopeLabel(selection.meta), 'manual', this.user._id);
+            this.response.body = { id: String(doc._id), seats: data.seats.length, ips: data.ips.length, file: backupFile(data, doc) };
+        }
+
+        @param('payload', Types.String)
+        async postClearSeats(domainId: string, rawPayload: string) {
+            const input = this.payload(rawPayload);
+            const options = normalizeClearOptions(input.options);
+            await this.verifyAdmin(input.password);
+            const selection = await seatSelection(domainId, input);
+            if (!selection.rows.length) throw new ManageError('当前列表为空');
+            this.response.body = await seats.clear(selection.rows, options, selection.meta, this.user._id);
+        }
+
+        @param('payload', Types.String)
+        async postRestoreSeats(_domainId: string, rawPayload: string) {
+            const input = this.payload(rawPayload, 1_500_000);
+            const options = { seats: input.seats !== false, ips: input.ips !== false };
+            if (!options.seats && !options.ips) throw new ManageError('请选择要恢复的内容');
+            await this.verifyAdmin(input.password);
+            const source = typeof input.id === 'string' && input.id ? await seats.backup(input.id) : null;
+            const data = source || normalizeBackup(input.data);
+            const label = source ? source.label : typeof input.data?.label === 'string' ? input.data.label.slice(0, 120) : '备份文件';
+            this.response.body = await seats.restore(data, options, label, this.user._id);
+        }
+
+        @param('payload', Types.String)
+        async postRevokeLinks(_domainId: string, rawPayload: string) {
+            const scope = await seats.contest(String(this.payload(rawPayload).contest || ''));
+            const tdoc = scope ? await ContestModel.get(scope.domainId, scope.docId) : null;
+            if (!tdoc) throw new ManageError('比赛不存在', 404);
+            this.response.body = { links: await dependencies.links.revoke(tdoc) };
+        }
+
+        @param('payload', Types.String)
         async postDeleteTeams(_domainId: string, rawPayload: string) {
             const { uids: input, password, withStatus } = this.payload(rawPayload);
             const uids = uidList(input, '队伍', true).filter((uid) => uid < 0);
@@ -265,8 +329,33 @@ export function applyManage(ctx: Context, dependencies: {
         @param('tab', Types.String, true)
         @param('q', Types.String, true)
         @param('page', Types.PositiveInt, true)
-        async get(domainId: string, tab = 'users', q = '', page = 1) {
-            this.response.body = tab === 'teams' ? await this.teams(domainId, q, page) : await this.users(domainId, q, page);
+        @param('contest', Types.String, true)
+        @param('zone', Types.String, true)
+        @param('filter', Types.String, true)
+        @param('id', Types.String, true)
+        async get(domainId: string, tab = 'users', q = '', page = 1, contest = '', zone = '', filter = '', id = '') {
+            if (tab === 'seats') this.response.body = await this.seats(domainId, { contest, zone, filter, q }, page);
+            else if (tab === 'seat-backups') this.response.body = { backups: await seats.listBackups() };
+            else if (tab === 'seat-backup') {
+                const doc = await seats.backup(id);
+                this.response.body = backupFile(doc, doc);
+            } else this.response.body = tab === 'teams' ? await this.teams(domainId, q, page) : await this.users(domainId, q, page);
+        }
+
+        async seats(domainId: string, input: { contest: string; zone: string; filter: string; q: string }, page: number) {
+            const selection = await seatSelection(domainId, input);
+            const contestRow = (doc: { domainId: string; docId: unknown; title: string; beginAt: Date; endAt: Date }) => ({
+                key: contestKeyOf(doc), title: doc.title, domainId: doc.domainId, beginAt: doc.beginAt, endAt: doc.endAt,
+            });
+            const tdoc = selection.scope ? await ContestModel.get(selection.scope.domainId, selection.scope.docId) : null;
+            return {
+                contests: (await seats.contests()).map(contestRow),
+                contest: selection.scope ? contestRow(selection.scope) : null,
+                total: selection.rows.length, page, pageSize: PAGE_SIZE,
+                rows: selection.rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+                counts: selection.counts, zones: selection.zones,
+                links: tdoc ? await dependencies.links.status(tdoc) : null,
+            };
         }
 
         async users(domainId: string, q: string, page: number) {

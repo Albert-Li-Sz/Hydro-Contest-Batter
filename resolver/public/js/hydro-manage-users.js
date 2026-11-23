@@ -1,10 +1,12 @@
-// /manage user configuration: accounts and Hydro 5.1 teams, edit and (batch) delete.
+// /manage user configuration: accounts and Hydro 5.1 teams, edit and (batch) delete; seats and IP login.
 import {
     $, adminPassword, el, field, formatTime, get, input, notify, openDialog, post, randomPassword, runtime,
 } from './hydro-manage-common.js';
+import { createSeatsPanel } from './hydro-manage-seats.js';
 
-const state = { tab: location.hash === '#teams' ? 'teams' : 'users', q: '', page: 1, total: 0, pageSize: 50, rows: [], selected: new Map() };
-const labels = { users: '用户', teams: '队伍' };
+const hashTabs = { '#teams': 'teams', '#seats': 'seats' };
+const state = { tab: hashTabs[location.hash] || 'users', q: '', page: 1, total: 0, pageSize: 50, rows: [], selected: new Map() };
+const labels = { users: '用户', teams: '队伍', seats: '座位与 IP' };
 
 const status = el('p', { class: 'resolver-muted', role: 'status', hidden: true });
 const search = input({ type: 'search', placeholder: '账号、显示名、邮箱、学校、学号或 UID', 'aria-label': '搜索' });
@@ -13,7 +15,7 @@ const tabs = el('div', { class: 'manage-tabs', role: 'tablist' });
 const table = el('table', { class: 'data-table' });
 const pager = el('div', { class: 'manage-pager' });
 
-for (const tab of ['users', 'teams']) {
+for (const tab of ['users', 'teams', 'seats']) {
     tabs.append(el('button', {
         type: 'button', role: 'tab', text: labels[tab], 'data-tab': tab,
         onclick: () => {
@@ -24,7 +26,7 @@ for (const tab of ['users', 'teams']) {
             search.value = '';
             state.selected.clear();
             notify(status, '');
-            history.replaceState(null, '', tab === 'teams' ? '#teams' : location.pathname + location.search);
+            history.replaceState(null, '', tab === 'users' ? location.pathname + location.search : `#${tab}`);
             load();
         },
     }));
@@ -44,13 +46,13 @@ search.addEventListener('input', () => {
 });
 
 const root = $('manage-root');
-root.replaceChildren(
-    tabs,
+const accounts = el('div', {},
     el('div', { class: 'manage-toolbar' }, search, el('span', { class: 'manage-spacer' }), deleteButton),
     status,
     el('div', { class: 'manage-scroll' }, table),
-    pager,
-);
+    pager);
+const seats = createSeatsPanel();
+root.replaceChildren(tabs, accounts, seats.node);
 
 function updateSelection() {
     const count = state.selected.size;
@@ -137,6 +139,9 @@ function renderPager() {
 
 async function load() {
     for (const tab of tabs.children) tab.setAttribute('aria-selected', String(tab.dataset.tab === state.tab));
+    accounts.hidden = state.tab === 'seats';
+    if (state.tab === 'seats') { seats.show(); return; }
+    seats.hide();
     search.placeholder = state.tab === 'teams' ? '搜索队名或队伍账号' : '搜索账号、显示名、邮箱、学校、学号或 UID';
     try {
         const data = await get({ tab: state.tab, q: state.q, page: state.page });

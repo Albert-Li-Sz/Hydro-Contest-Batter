@@ -5,6 +5,7 @@ import {
     ConnectionHandler, ContestModel, Context, Handler, NotFoundError, ObjectId, param, PERM, PRIV, Tdoc, Types, UserModel,
 } from 'hydrooj';
 import type { BoardData } from '../board';
+import type { ContestLinks } from '../links';
 import type { BoardSettings } from '../settings';
 import { toScriptJson } from '../settings';
 import { resolverBoards, resolverCodeBase } from '../resolver-data';
@@ -19,6 +20,8 @@ import { stateEntries, stateFromEntries, stateUpdate, type LiveStateEntries, typ
 interface LiveDoc {
     _id: string;
     token: string;
+    /** When the overlay token was issued (absent on documents from before 1.15). */
+    tokenAt?: Date;
     /** Separate from the overlay token, so pictures placed in captions survive a token reset. */
     mediaKey: string;
     visualConfig: string;
@@ -66,6 +69,8 @@ export function applyLive(ctx: Context, dependencies: {
     capture?: boolean;
     /** UDP port of Hydro's own STUN server for 画面采集; 0 turns it off. */
     captureStunPort?: number;
+    /** The contest's no-login links, revoked together after the contest (lib/links.ts). */
+    links?: ContestLinks<Tdoc>;
 }) {
     const collection = ctx.db.collection('xcpcio.live');
     const media = ctx.db.collection('xcpcio.live.media');
@@ -112,7 +117,7 @@ export function applyLive(ctx: Context, dependencies: {
 
     async function loadDoc(tdoc: Tdoc): Promise<LiveDoc> {
         const doc: LiveDoc = {
-            _id: key(tdoc), token: newToken(), mediaKey: newToken(), visualConfig: defaultVisualConfig(tdoc.title), stateEntries: {}, stateRevision: 0, updatedAt: new Date(),
+            _id: key(tdoc), token: newToken(), tokenAt: new Date(), mediaKey: newToken(), visualConfig: defaultVisualConfig(tdoc.title), stateEntries: {}, stateRevision: 0, updatedAt: new Date(),
         };
         // Two administrators opening the page at once must end up with the same token.
         await collection.updateOne({ _id: doc._id }, { $setOnInsert: doc }, { upsert: true });
@@ -233,6 +238,30 @@ export function applyLive(ctx: Context, dependencies: {
         currentToken: async (contestKey) => (await collection.findOne({ _id: contestKey }))?.token ?? null,
     });
 
+    async function resetToken(contestKey: string) {
+        const token = newToken();
+        await collection.updateOne({ _id: contestKey }, { $set: { token, tokenAt: new Date(), updatedAt: new Date() } });
+        // Overlays already open with the old link stop at once, in every Hydro process.
+        closeRevoked(contestKey, token);
+        capture?.revoke(contestKey, token);
+        announce(contestKey, 'token');
+        return token;
+    }
+
+    dependencies.links?.add({
+        id: 'live', label: '直播 overlay',
+        async status(tdoc) {
+            const doc = await collection.findOne({ _id: key(tdoc) });
+            return { count: doc ? 1 : 0, issuedAt: doc?.tokenAt ?? null };
+        },
+        async revoke(tdoc) {
+            if (!await collection.findOne({ _id: key(tdoc) }, { projection: { _id: 1 } })) return 0;
+            await resetToken(key(tdoc));
+            return 1;
+        },
+    });
+    if (capture) dependencies.links?.add({ id: 'capture', label: '画面采集设备', status: capture.linkStatus, revoke: capture.revokeDevices });
+
     const respond = (handler: Handler, response: ApiResponse | null, what: string) => {
         if (!response) throw new NotFoundError(what);
         handler.response.status = response.status;
@@ -261,12 +290,7 @@ export function applyLive(ctx: Context, dependencies: {
 
         async postResetToken() {
             const doc = await loadDoc(this.tdoc);
-            const token = newToken();
-            await collection.updateOne({ _id: doc._id }, { $set: { token, updatedAt: new Date() } });
-            // Overlays already open with the old link stop at once, in every Hydro process.
-            closeRevoked(doc._id, token);
-            capture?.revoke(doc._id, token);
-            announce(doc._id, 'token');
+            const token = await resetToken(doc._id);
             this.response.body = { overlay: urls(this.tdoc, { ...doc, token }).overlay };
         }
     }

@@ -18,10 +18,10 @@ const contest = '/contest/demo';
 const screen = `${contest}/screen/preview0000000000000000000000000000000000000000`;
 const themed = [
     `${contest}/scoreboard/xcpcio-plus`, `${contest}/xcpcio-settings`, `${contest}/resolver`, `${contest}/screens`,
-    `${contest}/live`, `${contest}/live/capture`, `${contest}/monitor`, `${contest}/overview`, `${contest}/balloons`,
-    '/manage/xcpcio-users', '/manage/xcpcio-judges', '/manage/xcpcio-rejudge', '/manage/xcpcio-printers',
+    `${contest}/live`, `${contest}/live/capture`, `${contest}/monitor`, `${contest}/presence`, `${contest}/overview`, `${contest}/balloons`,
+    '/manage/xcpcio-users', '/manage/xcpcio-users#seats', '/manage/xcpcio-judges', '/manage/xcpcio-rejudge', '/manage/xcpcio-printers',
 ];
-const plain = [`${contest}/live-capture/me?as=1`, `${contest}/problems?as=1`,
+const plain = [`${contest}/live-capture/me?as=1`, `${contest}/problems?as=1`, `${contest}/presence?phase=before`,
     ...['controls', 'capture', 'scoreboard', 'ticker', 'teamSpotlight', 'contestInfo'].map((page) => `${contest}/live/admin/${page}`), `${contest}/live/admin`];
 const screens = ['scoreboard', 'leaders', 'tiles', 'first-solves', 'queue', 'clock', 'countdown', 'message', 'resolver', 'problem-stats',
     'rank-trend', 'outcomes', 'groups', 'logo-wall', 'team-intro', 'problem-colors', 'floor', 'balloons', 'announce', 'judges', 'poster',
@@ -184,10 +184,37 @@ async function interactions(browser, base) {
         const users = await open(context, base, '/manage/xcpcio-users', where);
         await users.waitForTimeout(1000);
         const all = await users.locator('tbody tr').count();
-        await users.getByLabel('搜索').fill('player1');
+        await users.getByLabel('搜索', { exact: true }).fill('player1');
         await users.waitForTimeout(1200);
         const found = await users.locator('tbody tr').count();
         check(where, found > 0 && found < all, `search shows ${found} of ${all}`);
+        // 座位与 IP: a contest's seats with its no-login links; the duplicate filter narrows the list.
+        where = 'seats';
+        const seatPage = await open(context, base, '/manage/xcpcio-users#seats', where);
+        await seatPage.waitForTimeout(1000);
+        check(where, (await seatPage.locator('.manage-seats tbody tr').count()) > 1, 'the site-wide seat list is empty');
+        const scope = seatPage.getByLabel('范围');
+        await scope.selectOption({ index: 1 });
+        await seatPage.waitForTimeout(1000);
+        check(where, (await seatPage.locator('.manage-links .manage-link').count()) === 4, 'the contest shows no link kinds');
+        await seatPage.locator('.manage-filters button', { hasText: '重复座位' }).click();
+        await seatPage.waitForTimeout(800);
+        const duplicates = await seatPage.locator('.manage-seats tbody .seat-cell.is-duplicate').count();
+        check(where, duplicates === await seatPage.locator('.manage-seats tbody tr').count() && duplicates > 1, `duplicate filter shows ${duplicates}`);
+        await seatPage.getByRole('button', { name: '恢复' }).click();
+        const listed = await seatPage.locator('dialog[open] .manage-backup').first().waitFor({ timeout: 3000 }).then(() => true, () => false);
+        check(where, listed, 'the restore dialog lists no backups');
+        await seatPage.keyboard.press('Escape');
+        await checkLayout(seatPage, where);
+        // 机位监控: the seat map, the alerts, and a computer's details.
+        where = 'presence';
+        const presence = await open(context, base, `${contest}/presence`, where);
+        await presence.waitForTimeout(1200);
+        check(where, (await presence.locator('.presence-seat').count()) > 10, 'the seat map is empty');
+        check(where, (await presence.locator('.presence-alert').count()) > 0, 'no alerts listed');
+        await presence.locator('.presence-alert button').first().click();
+        check(where, await presence.locator('dialog.presence-dialog[open] dl').isVisible(), 'the details did not open');
+        await presence.keyboard.press('Escape');
         // Print management follows changes made elsewhere without reloading (its poll is 30 s).
         where = 'printers push';
         const printers = await open(context, base, '/manage/xcpcio-printers', where);
