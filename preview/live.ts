@@ -60,6 +60,7 @@ export function createLivePreview(env: Environment, logoNames: Record<string, st
         saveVisualConfig: async (value: string) => { visualConfig = value; },
         mediaNames: async () => [...new Set([...await builtinMediaNames(), ...uploaded.keys()])].sort(),
         saveMedia: async (name: string, data: Buffer, mime: string) => { uploaded.set(name, { data, mime }); },
+        mediaUrl: async (name: string) => `${urls().media}/${encodeURIComponent(name)}`,
     };
     const state: LiveStateEntries = {};
     let revision = 0;

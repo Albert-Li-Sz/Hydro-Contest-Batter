@@ -202,6 +202,8 @@ export function screenData(data: BoardData, members: Set<string> | null, context
     logoNames: Record<string, string>; locked: boolean;
     /** The board's first-solve rules (awardsFor), so screens highlight exactly what the board does. */
     firstSolve: boolean; unofficialFirstSolve: boolean;
+    /** The contest's ranking rule (lib/settings.ts TieBreak). */
+    tieBreak?: 'hydro' | 'icpc';
     /** 分组排行: the groups (boards, or schools when omitted) teams belong to. */
     groups?: { id: string; name: string; teamIds: string[] }[] | null;
     /** Seats onsite-toolkit imported, by team id. */
@@ -268,7 +270,7 @@ export function screenData(data: BoardData, members: Set<string> | null, context
         });
     const c = normalizeContest({
         name: data.contest.contest_name, startTime: new Date(data.contest.start_time * 1000).toISOString(),
-        durationMs, freezeDurationMs: freezeMs, scoringMode: 'hydro', penaltyMinutes: 20,
+        durationMs, freezeDurationMs: freezeMs, scoringMode: 'hydro', tieBreak: context.tieBreak ?? 'hydro', penaltyMinutes: 20,
         firstSolveEnabled: context.firstSolve, unofficialFirstSolve: context.unofficialFirstSolve,
         teams: inputTeams, organizations, groups, problems, submissions, awards: [],
     });
@@ -423,7 +425,9 @@ export function screenProjection(type: ScreenType, item: ScreenItem, data: Scree
         });
     }
     if (type === 'team-intro') return [...teams.values()].map(({ displayName, organizationName, logo, members }) => ({ displayName, organizationName, logo, members }));
-    const problems = contest.problems.map(({ id, label, color }: { id: string; label: string; color: string }) => ({ id, label, color }));
+    // The resolver engine keeps a problem's balloon colour as `rgb`.
+    const problems = contest.problems.map(({ id, label, rgb, color }: { id: string; label: string; rgb?: string | null; color?: string | null }) => (
+        { id, label, color: rgb ?? color ?? '' }));
     if (type === 'floor') {
         const latest = new Map(outcomes.map((row) => [row.team_id, row.status === 'FROZEN' ? 'PENDING' : row.status]));
         return { problems, seats: standings.filter((row) => seats[row.teamId]).map((row) => ({

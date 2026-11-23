@@ -81,7 +81,7 @@ export function applyOverview(ctx: Context, dependencies: {
                         ...contestOverview({
                             title: tdoc.title, beginAt: tdoc.beginAt.getTime(), endAt: tdoc.endAt.getTime(),
                             lockAt: tdoc.lockAt ? tdoc.lockAt.getTime() : null, now: Date.now(), data,
-                            unofficialFirstSolve: settings.unofficialFirstSolve,
+                            unofficialFirstSolve: settings.unofficialFirstSolve, tieBreak: settings.tieBreak,
                         }),
                         system: machines,
                     })),

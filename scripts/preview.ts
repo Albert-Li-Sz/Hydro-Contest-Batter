@@ -39,6 +39,7 @@ const printersPreview = createPrintersPreview(env, pluginVersion, demoData);
 const livePreview = createLivePreview(env, logoNames, pluginVersion, demoData, () => settings);
 const ccsPreview = createCcsPreview(demoData(), () => settings);
 const base = '/contest/demo';
+let unlocked = false;
 const boardUrl = `${base}/scoreboard/xcpcio-plus`;
 const settingsUrl = `${base}/xcpcio-settings`;
 const publicUrl = `${base}/xcpcio-public`;
@@ -74,6 +75,11 @@ const server = http.createServer(async (request, response) => {
             ccsPreview.app.writer.touch(`system/${previewCcsId}`);
             response.writeHead(303, { Location: `${settingsUrl}?saved=1` }).end(); return;
         }
+        // Hydro's 解除封榜 (operation=unlock on the native scoreboard route), back to the board like this.back().
+        if (request.method === 'POST' && url.pathname === `${base}/scoreboard`) {
+            unlocked = true;
+            response.writeHead(303, { Location: request.headers.referer || boardUrl }).end(); return;
+        }
         if (request.method !== 'GET') { response.writeHead(405).end(); return; }
         if (url.pathname === '/api/board') {
             response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(enhanceBoard(displayData, settings, { identity: settings.showIdentity }))); return;
@@ -81,6 +87,7 @@ const server = http.createServer(async (request, response) => {
         if (url.pathname === settingsUrl) {
             response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(env.render('xcpcio_plus_settings.html', {
                 ...defaults, boardUrl, publicUrl, ccsUrl: `/d/system/ccsapi/contests/${previewCcsId}`, replacementEnabled: true,
+                resolverUrl: `${base}/resolver`, screensUrl: `${base}/screens`,
                 settingsJson: toScriptJson({ settings, teams, automaticBoards: automaticBoards(teams), filterFields: rosterFields(teams, defaultProfileFields) }),
             })); return;
         }
@@ -103,7 +110,7 @@ const server = http.createServer(async (request, response) => {
         }
         if (url.pathname === boardUrl) {
             response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(env.render('xcpcio_plus_board.html', {
-                ...displayDefaults, ...manifest, settingsUrl, runtimeJson: toScriptJson({ dataSource: '/api/board#allInOne=true', refreshInterval: 5000 }),
+                ...displayDefaults, ...manifest, settingsUrl, unlock: unlocked ? null : { url: `${base}/scoreboard`, ready: true }, runtimeJson: toScriptJson({ dataSource: '/api/board#allInOne=true', refreshInterval: 5000 }),
             })); return;
         }
         if (url.pathname.startsWith('/hydro-xcpcio/') || url.pathname.startsWith('/hydro-resolver/') || url.pathname.startsWith('/hydro-live/')) {

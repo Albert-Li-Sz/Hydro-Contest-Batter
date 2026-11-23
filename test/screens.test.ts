@@ -72,6 +72,8 @@ describe('additional screens', () => {
         expect(projection('announce')).toContainEqual(expect.objectContaining({ id: 'edge' }));
         expect(projection('announce')).not.toContainEqual(expect.objectContaining({ id: 'late' }));
         expect(projection('balloons')).toMatchObject({ seats: [expect.objectContaining({ seat: 'A-08', balloons: ['1'] })] });
+        // Balloons are drawn in their problem's colour (the engine calls it `rgb`).
+        expect((projection('balloons') as { problems: { color: string }[] }).problems.map((problem) => problem.color)).toEqual(['#e8794c', '#3b82f6', '#a855f7']);
         expect(projection('floor')).toMatchObject({ seats: [expect.objectContaining({ seat: 'A-08', latest: 'PENDING' })] });
     });
 

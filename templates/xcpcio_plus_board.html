@@ -11,7 +11,12 @@
         {% if realtimeUrl %}<a class="button" href="{{ realtimeUrl }}">查看实时榜</a>{% endif %}
         {% if frozenUrl %}<a class="button" href="{{ frozenUrl }}">返回封榜视图</a>{% endif %}
         {% if publicUrl %}<a class="button" href="{{ publicUrl }}">免登录榜单</a>{% endif %}
-        {% if settingsUrl %}<a class="button" href="{{ settingsUrl }}">奖牌与分榜设置</a>{% endif %}
+        {% if settingsUrl %}<a class="button" href="{{ settingsUrl }}">榜单与奖项设置</a>{% endif %}
+        {% if unlock %}<form method="post" action="{{ unlock.url }}" class="xp-unlock-form" id="xp-unlock-form">
+          <input type="hidden" name="operation" value="unlock">
+          {% if unlock.ready %}<button type="submit" class="button primary">解除封榜</button>
+          {% else %}<button type="button" class="button" disabled title="比赛结束后才能解除封榜">解除封榜</button>{% endif %}
+        </form>{% endif %}
       </div>
     </div>
     <div class="section__body xp-board-body">
@@ -21,13 +26,18 @@
       <div class="xp-board-footnote">
         <div class="xp-legend" id="xp-legend" aria-label="榜单图例">
           <span><i class="xp-dot xp-gold"></i>金牌</span><span><i class="xp-dot xp-silver"></i>银牌</span><span><i class="xp-dot xp-bronze"></i>铜牌</span>
-          <span class="xp-result-key"><i class="xp-dot xp-first"></i>首次通过</span><span class="xp-result-key"><i class="xp-dot xp-correct"></i>通过</span><span class="xp-result-key"><i class="xp-dot xp-incorrect"></i>未通过</span><span class="xp-result-key"><i class="xp-dot xp-frozen"></i>封榜</span>
+          <span class="xp-result-key"><i class="xp-dot xp-first"></i>首次通过</span><span class="xp-result-key"><i class="xp-dot xp-correct"></i>通过</span><span class="xp-result-key"><i class="xp-dot xp-incorrect"></i>未通过</span><span class="xp-result-key"><i class="xp-dot xp-pending"></i>评测中</span><span class="xp-result-key"><i class="xp-dot xp-frozen"></i>封榜</span>
         </div>
       </div>
     </div>
   </section>
 </div></div>
 <script type="application/json" id="xcpcio-runtime">{{ runtimeJson | safe }}</script>
+{% if unlock and unlock.ready %}<script>
+document.getElementById('xp-unlock-form').addEventListener('submit', (event) => {
+    if (!confirm('解除封榜后，所有人（包括免登录榜单、大屏与直播）都会看到封榜后的全部结果，且不能重新封榜。确定解除？')) event.preventDefault();
+});
+</script>{% endif %}
 <script>
 (() => {
     const config = JSON.parse(document.getElementById('xcpcio-runtime').textContent);

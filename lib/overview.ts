@@ -18,11 +18,13 @@ export interface OverviewInput {
      * verdict breakdown is 通过 / 未通过 / 编译错误 / 评测中 rather than WA, TLE and so on.
      */
     masked?: boolean;
+    /** The contest's ranking rule (lib/settings.ts TieBreak), as on the board. */
+    tieBreak?: 'hydro' | 'icpc';
 }
 
 const unsetSchool = (name: string) => !name.trim() || name.trim() === '未填写学校';
 // Same scoring as the board, resolver and screens: 20 minutes per wrong run, these runs exempt.
-const PENALTY_MS = 20 * 60_000;
+const PENALTY_SECONDS = 20 * 60;
 const exempt = new Set(['CORRECT', 'COMPILATION_ERROR', 'PRESENTATION_ERROR', 'CANCELED']);
 const pendingStatuses = new Set(['PENDING', 'FROZEN']);
 const verdictGroups: [string, string, string[]][] = [
@@ -77,26 +79,31 @@ export function contestOverview(input: OverviewInput) {
         if (record.status === 'CORRECT') cell.solvedAt = record.timestamp;
         else if (!exempt.has(record.status)) cell.tries++;
     }
-    const scores = new Map(data.teams.map((team) => [team.team_id, { solved: 0, penalty: 0, last: 0 }]));
+    // Penalty in seconds: whole seconds per accepted time under Hydro's rule, whole minutes under the
+    // ICPC rule, which then ranks the earlier last accept first (resolver/public/js/standings.js).
+    const icpc = input.tieBreak === 'icpc';
+    const scores = new Map(data.teams.map((team) => [team.team_id, { solved: 0, penalty: 0, last: -1 }]));
     for (const [key, cell] of cells) {
         if (cell.solvedAt === null) continue;
         const score = scores.get(key.slice(0, key.lastIndexOf('/')))!;
         score.solved++;
-        score.penalty += cell.solvedAt + cell.tries * PENALTY_MS;
-        score.last = Math.max(score.last, cell.solvedAt);
+        score.penalty += (icpc ? Math.floor(cell.solvedAt / 60_000) * 60 : Math.floor(cell.solvedAt / 1000)) + cell.tries * PENALTY_SECONDS;
+        score.last = Math.max(score.last, Math.floor(cell.solvedAt / 60_000));
     }
-    // Official standings: equal solved count and penalty share a rank, ties listed by name.
+    const order = (a: { solved: number; penalty: number; last: number }, b: typeof a) => b.solved - a.solved || a.penalty - b.penalty
+        || (icpc ? a.last - b.last : 0);
+    // Official standings: teams the rule cannot separate share a rank, ties listed by name.
     const ranked = official.map((team) => ({ team, ...scores.get(team.team_id)! }))
-        .sort((a, b) => b.solved - a.solved || a.penalty - b.penalty || a.team.name.localeCompare(b.team.name, 'zh-CN'));
+        .sort((a, b) => order(a, b) || a.team.name.localeCompare(b.team.name, 'zh-CN'));
     const rankOf = new Map<string, number>();
     ranked.forEach((row, index) => {
         const previous = ranked[index - 1];
-        const same = previous && previous.solved === row.solved && previous.penalty === row.penalty;
+        const same = previous && order(previous, row) === 0;
         rankOf.set(row.team.team_id, same ? rankOf.get(previous.team.team_id)! : index + 1);
     });
     const topTeams = ranked.slice(0, TOP_TEAMS).map((row) => ({
         rank: rankOf.get(row.team.team_id)!, name: row.team.name, school: schoolOf(row.team.team_id),
-        solved: row.solved, penaltyMinutes: Math.floor(row.penalty / 60_000),
+        solved: row.solved, penaltyMinutes: Math.floor(row.penalty / 60),
     }));
 
     // First solves, following the board's eligibility for starred teams.

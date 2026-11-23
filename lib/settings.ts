@@ -11,8 +11,15 @@ export interface ManualBoard {
     medals?: Medals;
 }
 
+/**
+ * count: `medals` are numbers of teams. ratio: `medals` are percentages of the board's eligible teams (official
+ * teams that solved at least one problem), each rounded up, as ICPC regionals award 金 10% / 银 20% / 铜 30%.
+ */
+export type MedalBasis = 'count' | 'ratio';
+
 export interface BoardAwards {
     medals: Medals;
+    medalBasis: MedalBasis;
     goldCitation: string;
     silverCitation: string;
     bronzeCitation: string;
@@ -22,7 +29,17 @@ export interface BoardAwards {
     unofficialFirstSolve: boolean;
 }
 
+/**
+ * How teams equal in solved problems are ordered, for every board, resolver, screen, broadcast and the CCS API.
+ * hydro: Hydro's ACM rule, penalty in whole seconds, equal penalty shares a rank.
+ * icpc: the ICPC regional rule, total time in minutes (accepted time truncated to the minute plus 20 minutes per
+ * rejected run), then the earlier last accepted run; teams equal in both share a rank.
+ */
+export type TieBreak = 'hydro' | 'icpc';
+export const tieBreaks: readonly TieBreak[] = ['hydro', 'icpc'];
+
 export interface BoardSettings extends BoardAwards {
+    tieBreak: TieBreak;
     boardAwards: Record<string, BoardAwards>;
     schoolBoards: boolean;
     participationBoards: boolean;
@@ -38,8 +55,10 @@ export interface BoardSettings extends BoardAwards {
 
 export const defaultSettings: BoardSettings = {
     medals: { gold: 1, silver: 2, bronze: 3 },
+    medalBasis: 'count',
     goldCitation: '金奖', silverCitation: '银奖', bronzeCitation: '铜奖',
     medalSameScore: true, firstSolve: false, podiumEnabled: false, unofficialFirstSolve: false,
+    tieBreak: 'hydro',
     boardAwards: {},
     schoolBoards: false,
     participationBoards: false,
@@ -70,7 +89,14 @@ function medals(value: unknown, label: string): Medals {
 }
 
 function normalizeAwards(input: Record<string, unknown>, fallback: BoardAwards): BoardAwards {
-    const result: BoardAwards = { medals: medals(input.medals ?? fallback.medals, '奖牌数量'),
+    if (input.medalBasis !== undefined && input.medalBasis !== 'count' && input.medalBasis !== 'ratio') throw new Error('奖牌名额方式无效');
+    // Medals saved without a basis (settings from before 按比例设奖) are numbers of teams; only rules that
+    // bring no medals of their own take the default's basis along with its medals.
+    const medalBasis: MedalBasis = (input.medalBasis as MedalBasis | undefined)
+        ?? (input.medals !== undefined ? 'count' : fallback.medalBasis ?? 'count');
+    const counts = medals(input.medals ?? fallback.medals, '奖牌数量');
+    if (medalBasis === 'ratio' && counts.gold + counts.silver + counts.bronze > 100) throw new Error('按比例设奖时，金银铜比例之和不能超过 100%');
+    const result: BoardAwards = { medals: counts, medalBasis,
         goldCitation: fallback.goldCitation, silverCitation: fallback.silverCitation, bronzeCitation: fallback.bronzeCitation,
         medalSameScore: fallback.medalSameScore, firstSolve: fallback.firstSolve,
         podiumEnabled: fallback.podiumEnabled, unofficialFirstSolve: fallback.unofficialFirstSolve };
@@ -87,14 +113,25 @@ function normalizeAwards(input: Record<string, unknown>, fallback: BoardAwards):
     return result;
 }
 
-/** A board override is shared by the live board and new resolver snapshots. */
-export function awardsFor(settings: BoardSettings, boardId: string): BoardAwards {
-    if (settings.boardAwards[boardId]) return settings.boardAwards[boardId];
+export type BoardRules = BoardAwards & { tieBreak: TieBreak };
+
+/** Medals of each tier for a board with `eligible` official teams that solved something (before capping). */
+export function medalCounts(rules: Pick<BoardAwards, 'medals' | 'medalBasis'>, eligible: number): Medals {
+    if (rules.medalBasis !== 'ratio') return rules.medals;
+    // Integer arithmetic: 10% of 30 teams is 3, not 3.0000000000000004 rounded up to 4.
+    const share = (percent: number) => Math.ceil((eligible * percent) / 100 - 1e-9);
+    return { gold: share(rules.medals.gold), silver: share(rules.medals.silver), bronze: share(rules.medals.bronze) };
+}
+
+/** A board override is shared by the live board and new resolver snapshots; the ranking rule is the contest's. */
+export function awardsFor(settings: BoardSettings, boardId: string): BoardRules {
+    const tieBreak = settings.tieBreak ?? 'hydro';
+    if (settings.boardAwards[boardId]) return { ...settings.boardAwards[boardId], tieBreak };
     const manual = settings.manualBoards.find((board) => `manual-${board.id}` === boardId);
-    return { medals: manual?.medals || settings.medals,
+    return { medals: manual?.medals || settings.medals, medalBasis: manual?.medals ? 'count' : settings.medalBasis ?? 'count',
         goldCitation: settings.goldCitation, silverCitation: settings.silverCitation, bronzeCitation: settings.bronzeCitation,
         medalSameScore: settings.medalSameScore, firstSolve: settings.firstSolve,
-        podiumEnabled: settings.podiumEnabled, unofficialFirstSolve: settings.unofficialFirstSolve };
+        podiumEnabled: settings.podiumEnabled, unofficialFirstSolve: settings.unofficialFirstSolve, tieBreak };
 }
 
 export function normalizeSettings(value: unknown): BoardSettings {
@@ -102,6 +139,7 @@ export function normalizeSettings(value: unknown): BoardSettings {
     for (const key of ['schoolBoards', 'participationBoards', 'publicAccess', 'replaceNative', 'unofficialAwards', 'showIdentity', 'ccsApi', 'ccsAutoFinalize']) {
         if (input[key] !== undefined && typeof input[key] !== 'boolean') throw new Error(`${key} 必须是布尔值`);
     }
+    if (input.tieBreak !== undefined && !tieBreaks.includes(input.tieBreak as TieBreak)) throw new Error('同分规则无效');
     if (!Array.isArray(input.manualBoards) || input.manualBoards.length > 50) {
         throw new Error('手动分榜必须是数组，最多 50 个');
     }
@@ -138,6 +176,7 @@ export function normalizeSettings(value: unknown): BoardSettings {
     }
     return {
         ...awards, boardAwards,
+        tieBreak: input.tieBreak === 'icpc' ? 'icpc' : 'hydro',
         schoolBoards: input.schoolBoards === true,
         participationBoards: input.participationBoards === true,
         manualBoards,

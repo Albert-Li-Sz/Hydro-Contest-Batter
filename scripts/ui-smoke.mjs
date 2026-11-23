@@ -164,11 +164,11 @@ async function interactions(browser, base) {
         const screensPage = await open(context, base, `${contest}/screens#screen-message`, where);
         await screensPage.waitForTimeout(800);
         const text = `smoke ${Date.now()}`;
-        await screensPage.locator('#screen-message textarea').fill(text);
+        await screensPage.locator('#screen-card-message textarea').fill(text);
         await screensPage.waitForTimeout(1800);
         await screensPage.reload();
         await screensPage.waitForTimeout(800);
-        check(where, (await screensPage.locator('#screen-message textarea').inputValue()) === text, 'message text did not save');
+        check(where, (await screensPage.locator('#screen-card-message textarea').inputValue()) === text, 'message text did not save');
         // Resolver: a custom freeze point previews; the minutes field follows the menu.
         where = 'resolver';
         const resolver = await open(context, base, `${contest}/resolver`, where);

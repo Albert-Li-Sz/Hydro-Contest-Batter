@@ -65,3 +65,11 @@
 - 题目统计、题目气球颜色和学校 Logo 墙使用现有 ICPC Tools 画面。`pres-charts.js` 和 `presentation-locale.js` 增加题目统计图的中英文标题、纵轴与图例文字，保留原图形布局。
 - `hydro-screen-extras.js` 使用同一套本地字体与 ICPC Tools 配色绘制 Hydro 大屏，数据读取公开榜结果、已配置分榜、onsite-toolkit 座位和比赛公告。
 
+
+## 同分规则与判题队列的调整
+
+- `public/js/standings.js` 增加 ICPC 区域赛同分规则：Hydro 比赛设置 `tieBreak: 'icpc'` 时，罚时按分钟计（每题通过时间取整到分钟，每次未通过加 20 分钟），相同时最后一题通过时间早者在前，仍相同则并列；新增 `sameStanding()` 判断是否并列。默认仍为 Hydro 规则（罚时精确到秒）。
+- `public/js/medals.js` 的并列同奖改用 `sameStanding()`，与名次的并列判断一致。
+- `server/lib/engine.js` 的 `normalizeContest()` 与 `publicContest()` 保留 `tieBreak`。
+- `public/js/render/presentation-view.js` 的判题队列先画全部行底色，再按动画位置绘制所有可见提交并裁剪到列表区域，修复移动中的提交被下一行底色遮挡、移出列表时盖住表头，以及动画期间末行空缺；离开队列的提交画在其他行下方并逐渐淡出，在场的提交带所在条纹的底色，经过时不再与其他行的文字重叠。`public/js/render/presentation-state.js` 的 `JudgeQueueState` 为离开的提交标记 `leaving` 与起始位置。
+- `public/js/render/pres-misc.js` 的 7×3 判题网格把新提交放入下一个空格，修复评测较慢时两条提交叠在同一格。

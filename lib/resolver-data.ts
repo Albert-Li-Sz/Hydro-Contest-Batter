@@ -1,7 +1,7 @@
 import type { BoardData } from './board';
 import { enhanceBoard } from './board';
 import type { BoardAwards, BoardSettings } from './settings';
-import { awardsFor } from './settings';
+import { awardsFor, medalCounts } from './settings';
 import type { ResolverBoard, ResolverConfig, ResolverContest, ResolverPayload } from './resolver-types';
 import { buildGame } from '../resolver/server/lib/engine.js';
 
@@ -18,16 +18,31 @@ export class ResolverError extends Error {
 export function resolverBoards(data: BoardData, settings: BoardSettings, identity: boolean): ResolverBoard[] {
     const enhanced = enhanceBoard(data, settings, { identity });
     const groups = enhanced.contest.group as Record<string, string>;
-    return [{ id: 'all', name: '主榜', teamIds: data.teams.map((team) => team.team_id), medals: awardsFor(settings, 'all').medals, awards: awardsFor(settings, 'all') },
-        ...Object.entries(groups).map(([id, name]) => ({
-            id, name,
-            teamIds: enhanced.teams.filter((team) => team.group.includes(id)).map((team) => team.team_id),
-            medals: awardsFor(settings, id).medals, awards: awardsFor(settings, id),
-        }))];
+    const durationMs = (data.contest.end_time - data.contest.start_time) * 1000;
+    const solved = new Set(data.submissions.filter((record) => record.status === 'CORRECT' && record.timestamp >= 0
+        && record.timestamp < durationMs).map((record) => record.team_id));
+    const official = new Set(data.teams.filter((team) => !team.group.includes('unofficial')).map((team) => team.team_id));
+    const board = (id: string, name: string, teamIds: string[]): ResolverBoard => {
+        const awards = awardsFor(settings, id);
+        const eligible = teamIds.filter((teamId) => official.has(teamId) && solved.has(teamId)).length;
+        const counts = medalCounts(awards, eligible);
+        // As on the board: never more medals than eligible teams.
+        let remaining = eligible;
+        const capped = Object.fromEntries((['gold', 'silver', 'bronze'] as const).map((tier) => {
+            const count = Math.min(counts[tier], remaining);
+            remaining -= count;
+            return [tier, count];
+        })) as unknown as ResolverBoard['medalCounts'];
+        return { id, name, teamIds, medals: awards.medals, awards, eligible, medalCounts: capped };
+    };
+    return [board('all', '主榜', data.teams.map((team) => team.team_id)),
+        ...Object.entries(groups).map(([id, name]) => board(id, name, enhanced.teams.filter((team) => team.group.includes(id)).map((team) => team.team_id)))];
 }
 
-function resolverAwardConfig(awards: BoardAwards) {
-    return { goldCount: awards.medals.gold, silverCount: awards.medals.silver, bronzeCount: awards.medals.bronze,
+/** `eligible`: official teams of the board that solved something, the base of 按比例设奖. */
+function resolverAwardConfig(awards: BoardAwards, eligible = 0) {
+    const counts = medalCounts(awards, eligible);
+    return { goldCount: counts.gold, silverCount: counts.silver, bronzeCount: counts.bronze,
         goldCitation: awards.goldCitation, silverCitation: awards.silverCitation, bronzeCitation: awards.bronzeCitation,
         medalSameScore: awards.medalSameScore, podiumEnabled: awards.podiumEnabled, firstSolve: awards.firstSolve };
 }
@@ -84,8 +99,9 @@ export function prepareResolver(
 ): ResolverPayload {
     const board = boards.find((item) => item.id === config.boardId);
     if (!board) throw new ResolverError('所选分榜已不存在，请刷新配置页');
-    // Shared rules are authoritative, including for stale pages and direct API callers.
-    config = { ...config, ...resolverAwardConfig(board.awards) };
+    // Shared rules are authoritative, including for stale pages and direct API callers. A ratio counts the
+    // board's official teams with an accepted run in the final results, which the resolver reveals.
+    config = { ...config, ...resolverAwardConfig(board.awards, board.eligible) };
     if (config.mode === 'official' && config.boardId === 'all') throw new ResolverError('请选择一个分榜作为正式参赛范围');
     const durationMs = (data.contest.end_time - data.contest.start_time) * 1000;
     if (!(durationMs > 0)) throw new ResolverError('比赛时间无效');
@@ -128,7 +144,7 @@ export function prepareResolver(
     const snapshot: ResolverContest = {
         contestId: context.contestId, name: data.contest.contest_name,
         startTime: new Date(data.contest.start_time * 1000).toISOString(), durationMs,
-        freezeDurationMs: durationMs - freezeAtSeconds * 1000, scoringMode: 'hydro', penaltyMinutes: 20,
+        freezeDurationMs: durationMs - freezeAtSeconds * 1000, scoringMode: 'hydro', tieBreak: board.awards.tieBreak ?? 'hydro', penaltyMinutes: 20,
         unofficialFirstSolve: board.awards.unofficialFirstSolve, firstSolveEnabled: config.firstSolve,
         teams, problems, submissions, awards: [],
     };

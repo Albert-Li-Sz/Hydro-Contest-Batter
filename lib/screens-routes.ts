@@ -314,7 +314,7 @@ export function applyScreens(ctx: Context, dependencies: {
                         return screenData(data, boardId === 'all' ? null : new Set(board.teamIds), {
                             logoNames, locked, seats, trend: type === 'rank-trend',
                             groups: type === 'groups' && item.source === 'boards' ? boards.filter((group) => group.id !== 'all') : null,
-                            firstSolve: rules.firstSolve, unofficialFirstSolve: rules.unofficialFirstSolve,
+                            firstSolve: rules.firstSolve, unofficialFirstSolve: rules.unofficialFirstSolve, tieBreak: rules.tieBreak,
                         });
                     });
                     if (type === 'logo-wall' && !projection.contest.organizations.length) throw new ScreenError('暂无可展示的学校，请检查公开榜的学校显示设置');

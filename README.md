@@ -5,7 +5,7 @@ Hydro OJ 的 ACM 比赛榜单、滚榜、大屏与直播插件，集成 XCPCIO �
 [在线操作手册](https://albert-li-sz.github.io/Hydro-Contest-Batter/)
 
 - 默认仅主榜，学校榜、参赛类型榜及手动榜由管理员配置。
-- 各榜独立设置全部奖项，榜单与滚榜共用规则，打星选手可单独允许获一血奖。
+- 各榜独立设置全部奖项（固定名额或按有效队伍比例），同分规则可选 Hydro 或 ICPC 区域赛，榜单、滚榜、大屏与直播共用规则，打星选手可单独允许获一血奖。
 - 支持封榜展示、实时榜和可配置的公开访问。
 - 支持只滚所选榜单，或将所选分榜设为正式参赛、其余选手设为非正式参赛。
 - 每位管理员可独立创建滚榜会话，进度保存至 MongoDB，支持刷新恢复，默认永久保留。
@@ -22,11 +22,11 @@ Hydro OJ 的 ACM 比赛榜单、滚榜、大屏与直播插件，集成 XCPCIO �
 
 需要 Node.js 22+ 和 Hydro 5.x。请使用运行 Hydro 的系统用户，在主服务所在环境执行。
 
-下载完整安装包 `hydro-scoreboard-xcpcio-plus-1.12.1.tgz`，解压到固定目录，注册 addon 后重启。安装包包含预构建页面、字体和完整校徽。
+下载完整安装包 `hydro-scoreboard-xcpcio-plus-1.13.0.tgz`，解压到固定目录，注册 addon 后重启。安装包包含预构建页面、字体和完整校徽。
 
 ```bash
 mkdir -p "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
-tar -xzf hydro-scoreboard-xcpcio-plus-1.12.1.tgz \
+tar -xzf hydro-scoreboard-xcpcio-plus-1.13.0.tgz \
   -C "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus" --strip-components=1
 hydrooj addon add "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 pm2 restart hydrooj
@@ -40,7 +40,7 @@ pm2 restart hydrooj
 
 ```bash
 mkdir -p xcpcio-update
-tar -xzf hydro-scoreboard-xcpcio-plus-1.12.1.tgz -C xcpcio-update
+tar -xzf hydro-scoreboard-xcpcio-plus-1.13.0.tgz -C xcpcio-update
 bash xcpcio-update/package/install.sh install
 
 # 升级时下载并解压新包，运行新包中的脚本
@@ -56,7 +56,7 @@ bash "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus/install.sh" uninstall
 
 ## 使用
 
-- **增强榜**：从比赛成绩表进入，在“奖牌与分榜设置”中配置分榜、各榜奖项、公开访问和身份显示。
+- **增强榜**：从比赛成绩表进入；比赛右侧菜单的“榜单与奖项”统一配置分榜、各榜奖项（固定名额或按比例）、同分规则（Hydro 或 ICPC 区域赛）、公开访问和身份显示，榜单、滚榜、大屏和直播共用。比赛结束后可在榜单页解除封榜。
 - **滚榜**：比赛所有者及有“编辑比赛”权限的管理员，从比赛右侧菜单的“滚榜”进入。可只滚所选榜单，或将所选分榜设为正式参赛、其余设为非正式参赛；比赛结束前自动标记为彩排。每位管理员的会话互相独立。
 - **大屏**：同样的管理员从比赛右侧菜单的“大屏”进入，在侧边栏选择画面，设置分榜和样式、填写公告或倒计时目标，复制链接到大屏电脑打开即可，无需登录 Hydro。点击画面、右上角“全屏”按钮或按 F 进入全屏，Esc 退出；无人值守的大屏可用 Chrome / Edge 的 `--kiosk` 参数打开。
 

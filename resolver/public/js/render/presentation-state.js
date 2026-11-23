@@ -84,6 +84,9 @@ export class JudgeQueueState {
                 ? age > 8000
                 : false;
         const target = expired ? (status === "solved" ? -12 : 24) : index++;
+        // HydroXCPCIO: the painter fades leaving records and draws them beneath the others.
+        if (expired && r.leftFrom === undefined) r.leftFrom = r.anim.getValue();
+        r.leaving = expired;
         r.anim.setTarget(target);
         r.anim.incrementTimeMs(dt);
         return !expired || Math.abs(r.anim.getValue() - target) > 0.01;

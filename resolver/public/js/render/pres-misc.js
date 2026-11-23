@@ -159,8 +159,12 @@ export class TeamJudgements extends JavaPresentation {
         return;
       }
     if (this.records.length >= ROWS * COLUMNS) return;
-    const sr = { submission, position: this.lastPosition, anim: new Animator(0, new Movement(0.5, 1)), fullAge: 0, actionAge: 0, action: null };
-    this.lastPosition = (this.lastPosition + 1) % (ROWS * COLUMNS);
+    // The next free cell: a slow judgement still holds its cell, and two submissions in one cell covered each other.
+    const used = new Set(this.records.map((sr) => sr.position));
+    let position = this.lastPosition;
+    for (let k = 0; k < ROWS * COLUMNS && used.has(position); k++) position = (position + 1) % (ROWS * COLUMNS);
+    const sr = { submission, position, anim: new Animator(0, new Movement(0.5, 1)), fullAge: 0, actionAge: 0, action: null };
+    this.lastPosition = (position + 1) % (ROWS * COLUMNS);
     const problem = this.getContest().getProblems()[submission.problemIndex];
     sr.text = `${problem?.label} - ${Math.floor(submission.contestTime / 60000)}`;
     sr.logoUrl = submission.team?.logo;

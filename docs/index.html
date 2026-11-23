@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Hydro Contest Batter v1.12.1 操作手册，涵盖安装升级、ACM 比赛配置、增强榜、滚榜、大屏、直播、打印和故障排查。">
+  <meta name="description" content="Hydro Contest Batter v1.13.0 操作手册，涵盖安装升级、ACM 比赛配置、增强榜、滚榜、大屏、直播、打印和故障排查。">
   <meta name="theme-color" content="#811c39">
   <title>Hydro Contest Batter 操作手册</title>
   <link rel="stylesheet" href="./manual.css">
@@ -15,7 +15,7 @@
       <a class="brand" href="./">Hydro Contest Batter</a>
       <nav aria-label="项目链接">
         <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter">源码</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/releases/tag/v1.12.1">下载 v1.12.1</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/releases/tag/v1.13.0">下载 v1.13.0</a>
       </nav>
     </div>
   </header>
@@ -37,7 +37,7 @@
     </aside>
     <main id="manual">
       <header class="intro">
-        <p class="version">适用于插件 v1.12.1 · Hydro 5.x</p>
+        <p class="version">适用于插件 v1.13.0 · Hydro 5.x</p>
         <h1>Hydro 比赛操作手册</h1>
         <p class="lead">从安装插件、配置 ACM 比赛，到现场投屏、打印、直播和赛后滚榜。</p>
         <a class="primary-link" href="#prepare">开始配置比赛</a>
@@ -55,33 +55,33 @@
       <section id="install" aria-labelledby="install-heading">
         <h2 id="install-heading">安装与升级</h2>
         <p>使用运行 Hydro 的系统账号执行命令。需要 Hydro 5.x、Node.js 22 或以上。用 PM2 管理 Hydro 时，默认进程名为 <code>hydrooj</code>。</p>
-        <p>从发布页下载 <code>hydro-scoreboard-xcpcio-plus-1.12.1.tgz</code> 和同名 <code>.sha256</code> 文件，放在同一个目录。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/releases/tag/v1.12.1">v1.12.1 下载</a></p>
+        <p>从发布页下载 <code>hydro-scoreboard-xcpcio-plus-1.13.0.tgz</code> 和同名 <code>.sha256</code> 文件，放在同一个目录。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/releases/tag/v1.13.0">v1.13.0 下载</a></p>
 
         <h3>校验并解压</h3>
-        <pre><code>sha256sum -c hydro-scoreboard-xcpcio-plus-1.12.1.tgz.sha256
-mkdir xcpcio-v1.12.1
-tar -xzf hydro-scoreboard-xcpcio-plus-1.12.1.tgz -C xcpcio-v1.12.1</code></pre>
+        <pre><code>sha256sum -c hydro-scoreboard-xcpcio-plus-1.13.0.tgz.sha256
+mkdir xcpcio-v1.13.0
+tar -xzf hydro-scoreboard-xcpcio-plus-1.13.0.tgz -C xcpcio-v1.13.0</code></pre>
 
         <h3>首次安装</h3>
-        <pre><code>bash xcpcio-v1.12.1/package/install.sh install</code></pre>
+        <pre><code>bash xcpcio-v1.13.0/package/install.sh install</code></pre>
         <p>脚本将插件复制到 <code>$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus</code>，执行 <code>hydrooj addon add</code>，然后重启 Hydro。</p>
         <details>
           <summary>手动安装到新目录</summary>
           <pre><code>addon_dir="$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 mkdir -p "$addon_dir"
-tar -xzf hydro-scoreboard-xcpcio-plus-1.12.1.tgz -C "$addon_dir" --strip-components=1
+tar -xzf hydro-scoreboard-xcpcio-plus-1.13.0.tgz -C "$addon_dir" --strip-components=1
 hydrooj addon add "$addon_dir"
 pm2 restart hydrooj</code></pre>
         </details>
 
         <h3>已有安装时升级</h3>
-        <pre><code>bash xcpcio-v1.12.1/package/install.sh upgrade
+        <pre><code>bash xcpcio-v1.13.0/package/install.sh upgrade
 pm2 status hydrooj</code></pre>
         <p>在浏览器打开 Hydro 首页和一场 ACM 比赛，确认榜单、滚榜和大屏入口可用。自定义目录用 <code>--dir</code> 指向原安装位置，非默认 PM2 进程用 <code>--service</code>。容器部署用 <code>--no-restart</code>，然后通过容器管理方式重启 Hydro。</p>
         <details>
           <summary>卸载与恢复旧版</summary>
           <pre><code>bash "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus/install.sh" uninstall</code></pre>
-          <p>卸载解除 addon 注册并把文件归档。MongoDB 中的比赛配置、滚榜会话和直播资料可在重新安装后继续使用。安装目录旁的 <code>.hydro-addon-backups/hydro-scoreboard-xcpcio-plus/</code> 保存每次操作的旧插件和注册记录。需恢复时，根据备份的 <code>operation.json</code> 和 <code>addon.json</code> 核对原目录及注册项，恢复插件后重启 Hydro。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.12.1/docs/usage.md#卸载与恢复">安装参数和恢复说明</a></p>
+          <p>卸载解除 addon 注册并把文件归档。MongoDB 中的比赛配置、滚榜会话和直播资料可在重新安装后继续使用。安装目录旁的 <code>.hydro-addon-backups/hydro-scoreboard-xcpcio-plus/</code> 保存每次操作的旧插件和注册记录。需恢复时，根据备份的 <code>operation.json</code> 和 <code>addon.json</code> 核对原目录及注册项，恢复插件后重启 Hydro。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.13.0/docs/usage.md#卸载与恢复">安装参数和恢复说明</a></p>
         </details>
       </section>
 
@@ -90,11 +90,11 @@ pm2 status hydrooj</code></pre>
         <ol>
           <li>在 Hydro 创建 ACM 比赛，录入题目、开始时间、结束时间和封榜时间。需要打印时在比赛设置开启「允许打印」。</li>
           <li>核对选手显示名、学校字段和正式参赛资格。需要座位图、配送或打印分区时，使用 onsite-toolkit 导入座位号，例如 <code>A-01</code>、<code>B-12</code>。</li>
-          <li>进入比赛的增强榜，打开「奖牌与分榜设置」。只有主榜默认存在。按需开启学校榜、正式资格榜，或创建手动分榜并筛选、勾选成员。</li>
-          <li>设置赛事默认奖项。在「各榜奖项」展开目标榜并勾选「单独设置此榜奖项」，可独立配置金银铜、并列同奖、一血和前三名。用同一设置核对增强榜与滚榜。</li>
+          <li>从比赛右侧菜单打开「榜单与奖项」（增强榜页的「榜单与奖项设置」同样可以进入）。只有主榜默认存在。按需开启学校榜、正式资格榜，或创建手动分榜并筛选、勾选成员。</li>
+          <li>选择同分规则：「Hydro 规则」罚时精确到秒；「ICPC 区域赛规则」罚时按分钟计，再比最后一题通过时间，仍相同则并列。设置赛事默认奖项，名额可填固定数量，或按有效队伍（正式且至少通过一题）的比例，如金 10%、银 20%、铜 30%，各自向上取整。在「各榜奖项」展开目标榜并勾选「单独设置此榜奖项」，可独立配置金银铜、并列同奖、一血和前三名。增强榜、滚榜、大屏、直播和 CCS API 共用这些规则。</li>
           <li>按赛事需求开启「公开榜单」「向所有观众显示学校」和「替换原生榜单」。保存后用未登录窗口检查已开启的公开榜链接与学校显示。</li>
         </ol>
-        <p><strong>打星选手</strong>以星号显示，不占正式名次、奖牌或前三名。能否获得一血由各榜的「允许打星选手获一血奖」决定。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.12.1/docs/usage.md#规则">完整计分与奖项规则</a></p>
+        <p><strong>打星选手</strong>以星号显示，不占正式名次、奖牌或前三名。能否获得一血由各榜的「允许打星选手获一血奖」决定。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.13.0/docs/usage.md#规则">完整计分与奖项规则</a></p>
         <p class="path"><strong>常用地址</strong><br>榜单设置 <code>/d/&lt;域ID&gt;/contest/&lt;比赛ID&gt;/xcpcio-settings</code><br>公开榜单 <code>/d/&lt;域ID&gt;/contest/&lt;比赛ID&gt;/xcpcio-public</code></p>
       </section>
 
@@ -120,7 +120,7 @@ pm2 status hydrooj</code></pre>
           <li>如果要将画面叠加到视频，在 OBS 的浏览器来源中设置透明背景。多名导播可同时操作，开播前确认字幕、分榜和画面输出。</li>
         </ol>
         <pre><code>body { background-color: transparent; margin: 0; overflow: hidden; }</code></pre>
-        <p>OBS 链接本身带访问凭证，发给负责播出的人员即可。重建链接后，记得在 OBS 替换旧地址。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.12.1/docs/usage.md#直播">导播台各标签说明</a></p>
+        <p>OBS 链接本身带访问凭证，发给负责播出的人员即可。重建链接后，记得在 OBS 替换旧地址。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.13.0/docs/usage.md#直播">导播台各标签说明</a></p>
       </section>
 
       <section id="print" aria-labelledby="print-heading">
@@ -137,7 +137,7 @@ pm2 status hydrooj</code></pre>
           <pre><code>chmod +x hydro-print-client-linux-amd64
 ./hydro-print-client-linux-amd64</code></pre>
         </details>
-        <p>多场比赛同时进行时，让各打印服务器仅服务指定比赛。每场可配置一台无座位前缀的电脑处理未被认领或没有座位号的请求；都设了前缀时，这类请求由任意一台在线电脑打印。同一电脑的多台打印机按权重轮转。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.12.1/docs/usage.md#打印服务器管理">客户端下载、连接与打印分工</a></p>
+        <p>多场比赛同时进行时，让各打印服务器仅服务指定比赛。每场可配置一台无座位前缀的电脑处理未被认领或没有座位号的请求；都设了前缀时，这类请求由任意一台在线电脑打印。同一电脑的多台打印机按权重轮转。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.13.0/docs/usage.md#打印服务器管理">客户端下载、连接与打印分工</a></p>
       </section>
 
       <section id="judging" aria-labelledby="judging-heading">
@@ -152,7 +152,7 @@ pm2 status hydrooj</code></pre>
           <li>选择评测结果。默认勾选「AC 不参与重测」。先点击「预览数量」，核对题号和提交数，再执行。</li>
           <li>在重测记录点「查看变化」，比较提交重测前后的结果和得分。比赛进行中可将独立评测机分为「只评新提交」和「只评重测任务」。</li>
         </ol>
-        <p>删除用户或队伍会永久移除相应数据。执行前在确认页核对账号、队伍和是否勾选了删除提交或取消报名。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.12.1/docs/usage.md#系统管理">系统管理详细说明</a></p>
+        <p>删除用户或队伍会永久移除相应数据。执行前在确认页核对账号、队伍和是否勾选了删除提交或取消报名。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.13.0/docs/usage.md#系统管理">系统管理详细说明</a></p>
       </section>
 
       <section id="resolver" aria-labelledby="resolver-heading">
@@ -162,15 +162,16 @@ pm2 status hydrooj</code></pre>
           <li>选择「仅滚所选榜单」来显示该榜成员，或选择「所选分榜正式，其余非正式」来展示全部队伍并按所选榜决定正式资格。</li>
           <li>核对封榜点和奖项。比赛没有封榜时间时，选择「本场滚榜自定义」，填写最后多少分钟封榜。核对分榜、学校显示、每屏行数和播放速度。</li>
           <li>点击「开始滚榜」生成会话。主持端用前进、回退和自动推进控制节奏。另有投屏电脑时，在「大屏」中选择「滚榜观众画面」，绑定此会话并复制链接。</li>
+          <li>滚榜结束后，在增强榜页点击「解除封榜」公开全部结果（比赛结束后可用，不可撤销）。</li>
         </ol>
-        <p>每次开始会固定当时的参赛名单、成绩和配置。遇到补评或重测，确认新结果后另建会话。各管理员的会话独立，刷新后按已保存进度恢复并暂停。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.12.1/docs/usage.md#resolver-滚榜">滚榜详细说明</a></p>
+        <p>每次开始会固定当时的参赛名单、成绩和配置。遇到补评或重测，确认新结果后另建会话。各管理员的会话独立，刷新后按已保存进度恢复并暂停。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.13.0/docs/usage.md#resolver-滚榜">滚榜详细说明</a></p>
       </section>
 
       <section id="integration" aria-labelledby="integration-heading">
         <h2 id="integration-heading">CCS API 对接</h2>
-        <p>有外部工具需要比赛数据时，在「奖牌与分榜设置」开启「开放 CCS API」，保存后复制页面上的比赛地址。在外部工具中使用站点 HTTPS 地址和所需权限的 Hydro 账号。匿名读取取决于公开榜设置，已启用双因素认证的账号用 Hydro 会话认证。</p>
+        <p>有外部工具需要比赛数据时，在「榜单与奖项设置」开启「开放 CCS API」，保存后复制页面上的比赛地址。在外部工具中使用站点 HTTPS 地址和所需权限的 Hydro 账号。匿名读取取决于公开榜设置，已启用双因素认证的账号用 Hydro 会话认证。</p>
         <p class="path"><strong>比赛 API</strong><br><code>/d/&lt;域ID&gt;/ccsapi/contests/&lt;比赛ID&gt;</code></p>
-        <p>先检查 <code>access</code> 返回的能力，再接入榜单或事件流。需要对外确认最终结果时，等比赛结束、解冻并处理完待评测提交，核对成绩后再点「确认 CCS 最终结果」。确认会保存固定快照。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.12.1/docs/usage.md#ccs-api2026-01">认证、端点与最终结果规则</a></p>
+        <p>先检查 <code>access</code> 返回的能力，再接入榜单或事件流。需要对外确认最终结果时，等比赛结束、解冻并处理完待评测提交，核对成绩后再点「确认 CCS 最终结果」。确认会保存固定快照。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.13.0/docs/usage.md#ccs-api2026-01">认证、端点与最终结果规则</a></p>
       </section>
 
       <section id="troubleshoot" aria-labelledby="troubleshoot-heading">
@@ -187,9 +188,9 @@ pm2 status hydrooj</code></pre>
         </dl>
       </section>
       <footer class="manual-footer">
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.12.1/docs/usage.md">完整使用文档</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.12.1/docs/verification.md">验证记录</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.12.1/NOTICE">来源与许可</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.13.0/docs/usage.md">完整使用文档</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.13.0/docs/verification.md">验证记录</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.13.0/NOTICE">来源与许可</a>
         <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/issues">报告问题</a>
       </footer>
     </main>

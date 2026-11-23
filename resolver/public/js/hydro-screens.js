@@ -185,7 +185,8 @@ function card(type) {
     if (fields.childElementCount) body.append(fields);
     if (type === 'poster') body.append(posterControls(item));
     body.append(el('div', { class: 'screen-link' }, link, copy, preview, open));
-    return el('section', { class: 'section visible screen-card', id: `screen-${type}`, 'data-type': type, hidden: '' },
+    // Not the hash's id: a matching id would make the browser jump to the card on every load.
+    return el('section', { class: 'section visible screen-card', id: `screen-card-${type}`, 'data-type': type, hidden: '' },
         el('div', { class: 'section__header' }, el('h2', { class: 'section__title', text: runtime.labels[type] })), body);
 }
 
@@ -227,9 +228,17 @@ function choose(type, focus = false) {
         link.classList.toggle('active', key === type);
         if (key === type) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
     }
-    history.replaceState(null, '', `#screen-${type}`);
+    if (location.hash !== `#screen-${type}`) history.replaceState(null, '', `#screen-${type}`);
     if (focus && matchMedia('(max-width: 1024px)').matches) $('screen-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Keep the chosen entry visible inside the (scrolling) side menu without moving the page.
+    const menu = $('screen-menu');
+    const active = menuLinks.get(type);
+    if (active && menu.scrollHeight > menu.clientHeight) {
+        const top = active.offsetTop - menu.offsetTop;
+        if (top < menu.scrollTop || top + active.offsetHeight > menu.scrollTop + menu.clientHeight) menu.scrollTop = Math.max(0, top - menu.clientHeight / 3);
+    }
 }
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 choose(location.hash.replace(/^#screen-/, ''));
 addEventListener('hashchange', () => choose(location.hash.replace(/^#screen-/, '')));
 $('reset-token').addEventListener('click', () => $('reset-confirm').showModal());

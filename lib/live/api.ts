@@ -131,6 +131,8 @@ export interface LiveStore {
     /** Uploaded and built-in media file names. */
     mediaNames(): Promise<string[]>;
     saveMedia(name: string, data: Buffer, mime: string): Promise<void>;
+    /** Where the overlay and the console load a media file from. */
+    mediaUrl(name: string): Promise<string>;
 }
 
 export interface UploadedFile {
@@ -200,36 +202,95 @@ export async function adminApi(hub: LiveHub, store: LiveStore, request: ApiReque
         return null;
     };
     type Presets = typeof hub.advertisement | typeof hub.picture | typeof hub.title | typeof hub.tickerMessage;
-    const presets = (controller: Presets, tail: string[], before?: (input: unknown) => Promise<void>) => {
+    interface PresetHooks {
+        /** Runs before a preset is saved; returns the input to save. `strict` when it goes on air right away. */
+        save?: (input: unknown, strict: boolean) => Promise<unknown>;
+        /** Runs before a saved preset goes on air (or is previewed). */
+        show?: (settings: unknown) => Promise<void>;
+    }
+    const presets = (controller: Presets, tail: string[], hooks: PresetHooks = {}) => {
         const [idText, op, ...more] = tail;
         if (more.length) return null;
+        const save = (input: unknown, strict = false) => (hooks.save ? hooks.save(input, strict) : Promise.resolve(input));
         if (!idText) {
             if (method === 'GET') return json(controller.status());
-            if (method === 'POST') return action(async () => { await before?.(body); return controller.createWidget(body); });
+            if (method === 'POST') return action(async () => controller.createWidget(await save(body)));
             return null;
         }
         if (idText === 'create_and_show_with_ttl') {
             if (method !== 'POST' || op) return null;
             return action(async () => {
                 const ms = ttl();
-                await before?.(body);
-                return controller.createTemporaryFromInput(body, ms);
+                return controller.createTemporaryFromInput(await save(body, true), ms);
             });
         }
         const id = /^\d+$/.test(idText) ? Number(idText) : idText;
         if (!/^[\w-]+$/.test(idText) || (typeof id === 'number' && !Number.isSafeInteger(id))) return action(() => { throw new ApiActionError('Error load preset by id'); });
-        if (!op && method === 'POST') return action(async () => { await before?.(body); controller.edit(id, body); });
+        const settingsOf = () => (controller.status() as { id: unknown; settings: unknown }[]).find((item) => item.id === id)?.settings;
+        if (!op && method === 'POST') return action(async () => { controller.edit(id, await save(body)); });
         if (!op && method === 'DELETE') return action(() => controller.delete(id));
-        if (op === 'show' && method === 'POST') return action(() => controller.show(id));
+        if (op === 'show' && method === 'POST') return action(async () => { await hooks.show?.(settingsOf()); controller.show(id); });
         if (op === 'hide' && method === 'POST') return action(() => controller.hide(id));
-        if (op === 'preview' && method === 'GET') return action(() => controller.preview(id));
+        if (op === 'preview' && method === 'GET') return action(async () => { await hooks.show?.(settingsOf()); return controller.preview(id); });
         return null;
     };
-    const loadTitle = async (input: unknown) => {
-        const preset = (input as { preset?: unknown } | null)?.preset;
+    const loadTitle = async (preset: unknown) => {
         if (typeof preset !== 'string') throw new ApiActionError('Failed to deserialize data: preset');
+        if (!preset.trim()) throw new ApiActionError('请先为这条字幕选择 SVG 模板（可在“媒体文件”上传）');
         hub.forgetTemplate(preset); // pick up a re-uploaded template
-        await hub.loadTemplate(preset);
+        await hub.loadTemplate(preset).catch(() => { throw new ApiActionError(`找不到 SVG 模板 ${preset}，请在“媒体文件”上传或改选模板`); });
+    };
+    /**
+     * The console creates a title with an empty template and lets the director pick one after
+     * (ICPC Live checks the template only when the title is drawn), so an empty one is saved as is.
+     */
+    const titleHooks: PresetHooks = {
+        save: async (input, strict) => {
+            const preset = (input as { preset?: unknown } | null)?.preset;
+            if (strict || (typeof preset === 'string' && preset.trim())) await loadTitle(preset);
+            else if (preset !== undefined && preset !== null && typeof preset !== 'string') throw new ApiActionError('Failed to deserialize data: preset');
+            return input;
+        },
+        show: async (settings) => loadTitle((settings as { preset?: unknown } | undefined)?.preset ?? ''),
+    };
+    /**
+     * An image address: http(s), a data: image or a path on this site as is, or the name of an uploaded
+     * (or built-in) media file, which becomes that file's address. Empty stays empty (not shown yet).
+     */
+    const imageAddress = async (value: string) => {
+        const address = value.trim();
+        if (!address || /^(?:https?:\/\/|data:image\/|\/)/i.test(address)) return address;
+        if (/^[a-z][a-z\d+.-]*:/i.test(address)) throw new ApiActionError('图片地址只能是 http(s)、data:image 或本站路径');
+        const names = await store.mediaNames();
+        const name = names.includes(address) ? address : names.includes(storeName(address)) ? storeName(address) : null;
+        if (!name) throw new ApiActionError(`图片地址需以 http(s):// 或 / 开头，或填写“媒体文件”中已上传的文件名（找不到 ${address}）`);
+        return store.mediaUrl(name);
+    };
+    const pictureHooks: PresetHooks = {
+        save: async (input, strict) => {
+            const settings = input as { url?: unknown } | null;
+            if (!settings || typeof settings !== 'object' || typeof settings.url !== 'string') return input;
+            const url = await imageAddress(settings.url);
+            if (strict && !url) throw new ApiActionError('请先填写图片地址或“媒体文件”中的文件名');
+            return { ...settings, url };
+        },
+        show: async (settings) => {
+            if (!(settings as { url?: unknown } | undefined)?.url) throw new ApiActionError('请先填写图片地址或“媒体文件”中的文件名');
+        },
+    };
+    /** A ticker image (shown as a CSS background) names its picture the same way. */
+    const tickerHooks: PresetHooks = {
+        save: async (input, strict) => {
+            const settings = input as { type?: unknown; path?: unknown } | null;
+            if (!settings || typeof settings !== 'object' || settings.type !== 'image' || typeof settings.path !== 'string') return input;
+            const path = await imageAddress(settings.path);
+            if (strict && !path) throw new ApiActionError('请先填写图片地址或“媒体文件”中的文件名');
+            return { ...settings, path };
+        },
+        show: async (settings) => {
+            const message = settings as { type?: unknown; path?: unknown } | undefined;
+            if (message?.type === 'image' && !message.path) throw new ApiActionError('请先填写图片地址或“媒体文件”中的文件名');
+        },
     };
 
     const [head, ...rest] = parts;
@@ -251,11 +312,11 @@ export async function adminApi(hub: LiveHub, store: LiveStore, request: ApiReque
         return null;
     }
     if (head === 'advertisement') return presets(hub.advertisement, rest);
-    if (head === 'picture') return presets(hub.picture, rest);
-    if (head === 'tickerMessage') return presets(hub.tickerMessage, rest);
+    if (head === 'picture') return presets(hub.picture, rest, pictureHooks);
+    if (head === 'tickerMessage') return presets(hub.tickerMessage, rest, tickerHooks);
     if (head === 'title') {
         if (rest[0] === 'templates' && rest.length === 1 && method === 'GET') return json((await store.mediaNames()).filter((name) => name.endsWith('.svg')));
-        return presets(hub.title, rest, loadTitle);
+        return presets(hub.title, rest, titleHooks);
     }
     if (head === 'analytics') {
         if (!rest.length && method === 'GET') return json(hub.analytics.list());

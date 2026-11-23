@@ -16,4 +16,11 @@
 #hydro-screens #screen-preview .screen-preview-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 #hydro-screens #screen-preview .screen-preview-header .button { margin: 0; }
 #hydro-screens #screen-preview-frame { width: 100%; height: min(68vh, 53vw); border: 0; background: #000; display: block; }
-@media (min-width: 1025px) { #hydro-screens #screen-menu { max-height: calc(100vh - 168px); overflow-y: auto; } }
+/* The side menu is taller than most screens: it stays beside the settings and scrolls by itself (no sticky-kit, whose
+   fixed/bottomed switching made the page jump whenever the settings were shorter than the menu). */
+@media (min-width: 1025px) {
+  #hydro-screens { display: flex; align-items: stretch; }
+  #hydro-screens > .columns { float: none; }
+  #hydro-screens .screens-side { position: sticky; top: calc(2.8125rem + 16px); }
+  #hydro-screens #screen-menu { max-height: calc(100vh - 2.8125rem - 120px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+}

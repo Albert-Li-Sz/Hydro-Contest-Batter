@@ -13,7 +13,7 @@
 import type { BoardData } from '../board';
 import { schoolGroup, schoolName } from '../board';
 import { buildContestInfo, buildRuns, type LiveBoard, type LiveSource } from '../live/model';
-import { computeScoreboard, runsByTeam, standingsAtRuns } from '../live/scoreboard';
+import { computeScoreboard, runsByTeam, sameScore, standingsAtRuns } from '../live/scoreboard';
 import type { RunInfo } from '../live/types';
 import { awardsFor, type BoardSettings } from '../settings';
 import { isPending, judgementTypeOf, judgementTypes, simplifiedOf } from './judgement-types';
@@ -264,12 +264,13 @@ function scoreboardRows(source: CcsSource, view: View, members: Set<string> | nu
     const official = new Set(info.teams.filter((team) => !team.isOutOfContest).map((team) => team.id));
     const included = state.ranking.order.filter((id) => (members ? members.has(id) : official.has(id)));
     const rows: ScoreboardRow[] = [];
-    let previous: { solved: number; penalty: number } | null = null;
+    let previous: (typeof state.rows extends Map<string, infer R> ? R : never) | null = null;
     let rank = 0;
     included.forEach((liveTeamId, position) => {
         const row = state.rows.get(liveTeamId)!;
-        if (!previous || previous.solved !== row.totalScore || previous.penalty !== row.penalty) rank = position + 1;
-        previous = { solved: row.totalScore, penalty: row.penalty };
+        // The contest's ranking rule decides who shares a rank (also the ICPC last-accepted tie-break).
+        if (!previous || !sameScore(info, previous, row)) rank = position + 1;
+        previous = row;
         const teamRuns = byTeam.get(liveTeamId) || [];
         rows.push({
             rank,

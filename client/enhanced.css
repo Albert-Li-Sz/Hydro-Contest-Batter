@@ -19,6 +19,26 @@
   --xp-wa-bg: #fdeaea;
   --xp-frozen-bg: #fff3d6;
   --xp-first-bg: #23854e;
+  /* Result cells on the board: saturated fills (as on ICPC scoreboards) with text that reads on them. */
+  --xp-cell-ac: #43d17a;
+  --xp-cell-ac-ink: #06301a;
+  --xp-cell-first: #0f8a3c;
+  --xp-cell-first-ink: #fff;
+  --xp-cell-wa: #f56565;
+  --xp-cell-wa-ink: #3d0808;
+  --xp-cell-frozen: #f6c343;
+  --xp-cell-frozen-ink: #3d2800;
+  --xp-cell-pending: #6aa3f5;
+  --xp-cell-pending-ink: #071d3f;
+  --xp-medal-gold: #ffd54d;
+  --xp-medal-gold-ink: #4d3700;
+  --xp-medal-gold-bar: #d69e00;
+  --xp-medal-silver: #d3dce6;
+  --xp-medal-silver-ink: #26323f;
+  --xp-medal-silver-bar: #8796a8;
+  --xp-medal-bronze: #f2b98c;
+  --xp-medal-bronze-ink: #4a2408;
+  --xp-medal-bronze-bar: #c06f2e;
   --xp-overlay: #f0f0f0b3;
   color: var(--xp-text);
   font-family: var(--font-family, system-ui, sans-serif);
@@ -40,6 +60,25 @@
   --xp-wa-bg: #613333;
   --xp-frozen-bg: #594c2a;
   --xp-first-bg: #237d48;
+  --xp-cell-ac: #26a55a;
+  --xp-cell-ac-ink: #fff;
+  --xp-cell-first: #0b6b2e;
+  --xp-cell-first-ink: #fff;
+  --xp-cell-wa: #cf3f3f;
+  --xp-cell-wa-ink: #fff;
+  --xp-cell-frozen: #d9a21b;
+  --xp-cell-frozen-ink: #1f1500;
+  --xp-cell-pending: #3f7fd9;
+  --xp-cell-pending-ink: #fff;
+  --xp-medal-gold: #8a6d12;
+  --xp-medal-gold-ink: #ffe9a3;
+  --xp-medal-gold-bar: #f5c518;
+  --xp-medal-silver: #5a6675;
+  --xp-medal-silver-ink: #eef3f8;
+  --xp-medal-silver-bar: #c3ced9;
+  --xp-medal-bronze: #7d4a26;
+  --xp-medal-bronze-ink: #ffdcc2;
+  --xp-medal-bronze-bar: #e08a4a;
   --xp-overlay: #0009;
 }
 .xp-page *, .xp-page *::before, .xp-page *::after { box-sizing: border-box; }
@@ -56,6 +95,7 @@
 .xp-page .button { margin: 0; white-space: normal; height: auto; min-height: 36px; text-align: center; font-family: inherit; border-radius: 4px; box-shadow: none; }
 .xp-page .button:disabled { cursor: default; opacity: .5; }
 .xp-page-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.xp-page-actions .xp-unlock-form { display: contents; margin: 0; }
 .xp-page :is(a, button, input, select, summary, [role=button], [tabindex="0"]):focus-visible { outline: 2px solid var(--xp-primary); outline-offset: 3px; }
 .xp-page :is(input, select, button) { font: inherit; }
 .xp-page :is(.textbox, .select) { color: var(--xp-text); border-radius: 3px; min-width: 0; margin-bottom: 0; max-width: 100%; }
@@ -68,15 +108,13 @@
 .xp-gold { color: var(--xp-gold); }
 .xp-silver { color: var(--xp-silver); }
 .xp-bronze { color: var(--xp-bronze); }
-.xp-first { color: var(--xp-first-bg); }
-.xp-correct { color: var(--xp-ac-bg); }
-.xp-incorrect { color: var(--xp-wa-bg); }
-.xp-frozen { color: var(--xp-frozen-bg); }
+.xp-first { color: var(--xp-cell-first); }
+.xp-correct { color: var(--xp-cell-ac); }
+.xp-incorrect { color: var(--xp-cell-wa); }
+.xp-frozen { color: var(--xp-cell-frozen); }
+.xp-pending { color: var(--xp-cell-pending); }
 /* Result keys use the same fills as the table cells; the outline keeps pale fills visible. */
 .xp-legend .xp-result-key .xp-dot { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--xp-text) 45%, transparent); }
-.xp-legend .xp-result-key .xp-correct { box-shadow: inset 0 0 0 1px var(--xp-green); }
-.xp-legend .xp-result-key .xp-incorrect { box-shadow: inset 0 0 0 1px var(--xp-red); }
-.xp-legend .xp-result-key .xp-frozen { box-shadow: inset 0 0 0 1px #d6a11e; }
 .xp-page .xp-notice, .xp-status { padding: 10px 15px; border-left: 3px solid var(--xp-primary); background: var(--xp-hover); }
 .xp-status { border-color: var(--xp-green); }
 .xp-page .xp-restored { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 0 0 20px; }
@@ -256,19 +294,19 @@
 #xcpcio-plus #app table.standings td:is(.correct, .first-solve, .incorrect, .pending, .frost) > [cursor-pointer] > div:nth-child(2) { font-size: 12px; line-height: 1.5; }
 #xcpcio-plus #app table.standings td.xp-col-team > [flex] { justify-content: flex-start; }
 #xcpcio-plus #app table.standings td.xp-col-team [line-clamp-2] { word-break: normal; overflow-wrap: anywhere; }
-#xcpcio-plus #app td.gold { background: #fff9e8 !important; color: #8b650c; box-shadow: inset 3px 0 #e3bc53; font-weight: 600; }
-#xcpcio-plus #app td.silver { background: #f0f3f6 !important; color: #596b7c; box-shadow: inset 3px 0 #b2beca; font-weight: 600; }
-#xcpcio-plus #app td.bronze { background: #fcf2e9 !important; color: #94623b; box-shadow: inset 3px 0 #d5aa82; font-weight: 600; }
-.theme--dark #xcpcio-plus #app td.gold { background: #50452c !important; color: #eed391; }
-.theme--dark #xcpcio-plus #app td.silver { background: #3e4852 !important; color: #d3dee8; }
-.theme--dark #xcpcio-plus #app td.bronze { background: #504035 !important; color: #e5bd9c; }
+#xcpcio-plus #app td.gold { background: var(--xp-medal-gold) !important; color: var(--xp-medal-gold-ink); box-shadow: inset 4px 0 var(--xp-medal-gold-bar); font-weight: 700; }
+#xcpcio-plus #app td.silver { background: var(--xp-medal-silver) !important; color: var(--xp-medal-silver-ink); box-shadow: inset 4px 0 var(--xp-medal-silver-bar); font-weight: 700; }
+#xcpcio-plus #app td.bronze { background: var(--xp-medal-bronze) !important; color: var(--xp-medal-bronze-ink); box-shadow: inset 4px 0 var(--xp-medal-bronze-bar); font-weight: 700; }
 #xcpcio-plus #app :is(td.gold, td.silver, td.bronze)::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: currentColor; vertical-align: 2px; }
-#xcpcio-plus #app td.correct { background: var(--xp-ac-bg); color: var(--xp-text); }
-#xcpcio-plus #app td.incorrect { background: var(--xp-wa-bg); color: var(--xp-text); }
-#xcpcio-plus #app :is(td.pending, td.frost) { background: var(--xp-frozen-bg); color: var(--xp-text); }
-#xcpcio-plus #app td.first-solve { background: var(--xp-first-bg); color: #fff; }
-#xcpcio-plus #app th.success { background: var(--xp-ac-bg); color: var(--xp-text); }
-#xcpcio-plus #app th.tried { background: var(--xp-wa-bg); color: var(--xp-text); }
+#xcpcio-plus #app td.correct { background: var(--xp-cell-ac); color: var(--xp-cell-ac-ink); }
+#xcpcio-plus #app td.incorrect { background: var(--xp-cell-wa); color: var(--xp-cell-wa-ink); }
+#xcpcio-plus #app td.frost { background: var(--xp-cell-frozen); color: var(--xp-cell-frozen-ink); }
+#xcpcio-plus #app td.pending { background: var(--xp-cell-pending); color: var(--xp-cell-pending-ink); }
+#xcpcio-plus #app td.first-solve { background: var(--xp-cell-first); color: var(--xp-cell-first-ink); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--xp-cell-ac) 70%, #fff); }
+/* Cells sit edge to edge; a hairline in the row colour keeps neighbouring results apart. */
+#xcpcio-plus #app table.standings td:is(.correct, .first-solve, .incorrect, .pending, .frost) { border-color: var(--xp-row-bg, var(--xp-bg)) !important; }
+#xcpcio-plus #app th.success { background: var(--xp-cell-ac); color: var(--xp-cell-ac-ink); }
+#xcpcio-plus #app th.tried { background: var(--xp-cell-wa); color: var(--xp-cell-wa-ink); }
 #xcpcio-plus #app .xp-modal { inset: 0; margin: 0; padding: 20px; align-items: center; }
 #xcpcio-plus #app .xp-overlays { position: relative; z-index: 3000; }
 #xcpcio-plus #app .xp-modal > .relative { width: min(1100px, 100%); max-width: 100%; padding: 0; }
@@ -313,6 +351,9 @@
 .xp-page label.checkbox { display: inline-flex !important; gap: 8px; align-items: flex-start; margin: 0 !important; line-height: 1.6 !important; cursor: pointer; color: var(--xp-text) !important; }
 .xp-page label.checkbox input { flex-shrink: 0; margin: 3px 0 0 !important; }
 .xp-page .xp-medals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; max-width: 480px; margin: 10px 0; }
+.xp-page .xp-field { display: grid; gap: 6px; max-width: 560px; margin: 0 0 12px; color: var(--xp-text); font-size: 14px; }
+.xp-page .xp-field .select { width: 100%; }
+.xp-page .xp-medal-unit { color: var(--xp-muted); font-size: 12px; }
 .xp-medals label > span { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; color: var(--xp-muted); font-size: 13px; }
 .xp-settings .xp-medals .textbox { font-size: 20px; font-variant-numeric: tabular-nums; height: 44px; }
 .xp-public-link { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; overflow-wrap: anywhere; padding: 10px 12px; background: var(--xp-subtle); }

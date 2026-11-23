@@ -96,6 +96,27 @@ describe('live contest model', () => {
 });
 
 describe('live scoreboard', () => {
+    it('follows the ICPC tie rule when the contest uses it: minutes, then the earlier last accept', () => {
+        const submissions = [['1', 0, 100], ['1', 1, 300], ['2', 0, 190], ['2', 1, 210]].map(([team_id, problem_id, time], index) => ({
+            submission_id: `t${index}`, team_id: String(team_id), problem_id: Number(problem_id), timestamp: Number(time) * 1000, status: 'CORRECT',
+        }));
+        const data = { ...withSubmissions(submissions), teams: demoData().teams.slice(0, 2) };
+        const ranksOf = (settings: BoardSettings) => {
+            const live = source({}, data, settings);
+            const info = buildContestInfo(live);
+            const state = computeScoreboard(info, runsByTeam(buildRuns(live, info)), 'normal');
+            return { info, order: state.ranking.order, ranks: state.ranking.ranks, penalty: state.rows.get('1')!.penalty };
+        };
+        const hydro = ranksOf(normalizeSettings({ ...defaultSettings, showIdentity: true, manualBoards: [] }));
+        expect(hydro.ranks).toEqual([1, 1]);
+        expect(hydro.penalty).toBe(400);
+        const icpc = ranksOf(normalizeSettings({ ...defaultSettings, showIdentity: true, manualBoards: [], tieBreak: 'icpc' }));
+        expect(icpc.info.penaltyRoundingMode).toBe('each_submission_down_to_minute');
+        expect(icpc.order).toEqual(['2', '1']);
+        expect(icpc.ranks).toEqual([1, 2]);
+        expect(icpc.penalty).toBe(360);
+    });
+
     it('ranks like Hydro: penalty in seconds, unofficial teams unranked, medals over official solvers', () => {
         const live = source();
         const info = buildContestInfo(live);
@@ -189,6 +210,7 @@ function memoryStore(): LiveStore & { saved: Map<string, Buffer> } {
         saveVisualConfig: async (value) => { visual = value; },
         mediaNames: async () => ['lower_third_icpc_left.svg', ...saved.keys()],
         saveMedia: async (name, data) => { saved.set(name, data); },
+        mediaUrl: async (name) => `/d/system/contest/1/live-media/key/${encodeURIComponent(name)}`,
     };
 }
 
@@ -267,7 +289,39 @@ describe('live hub and admin api', () => {
         const svg = Buffer.from(preview.content.split('base64,')[1], 'base64').toString('utf8');
         expect(svg).toBe('<svg><text>&lt;b&gt;主持人&lt;/b&gt;</text><text>林澈</text><text><tspan/></text></svg>');
         expect((await adminApi(hub, store, request('POST', 'title', { preset: 'missing.svg', data: {} })))!.status).toBe(400);
+        // The console's ＋ creates a title without a template; it is chosen afterwards, and showing it before says so.
+        const blank = JSON.parse((await adminApi(hub, store, request('POST', 'title', { preset: '', leftPreset: '', rightPreset: '', data: {} })))!.body);
+        expect(blank.status).toBe('ok');
+        const notReady = await adminApi(hub, store, request('POST', `title/${blank.response}/show`));
+        expect(notReady!.status).toBe(400);
+        expect(JSON.parse(notReady!.body).message).toContain('SVG 模板');
+        expect((await adminApi(hub, store, request('POST', `title/${blank.response}`, { preset: 'title.svg', data: { name: 'x' } })))!.status).toBe(200);
+        expect((await adminApi(hub, store, request('POST', `title/${blank.response}/show`)))!.status).toBe(200);
         expect(substituteTemplate('{a.b} {unknown}', { a: { b: 'x&y' } })).toBe('x&amp;y {unknown}');
+        hub.dispose();
+    });
+
+    it('lets a picture name an uploaded media file instead of a full address', async () => {
+        const { hub } = makeHub();
+        await hub.ready;
+        await hub.refresh();
+        const store = memoryStore();
+        const named = JSON.parse((await adminApi(hub, store, request('POST', 'picture', { url: 'lower_third_icpc_left.svg', name: 'b' })))!.body).response;
+        expect(JSON.parse((await adminApi(hub, store, request('GET', 'picture')))!.body).find((item: any) => item.id === named).settings.url)
+            .toBe('/d/system/contest/1/live-media/key/lower_third_icpc_left.svg');
+        expect((await adminApi(hub, store, request('POST', 'picture', { url: 'nope.png', name: 'c' })))!.status).toBe(400);
+        // A new, empty picture is saved (the console's ＋) but cannot go on air until it has an address.
+        const blank = JSON.parse((await adminApi(hub, store, request('POST', 'picture', { url: '', name: '' })))!.body).response;
+        expect((await adminApi(hub, store, request('POST', `picture/${blank}/show`)))!.status).toBe(400);
+        expect((await adminApi(hub, store, request('POST', 'picture/create_and_show_with_ttl', { url: '', name: '' }, { ttl: '5000' })))!.status).toBe(400);
+        expect((await adminApi(hub, store, request('POST', 'picture', { url: 'javascript:alert(1)', name: 'x' })))!.status).toBe(400);
+        expect((await adminApi(hub, store, request('POST', 'picture', { url: 'https://example.com/a.png', name: 'x' })))!.status).toBe(200);
+        // Ticker images name media files the same way.
+        const ticker = JSON.parse((await adminApi(hub, store, request('POST', 'tickerMessage', { type: 'image', part: 'long', periodMs: 30000, path: 'lower_third_icpc_left.svg' })))!.body).response;
+        expect(JSON.parse((await adminApi(hub, store, request('GET', 'tickerMessage')))!.body).find((item: any) => item.id === ticker).settings.path)
+            .toBe('/d/system/contest/1/live-media/key/lower_third_icpc_left.svg');
+        const emptyTicker = JSON.parse((await adminApi(hub, store, request('POST', 'tickerMessage', { type: 'image', part: 'long', periodMs: 30000, path: '' })))!.body).response;
+        expect((await adminApi(hub, store, request('POST', `tickerMessage/${emptyTicker}/show`)))!.status).toBe(400);
         hub.dispose();
     });
 

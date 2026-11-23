@@ -101,7 +101,8 @@ export interface ContestInfo {
     groups: GroupInfo[];
     organizations: OrganizationInfo[];
     languages: never[];
-    penaltyRoundingMode: 'sum_in_seconds';
+    /** sum_in_seconds: Hydro's rule; each_submission_down_to_minute: the ICPC rule (lib/settings.ts TieBreak). */
+    penaltyRoundingMode: 'sum_in_seconds' | 'each_submission_down_to_minute';
     emulationSpeed: number;
     awardsSettings: AwardChain[];
     penaltyPerWrongAttemptSeconds: number;

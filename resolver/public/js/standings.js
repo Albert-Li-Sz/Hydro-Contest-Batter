@@ -1,6 +1,14 @@
-/** Shared by the engine and canvas: one scoring and tie-breaking rule. */
+/**
+ * Shared by the engine and canvas: one scoring and tie-breaking rule.
+ * HydroXCPCIO: a Hydro contest ranks by solved count and penalty in whole seconds (Hydro's ACM rule), or, with
+ * `tieBreak: 'icpc'`, by the ICPC regional rule: total time in minutes (each accepted time truncated to the
+ * minute plus 20 minutes per rejected run), then the earlier last accepted run. Teams still equal share a rank.
+ */
+const icpcTies = (contest) => contest.scoringMode !== 'hydro' || contest.tieBreak === 'icpc';
+const scoreTime = (row) => row.timeSeconds ?? row.time * 60;
+
 export function scoreTeam(contest, team, cells = []) {
-  const hydro = contest.scoringMode === 'hydro';
+  const seconds = contest.scoringMode === 'hydro' && contest.tieBreak !== 'icpc';
   const penalty = Number(contest.penaltyMinutes ?? 20);
   let solved = 0;
   let time = 0;
@@ -12,35 +20,35 @@ export function scoreTeam(contest, team, cells = []) {
     const penalties = cell.penaltyCount ?? cell._penaltyCount ?? Math.max(0, (Number(cell.attempts) || 0) - 1);
     solved += 1;
     time += minutes + penalties * penalty;
-    if (hydro) timeSeconds += (cell.timeSeconds ?? minutes * 60) + penalties * penalty * 60;
+    if (seconds) timeSeconds += (cell.timeSeconds ?? minutes * 60) + penalties * penalty * 60;
     lastSolutionTime = Math.max(lastSolutionTime, minutes);
   }
   return { teamId: team.id, displayName: team.displayName || team.name || team.id,
     sortName: team.name || team.displayName || team.id, solved,
-    time: hydro ? Math.floor(timeSeconds / 60) : time,
-    ...(hydro ? { timeSeconds } : {}), ...(team.unrank ? { unrank: true } : {}), lastSolutionTime, rank: 0 };
+    time: seconds ? Math.floor(timeSeconds / 60) : time,
+    ...(seconds ? { timeSeconds } : {}), ...(team.unrank ? { unrank: true } : {}), lastSolutionTime, rank: 0 };
+}
+
+/** Equal on everything the rule ranks by, so the two share a rank (and, with 并列同奖, an award). */
+export function sameStanding(contest, a, b) {
+  return a.solved === b.solved && scoreTime(a) === scoreTime(b) && (!icpcTies(contest) || a.lastSolutionTime === b.lastSolutionTime);
 }
 
 const names = new Intl.Collator('en');
 export function compareStandings(contest, a, b) {
-  const hydro = contest.scoringMode === 'hydro';
-  const scoreTime = (row) => hydro ? row.timeSeconds : row.time;
   return b.solved - a.solved || scoreTime(a) - scoreTime(b) ||
-    (hydro ? 0 : a.lastSolutionTime - b.lastSolutionTime) ||
+    (icpcTies(contest) ? a.lastSolutionTime - b.lastSolutionTime : 0) ||
     names.compare(String(a.sortName ?? a.displayName), String(b.sortName ?? b.displayName)) ||
     (String(a.teamId) < String(b.teamId) ? -1 : String(a.teamId) > String(b.teamId) ? 1 : 0);
 }
 
 function assignRanks(contest, records) {
-  const hydro = contest.scoringMode === 'hydro';
-  const scoreTime = (row) => hydro ? row.timeSeconds : row.time;
   let previous = null;
   let rankedCount = 0;
   for (const record of records) {
     if (record.unrank) continue;
     rankedCount += 1;
-    record.rank = previous && previous.solved === record.solved && scoreTime(previous) === scoreTime(record) &&
-      (hydro || previous.lastSolutionTime === record.lastSolutionTime) ? previous.rank : rankedCount;
+    record.rank = previous && sameStanding(contest, previous, record) ? previous.rank : rankedCount;
     previous = record;
   }
   return records;

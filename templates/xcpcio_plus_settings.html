@@ -5,8 +5,12 @@
 <div class="row xp-page xp-settings" id="xp-settings"><div class="medium-12 columns">
   <section class="section visible">
     <div class="section__header xp-page-header">
-      <div><h1 class="section__title">奖牌与分榜设置</h1><p class="xp-muted">{{ tdoc.title }}</p></div>
-      <a class="button" href="{{ boardUrl }}">返回榜单</a>
+      <div><h1 class="section__title">榜单与奖项设置</h1><p class="xp-muted">{{ tdoc.title }} · 榜单、滚榜、大屏、直播与 CCS API 共用此处的奖项与排名规则</p></div>
+      <div class="xp-page-actions">
+        <a class="button" href="{{ boardUrl }}">查看榜单</a>
+        {% if resolverUrl %}<a class="button" href="{{ resolverUrl }}">滚榜配置</a>{% endif %}
+        {% if screensUrl %}<a class="button" href="{{ screensUrl }}">大屏</a>{% endif %}
+      </div>
     </div>
   </section>
   <p id="xp-saved" class="xp-status" role="status" hidden>已保存</p>
@@ -15,9 +19,18 @@
     <input type="hidden" name="config" id="xp-payload">
     <div class="xp-settings-grid">
       <section class="section visible">
-        <div class="section__header"><h2 class="section__title">奖项规则</h2></div>
+        <div class="section__header"><h2 class="section__title">奖项与排名规则</h2></div>
         <div class="section__body">
-          <div class="xp-medals">
+          <label class="xp-field">同分规则<select class="select" id="xp-tie-break">
+            <option value="hydro">Hydro 规则：罚时精确到秒，罚时相同则并列</option>
+            <option value="icpc">ICPC 区域赛规则：罚时按分钟，再比最后一题通过时间，仍相同则并列</option>
+          </select></label>
+          <p class="xp-muted" id="xp-tie-break-hint"></p>
+          <label class="xp-field">奖牌名额<select class="select" id="xp-medal-basis">
+            <option value="count">固定数量</option>
+            <option value="ratio">按有效队伍比例（正式且至少通过一题，向上取整）</option>
+          </select></label>
+          <div class="xp-medals" id="xp-default-medals">
             <label><span><i class="xp-dot xp-gold"></i>金牌</span><input class="textbox" aria-label="金牌数量" data-medal="gold" type="number" min="0" max="100000" step="1" required></label>
             <label><span><i class="xp-dot xp-silver"></i>银牌</span><input class="textbox" aria-label="银牌数量" data-medal="silver" type="number" min="0" max="100000" step="1" required></label>
             <label><span><i class="xp-dot xp-bronze"></i>铜牌</span><input class="textbox" aria-label="铜牌数量" data-medal="bronze" type="number" min="0" max="100000" step="1" required></label>

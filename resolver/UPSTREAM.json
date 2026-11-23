@@ -104,7 +104,7 @@
       "source": "public/js/medals.js",
       "destination": "resolver/public/js/medals.js",
       "sha256": "f26b721870dc3b4704b17d695c057bf4c26362c5a621111d5149d33adc29cd65",
-      "modifiedSha256": "bd977787a00b68be9fb866d824c2cbfa7c25d109970992f1b35f6d7abfeea274"
+      "modifiedSha256": "ec085be055e317d7fb16d227ff465a45417a228962657a2f654c6ba209f16882"
     },
     {
       "source": "public/js/play.js",
@@ -158,7 +158,7 @@
       "source": "public/js/standings.js",
       "destination": "resolver/public/js/standings.js",
       "sha256": "79ca8bc5a177bf33832cac73652abcea8845f748cd360bbfecedc006d331706c",
-      "modifiedSha256": "debed21acd0188a6966a82a83df7291d8c5a45098915d06219c82287793a6545"
+      "modifiedSha256": "76db01491d7c5c9b658cf2bc5c690cb04a449fa90fa0e1b906ccd6b0136e62f1"
     },
     {
       "source": "public/licenses/noto-sans-sc.txt",
@@ -176,7 +176,7 @@
       "source": "server/lib/engine.js",
       "destination": "resolver/server/lib/engine.js",
       "sha256": "b74872b78f03b96d06a0c40e94464f26d19326c6200808d9bb007e94bb39b0e1",
-      "modifiedSha256": "3659f133ad4be47c412d5c80a2beb756896108103bdf05efb607ed1aea4da55e"
+      "modifiedSha256": "4d61f2f737408ac5be783e028a23fd1d32aa7e5223f431df8a6fda41133c181b"
     },
     {
       "source": "server/lib/limits.js",
@@ -242,7 +242,7 @@
       "source": "public/js/render/pres-misc.js",
       "destination": "resolver/public/js/render/pres-misc.js",
       "sha256": "726e5923125257ac48bbd72ea1bbd5e45ad365cc0361ef851d2968e797492143",
-      "modifiedSha256": "726e5923125257ac48bbd72ea1bbd5e45ad365cc0361ef851d2968e797492143"
+      "modifiedSha256": "19884a05e30ab262c7096ca729bd268d49557b3d5d716086fbc6ee81ab2ebc98"
     },
     {
       "source": "public/js/render/pres-problems.js",
@@ -296,7 +296,7 @@
       "source": "public/js/render/presentation-state.js",
       "destination": "resolver/public/js/render/presentation-state.js",
       "sha256": "d9530da6512c44688f5c5fac10afd395b08f48aedc4dcf6da57633aec775b99a",
-      "modifiedSha256": "d9530da6512c44688f5c5fac10afd395b08f48aedc4dcf6da57633aec775b99a"
+      "modifiedSha256": "60df42c174eee1e0bd974b673638da1a966997e71e9b715b12aa10687ab7fa26"
     },
     {
       "source": "public/js/render/presentation-templates.js",
@@ -308,7 +308,7 @@
       "source": "public/js/render/presentation-view.js",
       "destination": "resolver/public/js/render/presentation-view.js",
       "sha256": "30436cfccc9c6421e9ce7e172df2703387430025b5da8e7cf5a6946fc4bc4080",
-      "modifiedSha256": "c953486dca2ba02b767eef9e1b6c01596253d934f2d5b15cffd31a9243a3397d"
+      "modifiedSha256": "0459b4e410ad89260c8985ce364e4347489801089a2a113aeb9e2f92bfd83589"
     },
     {
       "source": "public/js/render/presentation-widths.js",

@@ -29,6 +29,7 @@ describe('live HTTP request transport', () => {
         saveVisualConfig: async (value) => { visual = value; },
         mediaNames: async () => [],
         saveMedia: async () => {},
+        mediaUrl: async (name) => `/media/${name}`,
     };
 
     beforeAll(async () => {

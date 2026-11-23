@@ -1,4 +1,4 @@
-import type { BoardAwards, Medals } from './settings';
+import type { BoardRules, Medals } from './settings';
 
 export interface ResolverTeam {
     id: string;
@@ -27,6 +27,8 @@ export interface ResolverContest {
     durationMs: number;
     freezeDurationMs: number;
     scoringMode: 'hydro';
+    /** lib/settings.ts TieBreak; omitted means Hydro's rule. */
+    tieBreak?: 'hydro' | 'icpc';
     penaltyMinutes: number;
     unofficialFirstSolve: boolean;
     firstSolveEnabled: boolean;
@@ -41,7 +43,11 @@ export interface ResolverBoard {
     name: string;
     teamIds: string[];
     medals: Medals;
-    awards: BoardAwards;
+    awards: BoardRules;
+    /** Official members that solved something in this data: the base of 按比例设奖 and the medal cap. */
+    eligible: number;
+    /** Medals of each tier these rules give `eligible` teams (before ties share a medal). */
+    medalCounts: Medals;
 }
 
 export interface ResolverConfig {

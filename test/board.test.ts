@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createContest, createSubmissions, createTeams, MedalType, Rank } from './engine';
 import { patchBoardEngine } from '../lib/patch-engine.mjs';
 import { enhanceBoard, schoolGroup } from '../lib/board';
-import { awardsFor, defaultSettings, normalizeSettings, pruneMembers, toScriptJson } from '../lib/settings';
+import { awardsFor, defaultSettings, medalCounts, normalizeSettings, pruneMembers, toScriptJson } from '../lib/settings';
 import { demoData } from './fixture';
 import { defaultResolverConfig, prepareResolver, resolverBoards } from '../lib/resolver-data';
 
@@ -156,6 +156,57 @@ describe('分榜与奖项', () => {
             expect(rank.teams.filter((team) => team.awards.includes(type)).map((team) => team.id)).toEqual(award.teamIds);
         }
         expect(rank.teams.filter((team) => !team.isUnofficial).map((team) => team.rank)).toEqual([1, 1]);
+    });
+    it('ICPC 区域赛同分规则：罚时按分钟，再比最后一题通过时间，榜单与滚榜一致', () => {
+        const data = demoData();
+        data.teams = data.teams.slice(0, 3);
+        data.teams[0].name = 'A'; data.teams[1].name = 'Z'; data.teams[2].name = 'M';
+        // 1: 1 + 5 = 6 分钟，最后 5 分；2: 3 + 3 = 6 分钟，最后 3 分；3: 10:05 通过一题。两种规则下 1、2 秒级罚时同为 400 秒。
+        data.submissions = [['1', 0, 100], ['1', 1, 300], ['2', 0, 190], ['2', 1, 210], ['3', 0, 605]].map(([team_id, problem_id, time], index) => ({
+            submission_id: `icpc-${index}`, team_id: String(team_id), problem_id: Number(problem_id), timestamp: Number(time) * 1000, status: 'CORRECT',
+        }));
+        const hydro = rankFor('all', { ...defaultSettings, medals: { gold: 1, silver: 1, bronze: 0 } }, data);
+        expect(hydro.teams.map((team) => [team.id, team.rank])).toEqual([['1', 1], ['2', 1], ['3', 3]]);
+        const settings = normalizeSettings({ ...defaultSettings, tieBreak: 'icpc', medals: { gold: 1, silver: 1, bronze: 0 } });
+        const rank = rankFor('all', settings, data);
+        expect(rank.teams.map((team) => [team.id, team.rank])).toEqual([['2', 1], ['1', 2], ['3', 3]]);
+        expect(rank.teams.slice(0, 2).map((team) => team.awards)).toEqual([[MedalType.GOLD], [MedalType.SILVER]]);
+        const payload = prepareResolver(data, resolverBoards(data, settings, true), { ...defaultResolverConfig(settings, true), freezeMode: 'custom', freezeAtSeconds: 200 },
+            { contestId: 'icpc', ended: true, capturedAt: new Date(), logoNames: {} });
+        expect(payload.snapshot.tieBreak).toBe('icpc');
+        const award = (tier: string) => (payload.game.contest.awards.find((item: any) => item.id === `medal-${tier}`) as any)?.teamIds;
+        expect([award('gold'), award('silver')]).toEqual([['2'], ['1']]);
+        // Same minute and same last accepted minute: the ICPC rule cannot separate them, they share a rank.
+        data.submissions = [
+            { submission_id: 'x', team_id: '1', problem_id: 0, timestamp: 630000, status: 'CORRECT' },
+            { submission_id: 'y', team_id: '2', problem_id: 0, timestamp: 605000, status: 'CORRECT' },
+        ];
+        expect(rankFor('all', settings, data).teams.slice(0, 2).map((team) => team.rank)).toEqual([1, 1]);
+    });
+    it('按有效队伍比例设奖：名额向上取整，榜单与滚榜一致', () => {
+        const settings = normalizeSettings({ ...defaultSettings, medalBasis: 'ratio', medals: { gold: 10, silver: 20, bronze: 30 } });
+        expect(medalCounts(awardsFor(settings, 'all'), 30)).toEqual({ gold: 3, silver: 6, bronze: 9 });
+        expect(medalCounts(awardsFor(settings, 'all'), 11)).toEqual({ gold: 2, silver: 3, bronze: 4 });
+        const data = demoData();
+        const boards = resolverBoards(data, settings, true);
+        const main = boards.find((board) => board.id === 'all')!;
+        expect(main.eligible).toBe(enhanceBoard(data, settings).teams.filter((team) => !team.group.includes('unofficial')
+            && data.submissions.some((record) => record.team_id === team.team_id && record.status === 'CORRECT')).length);
+        const expected = medalCounts(awardsFor(settings, 'all'), main.eligible);
+        const rank = rankFor('all', settings, data);
+        const count = (type: (typeof MedalType)[keyof typeof MedalType]) => rank.teams.filter((team) => team.awards.includes(type)).length;
+        expect([count(MedalType.GOLD), count(MedalType.SILVER), count(MedalType.BRONZE)]).toEqual([expected.gold, expected.silver, Math.min(expected.bronze, main.eligible - expected.gold - expected.silver)]);
+        const payload = prepareResolver(data, boards, { ...defaultResolverConfig(settings, true), freezeMode: 'custom', freezeAtSeconds: 3600 },
+            { contestId: 'ratio', ended: true, capturedAt: new Date(), logoNames: {} });
+        expect([payload.config.goldCount, payload.config.silverCount]).toEqual([expected.gold, expected.silver]);
+        expect(() => normalizeSettings({ ...defaultSettings, medalBasis: 'ratio', medals: { gold: 50, silver: 40, bronze: 30 } })).toThrow();
+        // A board's own medals saved before 按比例设奖 existed stay numbers of teams under a ratio default.
+        const legacy = normalizeSettings({ ...defaultSettings, medalBasis: 'ratio', medals: { gold: 10, silver: 20, bronze: 30 },
+            participationBoards: true, boardAwards: { official: { medals: { gold: 1, silver: 2, bronze: 3 } }, unofficial: { firstSolve: true } } });
+        expect(awardsFor(legacy, 'official')).toMatchObject({ medalBasis: 'count', medals: { gold: 1, silver: 2, bronze: 3 } });
+        expect(awardsFor(legacy, 'unofficial')).toMatchObject({ medalBasis: 'ratio', medals: { gold: 10, silver: 20, bronze: 30 } });
+        expect(() => normalizeSettings({ ...defaultSettings, tieBreak: 'cf' })).toThrow();
+        expect(normalizeSettings({ ...defaultSettings }).tieBreak).toBe('hydro');
     });
     it('独立关闭并列同奖时严格按名额授奖', () => {
         const data = demoData();

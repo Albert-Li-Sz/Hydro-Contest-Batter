@@ -524,20 +524,36 @@ export class PresentationView {
             (a, b) => (a.sourceOrder ?? 0) - (b.sourceOrder ?? 0),
           )
         : records.map((r) => r.submission);
-    for (let i = 0; i < 12; i++) {
-      const y = top + trunc(i * rowHeight);
+    // HydroXCPCIO: stripes first, then every record where its animation has it, clipped to the list.
+    // Records leaving the queue are drawn beneath the others and fade out; the others carry their
+    // stripe's shade, so a record passing by never mixes with the text of the row it crosses (drawing
+    // a stripe after a moving record used to hide it, and leaving records covered the header).
+    for (let i = 0; i < 12; i++)
       if (i % 2 === 0) {
         ctx.fillStyle = "#3c3c3c";
-        ctx.fillRect(0, y, w, trunc(rowHeight));
+        ctx.fillRect(0, top + trunc(i * rowHeight), w, trunc(rowHeight));
       }
-      const sub = rows[i];
-      if (!sub) continue;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, top, w, trunc(12 * rowHeight));
+    ctx.clip();
+    const visible = rows
+      .map((sub, i) => ({ sub, i, position: records ? records[i].anim.getValue() : i, leaving: !!records?.[i].leaving }))
+      .filter((entry) => entry.sub && entry.position > -1 && entry.position < 12)
+      .sort((a, b) => Number(b.leaving) - Number(a.leaving));
+    for (const { sub, i, position, leaving } of visible) {
+      const y = top + trunc(i * rowHeight);
       ctx.save();
       if (records)
-        ctx.translate(
-          0,
-          trunc(records[i].anim.getValue() * rowHeight) - trunc(i * rowHeight),
-        );
+        ctx.translate(0, trunc(position * rowHeight) - trunc(i * rowHeight));
+      if (leaving)
+        ctx.globalAlpha = Math.max(0, Math.min(1, 1 - Math.abs(position - (records[i].leftFrom ?? position)) / 3));
+      else if (records) {
+        // The stripe colour of where the record is, blended while it moves between two stripes.
+        const shade = Math.round((0x3c * (1 + Math.cos(Math.PI * position))) / 2);
+        ctx.fillStyle = `rgb(${shade}, ${shade}, ${shade})`;
+        ctx.fillRect(0, y, w, trunc(rowHeight));
+      }
       const t = data?.contest?.teams?.find((t) => t.id === sub.teamId),
         problem = problems.find((p) => p.id === sub.problemId);
       this.text(
@@ -638,6 +654,7 @@ export class PresentationView {
       }
       ctx.restore();
     }
+    ctx.restore();
   }
   render(
     ctx,

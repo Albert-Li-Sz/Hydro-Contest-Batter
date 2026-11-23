@@ -881,6 +881,8 @@ export function normalizeContest(input) {
     freezeSource: input.freezeSource || (freezeDurationMs > 0 ? 'feed' : 'none'),
     missingSubmissionTimes: Math.max(missingSubmissionTimes, Number(input.missingSubmissionTimes) || 0),
     scoringMode: input.scoringMode === 'hydro' ? 'hydro' : 'icpc',
+    // HydroXCPCIO: a Hydro contest may break ties by the ICPC regional rule (standings.js).
+    ...(input.scoringMode === 'hydro' && input.tieBreak === 'icpc' ? { tieBreak: 'icpc' } : {}),
     firstSolveEnabled: input.firstSolveEnabled !== false,
     unofficialFirstSolve: input.unofficialFirstSolve === true,
     name: input.name ?? input.formalName ?? 'Contest',
@@ -1124,6 +1126,7 @@ function publicContest(contest) {
   return {
     contestId: contest.contestId, freezeSource: contest.freezeSource,
     scoringMode: contest.scoringMode,
+    ...(contest.tieBreak ? { tieBreak: contest.tieBreak } : {}),
     name: contest.name,
     formalName: contest.formalName,
     startTime: contest.startTime,

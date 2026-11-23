@@ -133,8 +133,9 @@ export function applyLive(ctx: Context, dependencies: {
         return readBuiltinMedia(name);
     }
 
-    function store(contestKey: string): LiveStore {
+    function store(contestKey: string, tdoc: Tdoc): LiveStore {
         return {
+            mediaUrl: async (name) => `${urls(tdoc, await loadDoc(tdoc)).media}/${encodeURIComponent(name)}`,
             visualConfig: async () => (await collection.findOne({ _id: contestKey }))?.visualConfig || '{}',
             saveVisualConfig: async (value) => { await collection.updateOne({ _id: contestKey }, { $set: { visualConfig: value, updatedAt: new Date() } }); },
             mediaNames: async () => {
@@ -349,7 +350,7 @@ export function applyLive(ctx: Context, dependencies: {
             const files = Object.values(this.request.files || {}).flat().map((file) => ({
                 name: file.originalFilename || path.basename(file.filepath), size: file.size, read: () => fs.promises.readFile(file.filepath),
             }));
-            respond(this, await adminApi(hub, store(key(this.tdoc)), {
+            respond(this, await adminApi(hub, store(key(this.tdoc), this.tdoc), {
                 method: this.request.method, subpath, query: this.request.query, querystring: this.request.querystring,
                 body: this.request.body, files, user: this.user.uname,
             }), subpath);

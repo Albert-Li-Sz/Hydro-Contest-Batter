@@ -1,4 +1,5 @@
 // HydroXCPCIO: zero-solve teams do not receive medals or podium awards.
+import { sameStanding } from './standings.js';
 export const MEDAL_DEFAULTS = Object.freeze({
   medalMode: 'imported', goldCount: 4, silverCount: 4, bronzeCount: 4,
   goldCitation: '金奖', silverCitation: '银奖', bronzeCitation: '铜奖', medalSameScore: true,
@@ -26,18 +27,18 @@ export function normalizeMedalOptions(raw = {}) {
 }
 
 /** Cumulative award cutoffs; equal solved/time groups inherit the higher tier. */
-function medalAwards(options, standings) {
+function medalAwards(options, standings, contest = {}) {
   const tiers = ['gold', 'silver', 'bronze'];
   const awards = tiers.map((tier) => ({ id: `medal-${tier}`, citation: options[`${tier}Citation`], teamIds: [], displayMode: 'detail', awardType: 'medal' }));
   const limits = [];
   let total = 0;
   for (const tier of tiers) limits.push(total += options[`${tier}Count`]);
   const ranked = standings.filter((row) => !row.unrank && row.solved > 0);
-  const scoreTime = (row) => row.timeSeconds ?? row.time * 60;
   let previous = null;
   let tier = -1;
   ranked.forEach((row, i) => {
-    const tied = options.medalSameScore && previous && row.solved === previous.solved && scoreTime(row) === scoreTime(previous);
+    // Teams the ranking rule cannot separate (they share a rank) share the higher medal.
+    const tied = options.medalSameScore && previous && sameStanding(contest, row, previous);
     if (!tied) tier = limits.findIndex((limit) => i < limit);
     if (tier >= 0) awards[tier].teamIds.push(row.teamId);
     previous = row;
@@ -84,7 +85,7 @@ export function configuredAwards(contest, rawOptions, standings) {
   let awards = [...(contest.awards || [])];
   if (options.medalMode === 'custom') {
     awards = awards.filter((award) => award.awardType !== 'medal' && !/^medal-/.test(award.id))
-      .concat(medalAwards(options, standings));
+      .concat(medalAwards(options, standings, contest));
   }
   if (options.podiumEnabled) {
     awards = awards.filter((award) => award.awardType !== 'winner' &&

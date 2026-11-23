@@ -28,6 +28,7 @@ const colors = [Color.RED, Color.GREEN, ICPCColors.BLUE, Color.CYAN, ICPCColors.
     `#${[color.r, color.g, color.b].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`
 ));
 const count = (rows, size) => Math.max(1, Math.ceil(rows.length / size));
+const portrait = () => innerWidth / innerHeight < 1.2;
 const time = (ms) => {
     const seconds = Math.floor(ms / 1000);
     return `${Math.floor(seconds / 3600)}:${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
@@ -57,6 +58,30 @@ function table(headers, rows) {
     return el('table', 'screen-table',
         el('thead', '', el('tr', '', ...headers.map((label) => el('th', '', label)))),
         el('tbody', '', ...rows.map((cells) => el('tr', '', ...cells.map((cell) => el('td', '', cell))))));
+}
+
+/** Text that reads on a balloon of this colour. */
+function inkOn(color) {
+    const match = /^#([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(color || '');
+    if (!match) return '#000';
+    const [r, g, b] = match.slice(1).map((part) => parseInt(part, 16) / 255).map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.25 ? '#000' : '#fff';
+}
+
+/**
+ * Columns and rows that make `count` cells (about `ratio` wide per unit high) as large as they can be in
+ * width x height. At least `minimum` cells are planned, so a zone with few seats keeps the usual cell size.
+ */
+export function fitGrid(count, width, height, ratio = 1.7, minimum = 12) {
+    const planned = Math.max(1, count, minimum);
+    let best = { cols: 1, rows: planned, size: 0 };
+    for (let cols = 1; cols <= planned; cols++) {
+        const rows = Math.ceil(planned / cols);
+        const size = Math.min(width / cols / ratio, height / rows);
+        if (size > best.size + 1e-9) best = { cols, rows, size };
+    }
+    // Rows past the seats stay empty below them instead of stretching the seats.
+    return { cols: best.cols, rows: best.rows };
 }
 
 function seatPages(rows, size) {
@@ -95,7 +120,8 @@ export class HydroScreenExtras {
             'problem-list': count(data, rows), judges: count(data.machines || [], rows),
         })[type] || 1;
         const current = tick % Math.max(1, total);
-        const size = type === 'rank-trend' ? `${innerWidth}x${innerHeight}` : portrait;
+        // Charts and the seat grids are laid out for the window, so they are redrawn when it changes size.
+        const size = ['rank-trend', 'floor', 'balloons'].includes(type) ? `${innerWidth}x${innerHeight}` : portrait;
         const key = JSON.stringify([type, item, data, state.title, state.locale, current, size]);
         if (key === this.key && this.root.childElementCount) {
             if (type === 'clarifications') {
@@ -249,13 +275,17 @@ export class HydroScreenExtras {
         const zone = page.zone === null ? this.t('未分配座位', 'Unassigned seats') : page.zone;
         if (zone) body.append(el('p', 'screen-zone', zone));
         const problems = new Map(data.problems.map((problem) => [problem.id, problem]));
-        body.append(el('div', 'screen-seat-grid', ...page.rows.map((row) => {
+        const grid = el('div', `screen-seat-grid fit${variant === 'problems' && !delivery ? ' cells' : ''}`, ...page.rows.map((row) => {
             const cell = el('article', `screen-seat${delivery && !row.balloons.length ? ' quiet' : ''}`,
                 el('strong', '', row.seat || '—'), el('span', 'screen-seat-name', row.name));
             const marks = el('div', 'screen-marks');
             if (delivery) for (const id of row.balloons) {
                 const problem = problems.get(id);
-                if (problem) marks.append(badge(problem.label, problem.color));
+                if (!problem) continue;
+                // A filled balloon in the problem's colour, readable from across the room.
+                const balloon = badge(problem.label, problem.color, 'screen-balloon');
+                balloon.style.color = inkOn(problem.color);
+                marks.append(balloon);
             }
             else if (variant === 'problems') for (const [i, state] of row.cells.entries()) {
                 const problem = data.problems[i];
@@ -267,7 +297,20 @@ export class HydroScreenExtras {
             }
             cell.append(marks);
             return cell;
-        })));
+        }));
+        body.append(grid);
+        // The grid fills what the heading leaves; its cells grow with the screen (font size follows the cell).
+        const { cols, rows } = fitGrid(page.rows.length, grid.clientWidth || innerWidth, grid.clientHeight || innerHeight * 0.75,
+            delivery ? 1.5 : variant === 'problems' ? 2.2 : 1.7, portrait() ? 8 : 12);
+        grid.style.setProperty('--cols', String(cols));
+        grid.style.setProperty('--rows', String(rows));
+        // Many problems or balloons need more lines than the cell's height allows: shrink the text of every
+        // cell alike until the fullest one fits (nothing is clipped, all seats keep one size).
+        const fits = () => [...grid.children].every((cell) => cell.scrollHeight <= cell.clientHeight + 1 && cell.scrollWidth <= cell.clientWidth + 1);
+        for (let scale = 1, tries = 0; tries < 14 && !fits(); tries++) {
+            scale *= 0.9;
+            grid.style.setProperty('--seat-scale', scale.toFixed(3));
+        }
     }
 
     announce(body, row) {

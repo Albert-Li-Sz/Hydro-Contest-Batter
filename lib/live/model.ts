@@ -1,7 +1,7 @@
 import type { BoardData } from '../board';
 import { problemColor, schoolGroup, schoolName, UNSET_PROBLEM_COLOR } from '../board';
 import type { BoardSettings } from '../settings';
-import { awardsFor } from '../settings';
+import { awardsFor, medalCounts } from '../settings';
 import { resolverAssetBase } from '../resolver-data';
 import type {
     AwardChain, ContestInfo, ContestStatus, GroupInfo, MediaType, OrganizationInfo, ProblemInfo, RunInfo, RunResult, TeamInfo, Verdict,
@@ -76,13 +76,15 @@ export function contestStatus(contest: LiveContestTimes, now: number): ContestSt
     return { type: 'finalized', startedAtUnixMs: start, finishAtUnixMs: end, finalizedAtUnixMs: end, frozenAtUnixMs: null };
 }
 
-function medalChain(settings: BoardSettings, group?: string): AwardChain[] {
+/** `eligible`: official teams of the board that solved something, the base of 按比例设奖. */
+function medalChain(settings: BoardSettings, eligible: number, group?: string): AwardChain[] {
     const rules = awardsFor(settings, group || 'all');
     const tiebreakMode = rules.medalSameScore ? 'ALL' : 'NONE';
+    const counts = medalCounts(rules, eligible);
     const awards = [];
     let total = 0;
     for (const [key, citation] of [['gold', rules.goldCitation], ['silver', rules.silverCitation], ['bronze', rules.bronzeCitation]] as const) {
-        const count = rules.medals[key];
+        const count = counts[key];
         total += count;
         // Medals go to official teams that solved something, as on the board (cappedMedals).
         if (count > 0) awards.push({ id: `${key}-medal`, citation, chainLimit: total, minScore: 1, tiebreakMode } as const);
@@ -142,6 +144,10 @@ export function buildContestInfo(source: LiveSource): ContestInfo {
             customFields: (team.members?.length ? { members: team.members.join(' · ') } : {}) as Record<string, string>,
         };
     });
+    // As on the board (lib/board.ts): official teams with an accepted run among the data shown.
+    const solved = new Set(data.submissions.filter((record) => record.status === 'CORRECT' && record.timestamp >= 0
+        && record.timestamp < durationMs).map((record) => record.team_id));
+    const eligible = (list: TeamInfo[]) => list.filter((team) => !team.isOutOfContest && solved.has(team.id)).length;
     return {
         name: contest.title,
         status: contestStatus(contest, source.now),
@@ -149,9 +155,11 @@ export function buildContestInfo(source: LiveSource): ContestInfo {
         contestLengthMs: durationMs,
         freezeTimeMs: contest.lockAt ? contest.lockAt.getTime() - contest.beginAt.getTime() : null,
         problems, teams, groups, organizations: [...organizations.values()],
-        languages: [], penaltyRoundingMode: 'sum_in_seconds', emulationSpeed: 1,
+        languages: [], emulationSpeed: 1,
+        penaltyRoundingMode: source.settings.tieBreak === 'icpc' ? 'each_submission_down_to_minute' : 'sum_in_seconds',
         // The main board's medals, then each sub-board's own (as the board shows a sub-board).
-        awardsSettings: [...medalChain(source.settings), ...groups.flatMap((group) => medalChain(source.settings, group.id))],
+        awardsSettings: [...medalChain(source.settings, eligible(teams)),
+            ...groups.flatMap((group) => medalChain(source.settings, eligible(teams.filter((team) => team.groups.includes(group.id))), group.id))],
         penaltyPerWrongAttemptSeconds: 1200,
         queueSettings: { ...defaultQueueSettings },
         showTeamsWithoutSubmissions: true,

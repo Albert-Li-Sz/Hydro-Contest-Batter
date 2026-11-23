@@ -1,7 +1,7 @@
 /**
  * ICPC scoreboard rows as computed by ICPC Live v3 (cds/core scoreboard/*.kt, MIT), ported to TypeScript.
- * Penalty, ranks and medals follow the rest of this plugin: Hydro's ACM rule, whole seconds
- * summed, 20 minutes per wrong attempt.
+ * Penalty, ranks and medals follow the rest of this plugin: Hydro's ACM rule (whole seconds summed) or
+ * the ICPC rule (whole minutes, then the last accepted run), 20 minutes per wrong attempt.
  */
 import type {
     Award, ContestInfo, ICPCProblemResult, OptimismLevel, RunInfo, ScoreboardDiff, ScoreboardRow, SolutionsStatistic, TimeLineRunInfo,
@@ -60,7 +60,10 @@ export function scoreboardRow(info: ContestInfo, runs: RunInfo[], level: Optimis
         };
         if (okRun) {
             solved += problem.weight;
-            penalty += Math.floor(okRun.time / 1000) + wrongAttempts * info.penaltyPerWrongAttemptSeconds;
+            // ICPC rule (each_submission_down_to_minute): every accepted time counts in whole minutes.
+            const accepted = info.penaltyRoundingMode === 'each_submission_down_to_minute'
+                ? Math.floor(okRun.time / 60_000) * 60 : Math.floor(okRun.time / 1000);
+            penalty += accepted + wrongAttempts * info.penaltyPerWrongAttemptSeconds;
             lastAccepted = Math.max(lastAccepted, okRun.time);
         }
         return result;
@@ -69,15 +72,20 @@ export function scoreboardRow(info: ContestInfo, runs: RunInfo[], level: Optimis
 }
 
 /**
- * The plugin's one ranking rule (resolver/public/js/standings.js compareStandings in Hydro mode,
- * also used by the board's award policy): more problems, then less penalty in seconds; teams
- * equal in both share a rank. Within a tie, names in the same collation, then team id.
+ * The plugin's one ranking rule (resolver/public/js/standings.js compareStandings, also used by the
+ * board's award policy): more problems, then less penalty (whole seconds under Hydro's rule; whole
+ * minutes under the ICPC rule, which then puts the earlier last accepted run first); teams equal
+ * on all of these share a rank. Within a tie, names in the same collation, then team id.
  */
 const names = new Intl.Collator('en');
-const sameScore = (a: ScoreboardRow, b: ScoreboardRow) => a.totalScore === b.totalScore && a.penalty === b.penalty;
-export function compareTeams(a: { id: string; name: string; row: ScoreboardRow }, b: { id: string; name: string; row: ScoreboardRow }) {
-    return b.row.totalScore - a.row.totalScore || a.row.penalty - b.row.penalty
-        || names.compare(a.name, b.name) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+const icpcTies = (info: ContestInfo) => info.penaltyRoundingMode === 'each_submission_down_to_minute';
+const lastMinute = (row: ScoreboardRow) => (row.totalScore > 0 ? Math.floor(row.lastAcceptedMs / 60_000) : -1);
+const scoreOrder = (info: ContestInfo, a: ScoreboardRow, b: ScoreboardRow) => b.totalScore - a.totalScore || a.penalty - b.penalty
+    || (icpcTies(info) ? lastMinute(a) - lastMinute(b) : 0);
+/** Equal on everything the rule ranks by: the two share a rank. */
+export const sameScore = (info: ContestInfo, a: ScoreboardRow, b: ScoreboardRow) => scoreOrder(info, a, b) === 0;
+export function compareTeams(info: ContestInfo, a: { id: string; name: string; row: ScoreboardRow }, b: { id: string; name: string; row: ScoreboardRow }) {
+    return scoreOrder(info, a.row, b.row) || names.compare(a.name, b.name) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 }
 
 export interface GroupRanking {
@@ -100,7 +108,7 @@ type Entry = { id: string; name: string; row: ScoreboardRow; out: boolean; group
  * unranked and never medalled; medals go to official teams that solved something, by rank when
  * tied teams share a medal, otherwise by position.
  */
-function rankEntries(entries: Entry[], chain: ContestInfo['awardsSettings'][number] | undefined) {
+function rankEntries(info: ContestInfo, entries: Entry[], chain: ContestInfo['awardsSettings'][number] | undefined) {
     const ranks = new Map<string, number>();
     const excluded = new Set(chain?.excludedGroups || []);
     const medals = (chain?.awards || []).map((award) => ({ ...award, teams: [] as string[] }));
@@ -110,7 +118,7 @@ function rankEntries(entries: Entry[], chain: ContestInfo['awardsSettings'][numb
     for (const entry of entries) {
         if (entry.out) continue;
         position++;
-        const rank = previous && sameScore(previous.row, entry.row) ? previousRank : position;
+        const rank = previous && sameScore(info, previous.row, entry.row) ? previousRank : position;
         ranks.set(entry.id, rank);
         previous = entry;
         previousRank = rank;
@@ -130,16 +138,16 @@ export function ranking(info: ContestInfo, rows: Map<string, ScoreboardRow>): Ra
     const entries: Entry[] = info.teams.filter((team) => !team.isHidden)
         .map((team) => ({ id: team.id, name: team.name, row: rows.get(team.id)!, out: team.isOutOfContest, groups: team.groups }))
         .filter(({ row }) => info.showTeamsWithoutSubmissions || row.problemResults.some((result) => result.lastSubmitTimeMs !== null))
-        .sort(compareTeams);
+        .sort((a, b) => compareTeams(info, a, b));
     const order = entries.map(({ id }) => id);
-    const main = rankEntries(entries, info.awardsSettings.find((chain) => !chain.groups?.length));
+    const main = rankEntries(info, entries, info.awardsSettings.find((chain) => !chain.groups?.length));
     const groups: Record<string, GroupRanking> = {};
     for (const group of info.groups) {
         if (group.isHidden) continue;
         const members = entries.filter((entry) => entry.groups.includes(group.id));
         if (!members.length) continue;
         const chain = info.awardsSettings.find((item) => item.groups?.length === 1 && item.groups[0] === group.id);
-        const result = rankEntries(members, chain);
+        const result = rankEntries(info, members, chain);
         groups[group.id] = { ranks: Object.fromEntries(result.ranks), awards: result.awards.filter((award) => award.teams.length) };
     }
     return { order, ranks: order.map((id) => main.ranks.get(id) ?? 0), awards: main.awards, groups };
@@ -154,7 +162,7 @@ export function rankOf(info: ContestInfo, rows: Map<string, ScoreboardRow>, team
     for (const other of info.teams) {
         if (other.isOutOfContest || other.isHidden || other.id === teamId) continue;
         const candidate = rows.get(other.id);
-        if (candidate && (candidate.totalScore > row.totalScore || (candidate.totalScore === row.totalScore && candidate.penalty < row.penalty))) better++;
+        if (candidate && scoreOrder(info, candidate, row) < 0) better++;
     }
     return better + 1;
 }

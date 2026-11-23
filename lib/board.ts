@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { BoardSettings, Medals } from './settings';
-import { awardsFor } from './settings';
+import { awardsFor, medalCounts } from './settings';
 import { AWARD_EXEMPT_TAG } from './award-policy.mjs';
 
 export interface BoardTeam {
@@ -115,8 +115,9 @@ export function enhanceBoard(data: BoardData, settings: BoardSettings, { identit
     for (const id of allGroups) {
         const members = teams.filter((team) => id === 'all' || team.group.includes(id));
         const awards = awardsFor(settings, id);
-        medal[id] = { ...cappedMedals(awards.medals, members.filter((team) => solved.has(team.team_id)
-            && !team.group.includes('unofficial')).length), hydroAwards: awards };
+        // Eligible: official teams on this board that solved something (also the base of 按比例设奖).
+        const eligible = members.filter((team) => solved.has(team.team_id) && !team.group.includes('unofficial')).length;
+        medal[id] = { ...cappedMedals(medalCounts(awards, eligible), eligible), hydroAwards: awards };
     }
     return {
         ...data,
@@ -124,8 +125,9 @@ export function enhanceBoard(data: BoardData, settings: BoardSettings, { identit
             ...(data.contest.options && typeof data.contest.options === 'object' ? data.contest.options : {}),
             enable_organization: identity,
             submission_timestamp_unit: 'millisecond',
-            // Hydro's ACM rule sums and orders penalty by the second; the board still displays minutes.
-            calculation_of_penalty: 'in_seconds',
+            // Hydro's ACM rule sums and orders penalty by the second; the ICPC rule by the minute (award-policy.mjs
+            // breaks the remaining ties). The board displays minutes either way.
+            calculation_of_penalty: settings.tieBreak === 'icpc' ? 'in_minutes' : 'in_seconds',
         } },
         teams,
     };

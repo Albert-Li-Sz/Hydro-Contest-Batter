@@ -190,6 +190,10 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
             // Only while frozen does the realtime board differ from what everyone sees.
             realtimeUrl: canRealtime && !realtime && ContestModel.isLocked(tdoc) ? `${base}/scoreboard/xcpcio-plus?realtime=true` : null,
             frozenUrl: realtime ? `${base}/scoreboard/xcpcio-plus` : null,
+            // Hydro's own 解除封榜 (ContestScoreboardHandler.postUnlock, which checks the permission again); it
+            // needs the contest to have ended. Also on the public page, where managers land when it is enabled.
+            unlock: canManage && tdoc.lockAt && !tdoc.unlocked
+                ? { url: `${base}/scoreboard`, ready: ContestModel.isDone(tdoc) } : null,
             // While the contest runs, the per-submission feed is for staff only. The page hides it;
             // the board data itself still needs every (result-masked) submission to rank.
             hideSubmissions: !ContestModel.isDone(tdoc) && !canManage && !canRealtime,
@@ -222,6 +226,8 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
             this.response.body = {
                 tdoc: this.tdoc,
                 boardUrl: `${contestBase(this.tdoc)}/scoreboard/xcpcio-plus`,
+                resolverUrl: `${contestBase(this.tdoc)}/resolver`,
+                screensUrl: `${contestBase(this.tdoc)}/screens`,
                 publicUrl: publicPath(this.tdoc),
                 ccsUrl: `/d/${encodeURIComponent(this.tdoc.domainId)}/ccsapi/contests/${this.tdoc.docId}`,
                 replacementEnabled: config.asDefault,

@@ -7,5 +7,7 @@ export interface StandingsRecord {
     displayName?: string;
     teamId: string;
 }
-export function compareStandings(contest: { scoringMode?: string }, a: StandingsRecord, b: StandingsRecord): number;
+export interface RankingContest { scoringMode?: string; tieBreak?: 'hydro' | 'icpc' }
+export function compareStandings(contest: RankingContest, a: StandingsRecord, b: StandingsRecord): number;
+export function sameStanding(contest: RankingContest, a: StandingsRecord, b: StandingsRecord): boolean;
 export function formatSeconds(seconds: number): string;

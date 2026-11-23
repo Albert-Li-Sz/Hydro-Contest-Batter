@@ -63,6 +63,28 @@ body.fullscreen.idle #screen { cursor: none; }
 #screen-content .screen-bar { display: flex; height: .85em; border-radius: .22em; overflow: hidden; background: #282828; }
 #screen-content .screen-zone { font-weight: 750; color: #fff; }
 #screen-content .screen-seat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(max(12%, 7.7em), 1fr)); gap: .38em; }
+/* Venue grids fill the screen: --cols x --rows cells (set by the page), text sized from the cell, not the window. */
+#screen-content .screen-seat-grid.fit {
+  --cols: 8; --rows: 4; --gap: .45em;
+  flex: 1 1 0; min-height: 0; container-type: size; gap: var(--gap);
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); grid-template-rows: repeat(var(--rows), minmax(0, 1fr));
+}
+#screen-content .screen-seat-grid.fit .screen-seat {
+  --cell-w: calc((100cqw - (var(--cols) - 1) * var(--gap)) / var(--cols));
+  --cell-h: calc((100cqh - (var(--rows) - 1) * var(--gap)) / var(--rows));
+  font-size: calc(clamp(10px, min(calc(var(--cell-h) / 5.2), calc(var(--cell-w) / 7.5)), 46px) * var(--seat-scale, 1));
+  overflow: hidden; padding: .4em .55em; gap: .22em; grid-auto-rows: max-content;
+}
+#screen-content .screen-seat-grid.fit .screen-seat > strong { font-size: 1.18em; }
+#screen-content .screen-seat-grid.fit .screen-marks { font-size: .9em; gap: .28em; }
+#screen-content .screen-seat-grid.fit.cells .screen-marks { font-size: .62em; gap: .16em; }
+#screen-content .screen-seat-grid.fit.cells .screen-marks .screen-cell { min-width: 2.2em; }
+#screen-content .screen-marks .screen-balloon {
+  display: inline-grid; place-items: center; min-width: 1.9em; height: 1.9em; padding: 0 .3em; box-sizing: border-box;
+  border-radius: 999px; background: var(--badge-color); border: 2px solid color-mix(in srgb, var(--badge-color) 55%, #fff);
+  font-weight: 800; line-height: 1; box-shadow: 0 .12em .3em #0009;
+}
+#screen-content .screen-seat:not(.quiet):has(.screen-balloon) { border-color: #f5f5f5; background: #262626; }
 #screen-content .screen-seat { min-width: 0; display: grid; align-content: start; gap: .16em; padding: .36em .5em; background: #191919; border: 1px solid #606060; border-radius: 2px; }
 #screen-content .screen-seat.quiet { opacity: .58; }
 #screen-content .screen-seat-name { font-size: .84em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

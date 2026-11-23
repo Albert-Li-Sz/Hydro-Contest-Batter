@@ -74,25 +74,34 @@ function clock(seconds) {
     return [Math.floor(total / 3600), Math.floor(total / 60) % 60, total % 60].map((part) => String(part).padStart(2, '0')).join(':');
 }
 
-function updateAwards(rules, unofficialFirstSolve) {
+/** `config`: the effective configuration the server returned, whose counts come from the final results. */
+function updateAwards(board, config) {
+    if (!board) return;
+    const rules = board.awards;
     const summary = document.getElementById('resolver-award-summary');
     summary.replaceChildren();
+    const ratio = rules.medalBasis === 'ratio';
     for (const tier of ['gold', 'silver', 'bronze']) {
         const item = document.createElement('div');
-        item.textContent = `${rules[`${tier}Citation`]} · ${rules[`${tier}Count`]} 名`;
+        const count = config ? config[`${tier}Count`] : ratio ? board.medalCounts?.[tier] : board.medals[tier];
+        // 按比例设奖: the share and what it comes to.
+        item.textContent = ratio
+            ? `${rules[`${tier}Citation`]} · ${board.medals[tier]}%（${count ?? '—'} 名）`
+            : `${rules[`${tier}Citation`]} · ${count} 名`;
         summary.append(item);
     }
     document.getElementById('resolver-award-policy').textContent = [
+        ratio && `按有效队伍比例设奖（有效队伍 ${board.eligible ?? '—'} 支：正式且至少通过一题，名额向上取整）`,
+        rules.tieBreak === 'icpc' ? '同分规则：ICPC 区域赛（罚时按分钟，再比最后一题通过时间）' : '同分规则：Hydro（罚时精确到秒）',
         rules.medalSameScore ? '并列同奖' : '按名额授奖',
-        rules.firstSolve && (unofficialFirstSolve ? '一血奖含打星选手' : '一血奖仅限正式选手'),
+        rules.firstSolve && (rules.unofficialFirstSolve ? '一血奖含打星选手' : '一血奖仅限正式选手'),
         rules.podiumEnabled && '前三名奖项',
     ].filter(Boolean).join(' · ');
 }
 
+const selectedBoard = () => runtime.boards.find((item) => item.id === form.elements.boardId.value);
 function updateSelectedAwards() {
-    const board = runtime.boards.find((item) => item.id === form.elements.boardId.value);
-    updateAwards({ ...board.awards, goldCount: board.medals.gold, silverCount: board.medals.silver,
-        bronzeCount: board.medals.bronze }, board.awards.unofficialFirstSolve);
+    updateAwards(selectedBoard());
 }
 
 function updateStats(overview) {
@@ -170,7 +179,7 @@ async function refreshPreview() {
         });
         if (number !== requestNumber) return;
         updateOverview(data.overview);
-        if (data.config) updateAwards(data.config, data.game?.options.firstSolveIncludeUnrank);
+        if (data.config) updateAwards(selectedBoard(), data.config);
         view?.dispose();
         game = data.game;
         actions = actionIndicesFor(game.steps);
@@ -282,7 +291,7 @@ form.addEventListener('submit', async (event) => {
             body: JSON.stringify({ config: JSON.stringify(readConfig()) }),
         });
         updateOverview(data.overview);
-        if (data.config) updateAwards(data.config, data.game?.options.firstSolveIncludeUnrank);
+        if (data.config) updateAwards(selectedBoard(), data.config);
         location.assign(data.url);
     } catch (error) {
         showError(error);
