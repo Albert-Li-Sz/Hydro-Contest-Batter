@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { scopeBoardCss } from '../lib/style-scope.mjs';
-import { patchBoardEngine } from '../lib/patch-engine.mjs';
+import { patchBoardEngine, patchBoardLayouts, patchBoardSharing } from '../lib/patch-engine.mjs';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -15,22 +15,37 @@ const target = path.join(publicRoot, version);
 const html = await readFile(path.join(dist, 'index.html'), 'utf8');
 const js = html.match(/assets\/(index-[\w-]+\.js)/)?.[1];
 const css = html.match(/assets\/(index-[\w-]+\.css)/)?.[1];
-if (!js || !css) throw new Error('无法识别 XCPCIO 0.85.4 入口文件');
+if (!js || !css) throw new Error('无法识别 XCPCIO 入口文件');
 await rm(publicRoot, { recursive: true, force: true });
 await mkdir(target, { recursive: true });
 await cp(dist, target, { recursive: true });
 let extendedEngines = 0;
+let layoutSwitches = 0;
+let patchedShareMenus = 0;
 for (const file of await readdir(path.join(target, 'assets'))) {
-    if (/^rank-.*\.js$/.test(file)) {
-        const enginePath = path.join(target, 'assets', file);
-        await writeFile(enginePath, patchBoardEngine(await readFile(enginePath, 'utf8')));
-        extendedEngines++;
+    if (file.endsWith('.js')) {
+        const scriptPath = path.join(target, 'assets', file);
+        let source = await readFile(scriptPath, 'utf8');
+        if (/^rank-.*\.js$/.test(file)) {
+            source = patchBoardEngine(source);
+            extendedEngines++;
+        }
+        if (/^Board-.*\.js$/.test(file)) {
+            source = patchBoardSharing(source);
+            patchedShareMenus++;
+        }
+        const layouts = patchBoardLayouts(source);
+        layoutSwitches += layouts.count;
+        await writeFile(scriptPath, layouts.source);
     }
     if (!file.endsWith('.css')) continue;
     const cssPath = path.join(target, 'assets', file);
     await writeFile(cssPath, scopeBoardCss(await readFile(cssPath, 'utf8'), cssPath));
 }
 if (extendedEngines !== 1) throw new Error('无法定位唯一的 XCPCIO 榜单引擎');
+if (patchedShareMenus !== 1) throw new Error('无法定位唯一的 XCPCIO 榜单页面');
+// The pinned XCPCIO build has 14 layout switches across the board and its components.
+if (layoutSwitches !== 14) throw new Error(`XCPCIO 布局切换数量为 ${layoutSwitches}，预期 14 处，请检查上游构建产物`);
 await cp(path.join(root, 'client'), target, { recursive: true });
 const awardPolicy = await readFile(path.join(root, 'lib/award-policy.mjs'), 'utf8');
 await writeFile(path.join(target, 'award-policy.mjs'), awardPolicy.replace('../resolver/public/js/standings.js', './standings.js'));
@@ -48,7 +63,7 @@ if (logoIndex) {
     await writeFile(path.join(target, 'logos', 'index.json'), JSON.stringify({ source: logoIndex.source, names: logoIndex.names }));
 }
 await writeFile(path.join(publicRoot, 'manifest.json'), JSON.stringify({ base: version, js: `assets/${js}`, css: `assets/${css}` }));
-console.log(`XCPCIO assets ready: ${js}`);
+console.log(`XCPCIO assets ready: ${js} (${layoutSwitches} layout switches kept on the desktop table)`);
 const resolverTarget = path.join(root, 'public/hydro-resolver');
 await rm(resolverTarget, { recursive: true, force: true });
 // Scripts and styles live under the plugin version so an upgrade is never served from Hydro's

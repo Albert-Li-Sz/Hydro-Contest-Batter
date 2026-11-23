@@ -1,4 +1,4 @@
-// Accessibility and layout adapter for the pinned XCPCIO 0.85.4 components.
+// Accessibility and layout adapter for the pinned XCPCIO 0.98.0 components (desktop layout at every width).
 // Ranking and submissions remain owned by the upstream Vue application.
 const app = document.getElementById('app');
 if (app) {

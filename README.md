@@ -26,11 +26,11 @@ Hydro OJ 的 ACM 比赛榜单、滚榜、大屏与直播插件，集成 XCPCIO �
 
 需要 Node.js 22+ 和 Hydro 5.x（已对 5.0.7 与 5.1.0 检查）。请使用运行 Hydro 的系统用户，在主服务所在环境执行。
 
-下载完整安装包 `hydro-scoreboard-xcpcio-plus-1.17.1.tgz`，解压到固定目录，注册 addon 后重启。安装包包含预构建页面、字体和完整校徽。
+下载完整安装包 `hydro-scoreboard-xcpcio-plus-1.18.0.tgz`，解压到固定目录，注册 addon 后重启。安装包包含预构建页面、字体和完整校徽。
 
 ```bash
 mkdir -p "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
-tar -xzf hydro-scoreboard-xcpcio-plus-1.17.1.tgz \
+tar -xzf hydro-scoreboard-xcpcio-plus-1.18.0.tgz \
   -C "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus" --strip-components=1
 hydrooj addon add "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 pm2 restart hydrooj
@@ -44,7 +44,7 @@ pm2 restart hydrooj
 
 ```bash
 mkdir -p xcpcio-update
-tar -xzf hydro-scoreboard-xcpcio-plus-1.17.1.tgz -C xcpcio-update
+tar -xzf hydro-scoreboard-xcpcio-plus-1.18.0.tgz -C xcpcio-update
 bash xcpcio-update/package/install.sh install
 
 # 升级时下载并解压新包，运行新包中的脚本
@@ -93,14 +93,21 @@ bash "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus/install.sh" uninstall
 
 ## 开发
 
+本版发布验证使用 Node.js 24 和 pnpm 11。构建打印客户端需要 Go 1.22 或以上。
+
 ```bash
 pnpm install --frozen-lockfile
 pnpm typecheck
 pnpm test
 pnpm test:ui
 pnpm preview
+pnpm build:print-client
 pnpm pack --pack-destination ./dist
 ```
+
+`pnpm typecheck` 用 TypeScript 7 对已安装的 Hydro API 严格检查插件代码。开发依赖为 Hydro 5.1.0。
+
+榜单前端使用 XCPCIO 0.98.0。`scripts/assets.mjs` 在构建时接入插件的奖项计算，保留表格和插件的窄屏样式，并移除新增的图片分享入口及其第三方图片代理请求。构建会检查各个补丁的匹配数量和布局断点。
 
 `pnpm test:ui` 自行启动一个预览服务（随机端口、临时数据），用系统 Chrome 打开各页面的手机与桌面宽度、浅色与深色，检查脚本错误、请求失败和横向溢出，并走一遍画面采集、大屏自动保存、滚榜和用户搜索等主要操作；Chrome 不在默认位置时用 `CHROME_PATH` 指定。本地预览地址为 `http://127.0.0.1:18900/`，滚榜配置页为 `/contest/demo/resolver`，大屏管理页为 `/contest/demo/screens`，直播设置页为 `/contest/demo/live`（模拟一场进行中、不断有新提交的比赛）。服务端代码位于 `index.ts` 和 `lib/`，界面位于 `client/`、`frontend/` 和 `templates/`，移植的滚榜与大屏模块位于 `resolver/`（来源哈希见 `resolver/UPSTREAM.json`）。校徽由 `pnpm logos` 从 Hydro 校徽注册表下载到 `logos/`，需要本机安装 `cwebp`。直播后端位于 `lib/live/`，前端为 ICPC Live v3.5.1 打上 `live/frontend.patch` 后的构建产物 `live/dist/`，`pnpm build:live` 会从固定提交重新构建（需要 git、pnpm 和网络）。
 

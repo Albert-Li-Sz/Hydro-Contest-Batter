@@ -7,7 +7,7 @@ Apache-2.0 notice is preserved verbatim in licenses/Repository-initial-Apache-2.
 61ea976cc1bc9a392cce0fc7938804b0ce13d2bd. The imported Hydro plugin integration
 continues to use its existing AGPL-3.0-or-later license.
 
-The bundled leaderboard application is XCPCIO 0.85.4, MIT License.
+The bundled leaderboard application is XCPCIO 0.98.0, MIT License.
 https://github.com/xcpcio/xcpcio
 Copyright (c) 2020-PRESENT XCPCIO.
 Its upstream license is distributed with the generated public assets.

@@ -190,6 +190,9 @@
 #xcpcio-plus #app .am-progress-bar-primary { background-color: var(--xp-primary); }
 #xcpcio-plus #app .am-progress-scroll-size { height: 11px; width: 5px; }
 #xcpcio-plus #app .xp-table-host { width: 100%; min-width: 0; }
+/* XCPCIO 0.98 zooms a wide table down to fit (Board.vue updateRankTableZoom); the board scrolls
+   sideways instead, with its sticky columns and minimum widths, as it always has. */
+#xcpcio-plus #app .rank-table-inner { zoom: 1 !important; }
 #xcpcio-plus #app .xp-table-scroll {
   width: 100%; max-width: 100%; min-width: 0; overflow: auto; container-type: inline-size;
   max-height: 74vh; max-height: 74dvh; overscroll-behavior-x: contain;
@@ -294,7 +297,7 @@
 #xcpcio-plus #app .xp-mobile-school .xp-star { margin-left: 4px; color: var(--xp-gold); }
 #xcpcio-plus #app table.standings td:is(.correct, .first-solve, .incorrect, .pending, .frost) > [cursor-pointer] > div:first-child { font-weight: 600; font-size: 15px; line-height: 1.2; }
 #xcpcio-plus #app table.standings td:is(.correct, .first-solve, .incorrect, .pending, .frost) > [cursor-pointer] > div:nth-child(2) { font-size: 12px; line-height: 1.5; }
-#xcpcio-plus #app table.standings td.xp-col-team > [flex] { justify-content: flex-start; }
+#xcpcio-plus #app table.standings td.xp-col-team > [flex] { justify-content: flex-start; align-items: flex-start; }
 #xcpcio-plus #app table.standings td.xp-col-team [line-clamp-2] { word-break: normal; overflow-wrap: anywhere; }
 #xcpcio-plus #app td.gold { background: var(--xp-medal-gold) !important; color: var(--xp-medal-gold-ink); box-shadow: inset 4px 0 var(--xp-medal-gold-bar); font-weight: 700; }
 #xcpcio-plus #app td.silver { background: var(--xp-medal-silver) !important; color: var(--xp-medal-silver-ink); box-shadow: inset 4px 0 var(--xp-medal-silver-bar); font-weight: 700; }
