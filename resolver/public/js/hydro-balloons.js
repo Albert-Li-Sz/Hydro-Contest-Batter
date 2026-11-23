@@ -273,11 +273,7 @@ function renderDeliver() {
 function intro() {
     return el('div', { class: 'manage-group balloon-intro' },
         el('h3', { text: '开启气球配送' }),
-        el('p', { text: '开启后，插件在比赛期间为每支队伍首次通过的每道题生成一个气球：按考场（座位前缀）和题目列出待配送的气球，工作人员送达后点击标记；也可让小票机为每个新气球自动打印配送小票。' }),
-        el('ul', { class: 'resolver-muted' },
-            el('li', { text: '不依赖 Hydro 自带的气球记录：未设置气球颜色、封榜之后也照常生成（可设为封榜后暂缓）。' }),
-            el('li', { text: '重测撤销通过时气球自动撤销；在 Hydro 气球页标记的送达会同步过来。' }),
-            el('li', { text: '可生成免登录的配送员链接，志愿者无需 Hydro 管理权限。' })),
+        el('p', { text: '为每支队伍首次通过的每道题生成一个气球，按考场和题目配送。' }),
         el('button', { class: 'button primary', type: 'button', text: '开启气球配送', onclick: () => act('enable', { enabled: true }, () => '已开启气球配送') }));
 }
 
@@ -350,7 +346,6 @@ function renderSettings() {
                 });
                 markDirty(); renderSettings();
             } })),
-        el('p', { class: 'resolver-muted manage-small', text: '颜色名称印在小票上（例如“红”“浅蓝”），不填时按颜色自动取最接近的名称。未在此设置的题目使用 Hydro 比赛气球颜色。气球配送图大屏也使用这里的颜色。' }),
         presets,
         el('div', { class: 'manage-scroll' }, el('table', { class: 'data-table' },
             el('thead', {}, el('tr', {}, ...['题目', '标题', '颜色', '名称', 'Hydro 颜色'].map((text) => el('th', { text })), el('th', { class: 'col-actions', text: '' }))),
@@ -370,7 +365,7 @@ function renderSettings() {
     const ruleCards = draft.tickets.rules.map((rule, index) => {
         const name = el('input', { class: 'textbox', value: rule.name, maxlength: 40, 'aria-label': '规则名称' });
         name.addEventListener('input', () => { rule.name = name.value; markDirty(); });
-        const zones = el('input', { class: 'textbox', value: rule.zones.join(' '), placeholder: '例如：A B C-1（空 = 所有座位）', 'aria-label': '考场前缀' });
+        const zones = el('input', { class: 'textbox', value: rule.zones.join(' '), placeholder: '所有考场', 'aria-label': '考场前缀' });
         zones.addEventListener('input', () => { rule.zones = zones.value.split(/[\s,，;；]+/).filter(Boolean); markDirty(); });
         const zoneHints = knownZones.length ? el('div', { class: 'balloon-hints' }, el('span', { class: 'manage-dim manage-small', text: '已导入的考场：' }),
             ...knownZones.map((zone) => el('button', { type: 'button', class: 'balloon-chip', text: zone, onclick: () => {
@@ -427,7 +422,6 @@ function renderSettings() {
                 el('td', { text: printer.seatPrefixes.length ? printer.seatPrefixes.map((prefix) => `${prefix}*`).join(' ') : '其他座位' })))))) :
             el('p', { class: 'manage-alert' }, '还没有小票机。系统管理员在 ', el('a', { href: runtime.printersUrl, text: '打印服务器管理' }), ' 中把连接在打印电脑上的热敏打印机的类型设为“小票机”。'),
         el('h4', { text: '分配方案' }),
-        el('p', { class: 'resolver-muted manage-small', text: '按顺序匹配：第一条考场和题目都符合的规则决定小票打印到哪里；规则里的小票机都不可用时，小票等待其恢复。没有规则匹配时，小票打印到为该座位服务的打印服务器（“打印服务器管理”中的座位范围）上的小票机。' }),
         ...ruleCards,
         el('div', { class: 'manage-toolbar' },
             el('button', { class: 'button', type: 'button', text: '＋ 添加规则', onclick: () => {

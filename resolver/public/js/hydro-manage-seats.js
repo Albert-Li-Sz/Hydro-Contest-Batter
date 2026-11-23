@@ -105,7 +105,7 @@ export function createSeatsPanel() {
             ...data.links.map((item) => el('span', {
                 class: `manage-link${!item.count ? ' is-none' : handedOut.includes(item) ? ' is-out' : ' is-fresh'}`,
                 title: item.issuedAt ? `签发于 ${formatTime(item.issuedAt)}` : undefined,
-            }, item.label, item.id === 'capture' && item.count ? el('b', { text: item.count }) : null)),
+            }, item.label, item.count > 1 || (item.id === 'capture' && item.count) ? el('b', { text: item.count }) : null)),
             el('span', { class: 'manage-spacer' }),
             el('button', { class: 'button manage-danger', type: 'button', text: '全部更换', disabled: !data.links.some((item) => item.count), onclick: () => revoke(data) }));
     }
@@ -239,7 +239,7 @@ export function createSeatsPanel() {
         openDialog({
             title: `更换 ${data.contest.title} 的免登录链接`,
             confirm: '全部更换',
-            body: [el('p', { class: 'manage-links manage-links--plain' }, ...live.map((item) => el('span', { class: 'manage-link is-out' }, item.label, item.id === 'capture' ? el('b', { text: item.count }) : null)))],
+            body: [el('p', { class: 'manage-links manage-links--plain' }, ...live.map((item) => el('span', { class: 'manage-link is-out' }, item.label, item.count > 1 || item.id === 'capture' ? el('b', { text: item.count }) : null)))],
             submit: async () => {
                 const result = await post('revoke_links', { contest: data.contest.key });
                 const failed = result.links.filter((item) => item.error);

@@ -25,6 +25,8 @@ describe('Clarification desk', () => {
         expect(isDeskWrite('localhost:8080', { ...xhr, origin: 'http://localhost:8080' })).toBe(true);
         expect(isDeskWrite('localhost:8080', { ...xhr, origin: 'http://elsewhere:8080' })).toBe(false);
         expect(isDeskWrite('localhost:8080', { ...xhr, origin: 'null' })).toBe(false);
+        // Not a URL at all: rejected, not thrown (no URL.parse, which Node 22.0 lacks).
+        expect(isDeskWrite('localhost:8080', { ...xhr, origin: '%%' })).toBe(false);
         expect(isDeskWrite('localhost:8080', { origin: 'http://localhost:8080' })).toBe(false);
     });
 

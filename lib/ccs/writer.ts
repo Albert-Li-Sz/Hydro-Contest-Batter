@@ -7,12 +7,12 @@
  */
 import { randomUUID } from 'node:crypto';
 import type { Context, Tdoc } from 'hydrooj';
-import { project, endpointProperties } from './access';
+import { endpointProperties } from './access';
 import { isPending } from './judgement-types';
-import { buildObjects, type CcsObjects, type CcsSource, contestTimes, type View } from './model';
+import { buildObjects, type CcsSource, contestTimes, type View } from './model';
 import type { SourceDependencies, HydroApi, createCcsSourceLoader } from './source';
 import { type CcsStore, contestKey, type EventDoc, type WebhookDoc } from './store';
-import { type Endpoint, EVENT_TYPES, type EventType } from './types';
+import { type Endpoint } from './types';
 
 const LEASE = 'ccs-writer';
 const LEASE_MS = 15_000;

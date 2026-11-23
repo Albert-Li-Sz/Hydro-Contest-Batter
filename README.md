@@ -24,13 +24,13 @@ Hydro OJ 的 ACM 比赛榜单、滚榜、大屏与直播插件，集成 XCPCIO �
 
 ## 安装
 
-需要 Node.js 22+ 和 Hydro 5.x。请使用运行 Hydro 的系统用户，在主服务所在环境执行。
+需要 Node.js 22+ 和 Hydro 5.x（已对 5.0.7 与 5.1.0 检查）。请使用运行 Hydro 的系统用户，在主服务所在环境执行。
 
-下载完整安装包 `hydro-scoreboard-xcpcio-plus-1.17.0.tgz`，解压到固定目录，注册 addon 后重启。安装包包含预构建页面、字体和完整校徽。
+下载完整安装包 `hydro-scoreboard-xcpcio-plus-1.17.1.tgz`，解压到固定目录，注册 addon 后重启。安装包包含预构建页面、字体和完整校徽。
 
 ```bash
 mkdir -p "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
-tar -xzf hydro-scoreboard-xcpcio-plus-1.17.0.tgz \
+tar -xzf hydro-scoreboard-xcpcio-plus-1.17.1.tgz \
   -C "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus" --strip-components=1
 hydrooj addon add "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 pm2 restart hydrooj
@@ -44,7 +44,7 @@ pm2 restart hydrooj
 
 ```bash
 mkdir -p xcpcio-update
-tar -xzf hydro-scoreboard-xcpcio-plus-1.17.0.tgz -C xcpcio-update
+tar -xzf hydro-scoreboard-xcpcio-plus-1.17.1.tgz -C xcpcio-update
 bash xcpcio-update/package/install.sh install
 
 # 升级时下载并解压新包，运行新包中的脚本

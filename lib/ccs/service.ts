@@ -24,8 +24,6 @@ import { readZip, writeZip, ZipError } from './zip';
 
 const TYPE_CONTEST = 30;
 const TYPE_CONTEST_CLARIFICATION = 31;
-const KEEPALIVE_MS = 60_000;
-const POLL_MS = 1000;
 const SOURCE_TTL_MS = 0; // A GET must never lag an event already delivered to a client.
 const AUTH_TTL_MS = 5 * 60_000;
 const logoKey = (name: string) => name.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');

@@ -19,7 +19,7 @@ import { awardsFor, type BoardSettings } from '../settings';
 import { resultsFinal, specialAwardResults } from '../special-awards';
 import { isPending, judgementTypeOf, judgementTypes, simplifiedOf } from './judgement-types';
 import {
-    abstime, type Account, type Award, type Clarification, type Commentary, type Contest, type FileRef, type Group, type Judgement,
+    abstime, type Account, type Award, type Clarification, type Commentary, type Contest, type Group, type Judgement,
     type JudgementType, type Language, languageId, type Organization, type Person, type Problem, reltime, type Run, type Scoreboard,
     type ScoreboardRow, type State, type Submission, type Team, teamId, stableId,
 } from './types';

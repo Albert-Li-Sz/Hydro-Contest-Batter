@@ -5,7 +5,7 @@
 <div class="row xp-page xp-settings" id="xp-settings"><div class="medium-12 columns">
   <section class="section visible">
     <div class="section__header xp-page-header">
-      <div><h1 class="section__title">榜单与奖项设置</h1><p class="xp-muted">{{ tdoc.title }} · 榜单、滚榜、大屏、直播与 CCS API 共用此处的奖项与排名规则</p></div>
+      <div><h1 class="section__title">榜单与奖项设置</h1><p class="xp-muted">{{ tdoc.title }}</p></div>
       <div class="xp-page-actions">
         <a class="button" href="{{ boardUrl }}">查看榜单</a>
         {% if resolverUrl %}<a class="button" href="{{ resolverUrl }}">滚榜配置</a>{% endif %}
@@ -22,13 +22,12 @@
         <div class="section__header"><h2 class="section__title">奖项与排名规则</h2></div>
         <div class="section__body">
           <label class="xp-field">同分规则<select class="select" id="xp-tie-break">
-            <option value="hydro">Hydro 规则：罚时精确到秒，罚时相同则并列</option>
-            <option value="icpc">ICPC 区域赛规则：罚时按分钟，再比最后一题通过时间，仍相同则并列</option>
+            <option value="hydro">Hydro 规则（罚时按秒）</option>
+            <option value="icpc">ICPC 区域赛规则（罚时按分钟，再比最后一题通过时间）</option>
           </select></label>
-          <p class="xp-muted" id="xp-tie-break-hint"></p>
           <label class="xp-field">奖牌名额<select class="select" id="xp-medal-basis">
             <option value="count">固定数量</option>
-            <option value="ratio">按有效队伍比例（正式且至少通过一题，向上取整）</option>
+            <option value="ratio">按有效队伍比例（%）</option>
           </select></label>
           <div class="xp-medals" id="xp-default-medals">
             <label><span><i class="xp-dot xp-gold"></i>金牌</span><input class="textbox" aria-label="金牌数量" data-medal="gold" type="number" min="0" max="100000" step="1" required></label>
@@ -36,7 +35,6 @@
             <label><span><i class="xp-dot xp-bronze"></i>铜牌</span><input class="textbox" aria-label="铜牌数量" data-medal="bronze" type="number" min="0" max="100000" step="1" required></label>
           </div>
           <div id="xp-default-award-options"></div>
-          <p class="xp-muted">零过题不获奖；奖牌与前三名只授予正式选手。</p>
         </div>
       </section>
       <section class="section visible">
@@ -54,24 +52,24 @@
       <div class="section__body">
         <div class="xp-checks xp-access-options">
           <label class="checkbox"><input type="checkbox" id="xp-replace-native" {% if not replacementEnabled %}disabled{% endif %}><span><strong>替换 Hydro 原生榜单</strong></span></label>
-          <label class="checkbox"><input type="checkbox" id="xp-public-access"><span><strong>公开榜单</strong><small>无需登录即可查看</small></span></label>
-          <label class="checkbox"><input type="checkbox" id="xp-ccs-api"><span><strong>开放 CCS API</strong><small>供 ICPC Tools 连接，使用 Hydro 账号登录</small></span></label>
-          <label class="checkbox"><input type="checkbox" id="xp-show-identity"><span><strong>向所有观众显示学校</strong><small>关闭时观众看不到学校、校徽和学校榜</small></span></label>
+          <label class="checkbox"><input type="checkbox" id="xp-public-access"><span><strong>公开榜单</strong></span></label>
+          <label class="checkbox"><input type="checkbox" id="xp-ccs-api"><span><strong>开放 CCS API</strong></span></label>
+          <label class="checkbox"><input type="checkbox" id="xp-show-identity"><span><strong>向所有观众显示学校</strong></span></label>
         </div>
-        {% if not replacementEnabled %}<p class="xp-muted">需先在插件配置中启用 asDefault 才能替换原生榜单。</p>{% endif %}
+        {% if not replacementEnabled %}<p class="xp-muted">需在插件配置中启用 asDefault。</p>{% endif %}
         <div id="xp-public-url-wrap" class="xp-public-link"><span>公开地址：<a id="xp-public-url" href="{{ publicUrl }}" target="_blank" rel="noopener">{{ publicUrl }}</a></span><button class="button" type="button" id="xp-copy-url">复制链接</button></div>
         <p id="xp-public-disabled" class="xp-muted" hidden>保存后公开链接将失效。</p>
         <div id="xp-ccs-url-wrap" class="xp-public-link"><span>CCS API 地址：<a id="xp-ccs-url" href="{{ ccsUrl }}" target="_blank" rel="noopener">{{ ccsUrl }}</a></span><button class="button" type="button" id="xp-copy-ccs-url">复制链接</button></div>
         <div id="xp-ccs-controls" hidden>
-          <label class="checkbox"><input type="checkbox" id="xp-ccs-auto-finalize"><span><strong>自动确认 CCS 最终结果</strong><small>解冻且无待评测提交 30 秒后自动确认</small></span></label>
-          <button class="button" type="button" id="xp-ccs-finalize" title="确认后 CCS 数据固定，之后的重测不再改变它">确认 CCS 最终结果</button>
+          <label class="checkbox"><input type="checkbox" id="xp-ccs-auto-finalize"><span><strong>自动确认 CCS 最终结果</strong></span></label>
+          <button class="button" type="button" id="xp-ccs-finalize">确认 CCS 最终结果</button>
           <span id="xp-ccs-status" class="xp-muted" role="status" aria-live="polite"></span>
         </div>
       </div>
     </section>
     <section class="section visible" id="board-awards">
       <div class="section__header"><h2 class="section__title">各榜奖项</h2></div>
-      <div class="section__body"><p class="xp-muted">榜单与滚榜共用；未单独设置的继承默认值。</p><div id="xp-board-awards"></div></div>
+      <div class="section__body"><div id="xp-board-awards"></div></div>
     </section>
     <section class="section visible" id="special-awards">
       <div class="section__header"><h2 class="section__title">特别奖</h2></div>

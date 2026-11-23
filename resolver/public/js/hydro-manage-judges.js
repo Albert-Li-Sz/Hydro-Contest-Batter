@@ -25,7 +25,7 @@ $('manage-root').replaceChildren(
             uname, note, el('button', { class: 'button primary', type: 'submit', text: '添加并复制配置' }))),
     el('div', { class: 'manage-group' },
         el('div', { class: 'manage-toolbar' }, el('h3', { text: '评测机账号', style: 'margin:0' }), el('span', { class: 'manage-spacer' }), deleteButton),
-        el('p', { class: 'resolver-muted manage-small', text: '复制配置会重置该评测机的密码。分流设置仅适用于独立评测机。' }),
+        el('p', { class: 'resolver-muted manage-small', text: '复制配置会重置该评测机的密码。' }),
         status,
         el('div', { class: 'manage-scroll' }, table)),
 );

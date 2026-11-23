@@ -7,10 +7,11 @@ export function installPresence({ url, interval }) {
     const shared = `xcpcio-presence:${url}`;
     let timer = 0;
     let stopped = false;
+    let mark = '';
     const send = (keepalive = false) => {
         const hidden = document.visibilityState !== 'visible';
         try {
-            if (!hidden) localStorage.setItem(shared, String(Date.now()));
+            if (!hidden) localStorage.setItem(shared, mark = String(Date.now()));
             else if (Date.now() - Number(localStorage.getItem(shared) || 0) < every * 1.5) return;
         } catch { /* private mode: every tab reports */ }
         fetch(url, {
@@ -23,7 +24,13 @@ export function installPresence({ url, interval }) {
         clearTimeout(timer);
         if (!stopped) timer = setTimeout(() => { send(); schedule(); }, every);
     };
-    const changed = () => { send(document.visibilityState !== 'visible'); schedule(); };
+    const changed = () => {
+        const hidden = document.visibilityState !== 'visible';
+        // This tab was the one in front: its own mark must not hold back its report.
+        if (hidden) try { if (localStorage.getItem(shared) === mark) localStorage.removeItem(shared); } catch { /* no storage */ }
+        send(hidden);
+        schedule();
+    };
     document.addEventListener('visibilitychange', changed);
     schedule();
     return () => {

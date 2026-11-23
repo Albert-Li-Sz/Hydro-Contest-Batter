@@ -56,7 +56,6 @@ function renderStats() {
 function renderDownloads() {
     downloads.replaceChildren(
         el('h3', { text: '打印客户端' }),
-        el('p', { class: 'resolver-muted manage-small', text: 'macOS 和 Linux 需使用 CUPS。首次运行时粘贴打印服务器的连接信息。' }),
         state.clients.length
             ? el('div', { class: 'manage-toolbar' }, ...state.clients.map((client) => el('a', { class: 'button', href: client.url, download: client.name, text: `${client.label}（${(client.size / 1048576).toFixed(1)} MB）` })))
             : el('p', { class: 'manage-alert', text: '此安装包未包含打印客户端。请从插件的 GitHub Release 下载 hydro-print-client，或用 pnpm build:print-client 构建。' }),
@@ -238,7 +237,6 @@ function showCode(server, code, created) {
         title: `${server.name} 的连接信息`,
         confirm: '完成',
         body: [
-            el('p', { class: 'resolver-muted', text: '在打印电脑上运行打印客户端，粘贴以下连接信息。' }),
             text,
             el('div', { class: 'resolver-actions', style: 'justify-content:flex-start;margin-top:8px' }, copy),
             el('p', { class: created ? 'resolver-muted manage-small' : 'manage-error manage-small', text: created
@@ -275,7 +273,7 @@ function serverDialog(server) {
     const serverName = input({ value: server?.name || '', maxlength: 40, required: true, placeholder: '例如 打印室 A 区' });
     const serverNote = input({ value: server?.note || '', maxlength: 200, placeholder: '可选，如位置、负责人' });
     const enabled = el('input', { type: 'checkbox', checked: server ? server.enabled : true });
-    const prefixes = input({ value: server?.seatPrefixes.join(', ') || '', placeholder: '例如 A, B；留空表示其他打印服务器未认领的座位' });
+    const prefixes = input({ value: server?.seatPrefixes.join(', ') || '', placeholder: '留空则打印其余座位' });
     const chosen = new Set(server?.contests || []);
     const scope = el('select', { class: 'select' }, new Option('服务全部比赛', 'all', false, !chosen.size), new Option('仅服务所选比赛', 'some', false, chosen.size > 0));
     const filter = input({ type: 'search', placeholder: '按比赛名称或域查找', 'aria-label': '查找比赛' });
@@ -313,7 +311,7 @@ function serverDialog(server) {
             server ? el('label', { class: 'checkbox' }, enabled, '启用') : null,
             field('服务比赛', scope),
             picker,
-            field('座位前缀', prefixes, '逗号分隔，如 A, B1。不设前缀的服务器打印其余座位。'))],
+            field('座位前缀', prefixes))],
         submit: async () => {
             if (!serverName.reportValidity()) throw new Error('请填写名称');
             if (scope.value === 'some' && !chosen.size) throw new Error('请至少选择一场比赛，或改为“服务全部比赛”');

@@ -6,19 +6,6 @@ let config = structuredClone(runtime.config);
 let linkBase = runtime.linkBase;
 let dirty = false;
 
-const hints = {
-    queue: '画面包含队伍、提交时间和题号。封榜后的提交显示为待定。',
-    countdown: '距目标时间的倒计时，到点后转为正计时。',
-    resolver: '观众只看到已揭晓的结果。',
-    outcomes: '封榜后隐藏的结果计入待定。',
-    'logo-wall': '只展示公开榜允许显示的学校。',
-    'problem-colors': '在 Hydro 的气球管理中设置颜色。',
-    floor: '读取 onsite-toolkit 导入的座位号。请按场馆需要分享链接。',
-    balloons: '从 Hydro 气球管理读取待配送记录。仅显示公开榜可见的通过。',
-    judges: '画面以编号标识评测机。',
-    clarifications: '只显示发给所有选手的公告。',
-};
-
 function el(tag, attrs = {}, ...children) {
     const node = document.createElement(tag);
     for (const [key, value] of Object.entries(attrs)) {
@@ -181,7 +168,6 @@ function card(type) {
         $('screen-preview').showModal();
     });
     const body = el('div', { class: 'section__body' });
-    if (hints[type]) body.append(el('p', { class: 'resolver-muted', text: hints[type] }));
     if (fields.childElementCount) body.append(fields);
     if (type === 'poster') body.append(posterControls(item));
     body.append(el('div', { class: 'screen-link' }, link, copy, preview, open));

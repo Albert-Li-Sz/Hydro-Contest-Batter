@@ -147,8 +147,9 @@ export function applyClarificationDesk(ctx: Context, dependencies: {
                     { $set: { reminder: { lock, id: new ObjectId() } } }, { returnDocument: 'after' },
                 ))?.reminder;
                 if (!reminder) continue;
-                const time = tdoc.lockAt!.toISOString().slice(0, 16).replace('T', ' ');
-                await announce(tdoc, `封榜提醒：本场比赛将在约 ${Math.ceil((lock - now) / 60_000)} 分钟后封榜（${time} UTC）。封榜期间仍可正常提交。`, 0, '', reminder.id);
+                // Contestants read Beijing time, as on the results page (lib/results-page.ts).
+                const time = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(lock);
+                await announce(tdoc, `封榜提醒：本场比赛将于 ${time} 封榜（约 ${Math.ceil((lock - now) / 60_000)} 分钟后）。封榜期间仍可正常提交。`, 0, '', reminder.id);
                 await settings.updateOne(filter, { $set: { checkAt: null, checkedFreeze: lock } });
             } catch { /* A temporarily unavailable contest or database is retried in the next run. */ }
         }

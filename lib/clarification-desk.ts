@@ -62,8 +62,13 @@ export function readDeskText(value: unknown, label = '内容', max = clarificati
     return text;
 }
 
+const originHost = (origin: string) => {
+    // URL.parse arrived in Node 22.1; the plugin supports every Node 22.
+    try { return new URL(origin).host; } catch { return null; }
+};
+
 export function isDeskWrite(host: string, headers: { origin?: string; 'x-requested-with'?: string | string[] }) {
-    return headers['x-requested-with'] === 'XMLHttpRequest' && (!headers.origin || URL.parse(headers.origin)?.host === host);
+    return headers['x-requested-with'] === 'XMLHttpRequest' && (!headers.origin || originHost(headers.origin) === host);
 }
 
 export function readDeskSubject(value: unknown, pids: number[], allowGeneral = false) {

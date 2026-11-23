@@ -5,7 +5,7 @@ import type { CcsSource } from '../lib/ccs/model';
 import { ccsFixture } from './ccs-fixture';
 import { previewDatabase } from '../preview/resolver-memory-db';
 import { readZip, writeZip } from '../lib/ccs/zip';
-import { abstime, reltime } from '../lib/ccs/types';
+import { abstime } from '../lib/ccs/types';
 const state = vi.hoisted(() => ({ source: null as unknown as CcsSource, contest: null as any, users: {} as Record<number, any>, uid: 0, record: 0, docs: [] as any[] }));
 vi.mock('hydrooj', () => {
     class ObjectId {

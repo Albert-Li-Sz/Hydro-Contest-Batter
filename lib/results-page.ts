@@ -34,7 +34,7 @@ export function resultsPage(params: {
     allRows: boolean;
     saved: boolean;
 }) {
-    const { before, after, options, selectedBoard: selected, beforeId, afterId, allRows, contestUrl } = params;
+    const { before, after, selectedBoard: selected, beforeId, afterId, allRows, contestUrl } = params;
     const afterBoards = boardOptions(after);
     const boardMap = new Map(afterBoards.map((board) => [board.id, board]));
     if (before) for (const board of boardOptions(before)) if (!boardMap.has(board.id)) boardMap.set(board.id, board);

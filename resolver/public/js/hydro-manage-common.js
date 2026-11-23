@@ -107,7 +107,7 @@ export function input(attrs = {}) {
 
 /** The operator's own password, asked before anything is deleted. */
 export function adminPassword() {
-    return input({ type: 'password', autocomplete: 'current-password', required: true, placeholder: '当前登录管理员的 Hydro 密码' });
+    return input({ type: 'password', autocomplete: 'current-password', required: true, placeholder: '你的 Hydro 密码' });
 }
 
 /**

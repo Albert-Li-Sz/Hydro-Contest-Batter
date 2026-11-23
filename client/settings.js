@@ -61,13 +61,6 @@ if (root) {
     medalBasis.addEventListener('change', () => applyBasis(defaultMedalInputs, medalBasis.value));
     const tieBreak = document.getElementById('xp-tie-break');
     tieBreak.value = settings.tieBreak === 'icpc' ? 'icpc' : 'hydro';
-    const tieHint = document.getElementById('xp-tie-break-hint');
-    const updateTieHint = () => {
-        tieHint.textContent = tieBreak.value === 'icpc'
-            ? '按通过题数；相同时总用时少者在前（每题通过时间取整到分钟，每次未通过的提交加 20 分钟）；仍相同时最后一题通过时间早者在前；再相同则并列，并列队伍获同等奖项。'
-            : '按通过题数；相同时罚时少者在前（通过时间精确到秒，每次未通过的提交加 20 分钟）；罚时相同则并列，与 Hydro 原生榜单一致。';
-    };
-    tieBreak.addEventListener('change', updateTieHint); updateTieHint();
     document.getElementById('xp-schools').checked = settings.schoolBoards;
     document.getElementById('xp-participation').checked = settings.participationBoards;
     const publicAccess = document.getElementById('xp-public-access');
@@ -96,7 +89,7 @@ if (root) {
         setTimeout(() => { copyCcs.textContent = '复制链接'; }, 2000);
     });
     finalize.addEventListener('click', async () => {
-        if (!confirm('确认 CCS 最终结果后将保存不可变快照，并结束事件流。后续重测不会更新 CCS 数据。是否继续？')) return;
+        if (!confirm('确认后 CCS 结果固定，之后的重测不再更新它。继续？')) return;
         finalize.disabled = true;
         try {
             const response = await fetch(`${ccsLink.href.replace(/\/$/, '')}/finalize`, {

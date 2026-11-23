@@ -1,6 +1,6 @@
 // /manage user configuration: accounts and Hydro 5.1 teams, edit and (batch) delete; seats and IP login.
 import {
-    $, adminPassword, el, field, formatTime, get, input, notify, openDialog, post, randomPassword, runtime,
+    $, adminPassword, el, field, formatTime, get, input, notify, openDialog, post, randomPassword,
 } from './hydro-manage-common.js';
 import { createSeatsPanel } from './hydro-manage-seats.js';
 
@@ -122,7 +122,7 @@ function renderTeams() {
             el('td', { text: row.contests }),
             el('td', { class: 'manage-nowrap manage-small', text: formatTime(row.regat) }),
             el('td', { class: 'col-actions' }, el('button', { class: 'button', type: 'button', text: '编辑', onclick: () => editTeam(row) })),
-        )) : [el('tr', {}, el('td', { class: 'manage-empty', colspan: 8, text: state.q ? '没有匹配的队伍' : '暂无队伍。Hydro 5.1 起选手可在“比赛 → 我的队伍”中组队。' }))]),
+        )) : [el('tr', {}, el('td', { class: 'manage-empty', colspan: 8, text: state.q ? '没有匹配的队伍' : '暂无队伍' }))]),
     );
 }
 
@@ -175,12 +175,12 @@ function editUser(row) {
         body: [el('div', { class: 'resolver-fields resolver-two' },
             field('UID', el('div', { class: 'manage-readonly', text: row._id })),
             field('账号', el('div', { class: 'manage-readonly', text: row.uname })),
-            field('显示名', displayName, `当前域（${runtime.domainId}）的显示名`),
+            field('显示名', displayName),
             field('邮箱', mail),
             field('学校', school),
             field('学号', studentId)),
-        el('div', { class: 'resolver-fields' }, field('新密码', password.wrap, '修改后该用户已登录的会话会退出'),
-            row.admin ? field('管理员密码', operator, `${row.uname} 是系统管理员：修改其密码或邮箱需要输入当前登录管理员的密码`) : null)],
+        el('div', { class: 'resolver-fields' }, field('新密码', password.wrap),
+            row.admin ? field('管理员密码', operator) : null)],
         submit: async () => {
             const edit = { displayName: displayName.value, mail: mail.value, school: school.value, studentId: studentId.value };
             if (password.box.value) edit.password = password.box.value;
@@ -215,7 +215,7 @@ function editTeam(row) {
             field('队名', displayName),
             field('队员（账号名或 UID）', members),
             field('待接受邀请', invite),
-            field('重置全体队员密码', password.wrap, 'Hydro 队伍本身没有密码，选手用各自账号登录；填写后所有队员改用此密码登录'),
+            field('重置全体队员密码', password.wrap),
             el('label', { class: 'checkbox' }, sync, '同步队名与队员到该队已报名的比赛')),
         ],
         submit: async () => {

@@ -19,7 +19,7 @@
     </div>
     <div class="section__body">
       <form class="results-form" method="post" action="{{ base }}">
-        <label>快照名称（可选）<input type="text" class="textbox" name="snapshotName" maxlength="80"></label>
+        <label>快照名称<input type="text" class="textbox" name="snapshotName" maxlength="80"></label>
         <button class="button primary" type="submit">拍快照</button>
         {% if saved %}<strong role="status">快照已保存</strong>{% endif %}
       </form>
@@ -45,14 +45,13 @@
         </select></label>
         <button class="button primary" type="submit">应用</button>
       </form>
-      {% if approximate %}<p class="results-note" role="status">历史重测使用现有队伍、分榜和奖项规则还原已记录的判定。只能还原插件批量重测中有记录的变化。</p>{% endif %}
       <div class="results-tools">
         {% if exportable %}
           <a class="button" href="{{ base }}/export/standings?{{ exportQuery }}">下载成绩 CSV</a>
           <a class="button" href="{{ base }}/export/awards?{{ exportQuery }}">下载获奖名单 CSV</a>
-        {% else %}<span class="results-note">所选成绩来源中没有此分榜。</span>{% endif %}
+        {% else %}<span class="results-note">此版本没有该分榜</span>{% endif %}
         <a class="button" href="{{ nativeCode }}">下载全部代码</a>
-        <span class="results-note">{% if isFinal %}所选成绩已定榜{% else %}所选成绩暂定{% endif %}</span>
+        <span class="results-note">{% if isFinal %}定榜{% else %}暂定{% endif %}</span>
       </div>
     </div>
     <div class="results-table" tabindex="0" role="region" aria-label="{% if comparison %}成绩对比{% else %}成绩表{% endif %}">

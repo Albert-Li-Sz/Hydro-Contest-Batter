@@ -21,7 +21,7 @@ const contestPanel = el('div');
 const problemPanel = el('div');
 const domainPanel = el('div', { class: 'manage-alert manage-alert--error' },
     el('strong', { text: '将重测整个域的全部提交' }),
-    el('div', { text: '包括比赛内外的所有提交（已取消、Hack、自测与数据生成除外），仍按下方的结果类型与“AC 不参与重测”筛选。数量可能很大，评测队列会被占用较长时间；开始前需要输入管理员密码。' }));
+    el('div', { text: '包括比赛内外的提交，仍按下方结果类型筛选；评测队列会被长时间占用。' }));
 const contestProblems = el('div');
 const search = input({ type: 'search', placeholder: '题号、题目 ID 或标题', 'aria-label': '搜索题目', autocomplete: 'off' });
 const searchResults = el('ul', { class: 'manage-search', role: 'listbox', hidden: true });

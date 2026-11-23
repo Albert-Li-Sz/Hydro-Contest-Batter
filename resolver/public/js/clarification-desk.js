@@ -262,7 +262,7 @@ async function send(payload, message, onSuccess) {
             method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             body: new URLSearchParams({ payload: JSON.stringify(payload) }),
         });
-        const result = await response.json();
+        const result = await response.json().catch(() => ({}));
         if (!response.ok || !result.ok) throw new Error(typeof result.error === 'string' ? result.error : '操作未完成，请刷新后查看。');
         onSuccess?.();
         await refresh({ sound: false });
@@ -330,7 +330,8 @@ if (runtime.manager) {
     });
 }
 void refresh();
+// With the sound on, a desk left in a background tab keeps watching for new questions.
 const refreshTimer = setInterval(() => {
     if (!root.isConnected || state.expired) clearInterval(refreshTimer);
-    else if (!state.busy && !document.hidden) void refresh();
+    else if (!state.busy && (!document.hidden || audio?.state === 'running')) void refresh();
 }, 4000);
