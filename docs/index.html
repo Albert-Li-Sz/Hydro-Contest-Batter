@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Hydro Contest Batter v1.13.0 操作手册，涵盖安装升级、ACM 比赛配置、增强榜、滚榜、大屏、直播、打印和故障排查。">
+  <meta name="description" content="Hydro Contest Batter v1.13.0 操作手册，涵盖安装升级、ACM 比赛配置、增强榜、滚榜、大屏、气球配送、直播、打印和故障排查。">
   <meta name="theme-color" content="#811c39">
   <title>Hydro Contest Batter 操作手册</title>
   <link rel="stylesheet" href="./manual.css">
@@ -27,6 +27,7 @@
         <a href="#install">安装与升级</a>
         <a href="#prepare">赛前配置</a>
         <a href="#screens">现场大屏</a>
+        <a href="#balloons">气球配送</a>
         <a href="#broadcast">直播与 OBS</a>
         <a href="#print">比赛打印</a>
         <a href="#judging">评测监控与重测</a>
@@ -39,7 +40,7 @@
       <header class="intro">
         <p class="version">适用于插件 v1.13.0 · Hydro 5.x</p>
         <h1>Hydro 比赛操作手册</h1>
-        <p class="lead">从安装插件、配置 ACM 比赛，到现场投屏、打印、直播和赛后滚榜。</p>
+        <p class="lead">从安装插件、配置 ACM 比赛，到现场投屏、气球配送、打印、直播和赛后滚榜。</p>
         <a class="primary-link" href="#prepare">开始配置比赛</a>
       </header>
 
@@ -108,8 +109,20 @@ pm2 status hydrooj</code></pre>
           <div><dt>场馆与现场</dt><dd>赛场平面图、气球配送图、通过播报、评测机状态。</dd></div>
           <div><dt>信息与编排</dt><dd>图片海报、比赛公告滚动、题目列表。海报按上传顺序播放，支持 PNG、JPEG、WebP，每张最大 2 MiB，最多 20 张。</dd></div>
         </dl>
-        <p>赛场平面图按座位前缀分区。气球配送图读取 Hydro 气球管理中的待配送记录，送达后在 Hydro 标记完成。比赛公告滚动读取裁判向所有选手发布的比赛公告。</p>
+        <p>大屏管理页右侧的画面列表较长时在列表内滚动，切换画面不会移动页面。赛场平面图按座位前缀分区，座位格按屏幕大小铺满，题目较多时自动缩小文字，保证每个座位完整显示。比赛公告滚动读取裁判向所有选手发布的比赛公告。气球配送图的用法见下一节。</p>
         <div class="callout"><strong>投屏前核对观众范围</strong><p>榜单类大屏遵守公开榜的开赛和封榜规则。赛况总览与评测监控面向管理员，可能显示封榜后的实时结果。座位图和滚榜观众画面也应在指定场馆使用。发现链接外传，可在大屏管理页作废全部旧链接并更换投屏地址。</p></div>
+      </section>
+
+      <section id="balloons" aria-labelledby="balloons-heading">
+        <h2 id="balloons-heading">气球配送</h2>
+        <p>气球记录由 Hydro 生成，插件的「气球配送图」把待配送的气球按座位显示在大屏上。</p>
+        <ol>
+          <li>赛前在比赛管理的「气球」中为每道题设置颜色。<strong>未设置颜色时 Hydro 不生成气球记录</strong>，配送图会一直为空。</li>
+          <li>用 onsite-toolkit 导入座位号。配送图按座位前缀分区，例如 <code>A-01</code> 归入 A 区；没有座位的队伍不会出现在配送图上。</li>
+          <li>在「大屏」中打开「气球配送图」，选择分榜，复制链接到气球准备区的屏幕。气球以题目颜色的实心圆显示，有待配送气球的座位高亮；分区较多时按设置的间隔翻页。</li>
+          <li>配送员送达后，在 Hydro 的气球管理页（<code>/d/&lt;域ID&gt;/contest/&lt;比赛ID&gt;/balloon?todo=1</code>，只列出未送达）点击完成，配送图在几秒内去掉该气球。标记送达需要比赛所有者或「编辑比赛」权限；该权限对本域所有比赛生效，请只发给可信的配送负责人，或由一名管理员统一标记。</li>
+        </ol>
+        <div class="callout"><strong>封榜后不再生成气球</strong><p>Hydro 只在榜单未封时为新的通过生成气球：封榜时刻之后评测为通过的提交（包括封榜前提交、封榜后才评完的）没有气球记录，解除封榜后也不会补发。需要在封榜期间继续发气球时，请安排人员按「评测监控」或实时榜人工核对，或在赛前确认赛事是否在封榜后停止发气球。重测把通过改为未通过时，已生成的气球记录不会撤销，请以榜单为准。</p></div>
       </section>
 
       <section id="broadcast" aria-labelledby="broadcast-heading">
@@ -120,6 +133,7 @@ pm2 status hydrooj</code></pre>
           <li>如果要将画面叠加到视频，在 OBS 的浏览器来源中设置透明背景。多名导播可同时操作，开播前确认字幕、分榜和画面输出。</li>
         </ol>
         <pre><code>body { background-color: transparent; margin: 0; overflow: hidden; }</code></pre>
+        <p>字幕页的 <strong>Title</strong> 点「+」先新建一条空字幕，再点编辑选择 SVG 模板（内置 ICPC 下三分之一条模板，也可在「媒体文件」上传）并填写数据，保存后即可显示；未选模板时点显示会提示原因。<strong>Picture</strong> 和滚动条中的图片可填写完整网址、以 <code>/</code> 开头的站内路径，或直接填写「媒体文件」里的文件名，保存后自动换成文件地址。</p>
         <p>OBS 链接本身带访问凭证，发给负责播出的人员即可。重建链接后，记得在 OBS 替换旧地址。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.13.0/docs/usage.md#直播">导播台各标签说明</a></p>
       </section>
 
@@ -180,11 +194,14 @@ pm2 status hydrooj</code></pre>
           <div><dt>看不到比赛管理入口</dt><dd>先确认比赛规则为 ACM，再核对所有者或「编辑比赛」权限。升级后检查 <code>hydrooj addon list</code> 中的安装路径及 Hydro 服务状态。</dd></div>
           <div><dt>公开榜或大屏为空</dt><dd>检查比赛是否开始、公开榜是否开启、分榜是否有成员、大屏是否使用最新链接。校徽墙同时需要学校资料、可见性设置和对应校徽。</dd></div>
           <div><dt>大屏显示待定</dt><dd>检查赛程和封榜设置。公开画面在封榜后隐藏新提交结果，管理员可用「评测监控」核实是否仍在评测。</dd></div>
-          <div><dt>气球图没有待配送项</dt><dd>检查比赛是否设置气球、队伍是否导入座位，以及对应记录在 Hydro 气球管理中的配送状态。</dd></div>
+          <div><dt>气球图没有待配送项</dt><dd>检查比赛是否在「气球」中为题目设置了颜色、队伍是否导入座位，以及对应记录在 Hydro 气球管理中是否已标记送达。封榜后的通过不会生成气球记录，见「气球配送」。</dd></div>
+          <div><dt>字幕或图片不显示</dt><dd>字幕需先在编辑中选择 SVG 模板；图片需填写网址、站内路径或「媒体文件」中的文件名。导播台会在点显示时提示缺少的内容。</dd></div>
           <div><dt>画面采集无法启动</dt><dd>用浏览器信任的 HTTPS 地址重新登录比赛，然后开启画面采集。HTTP 内网 IP 下浏览器禁用屏幕共享和摄像头。需要分发采集链接时，从 HTTPS 管理页重新复制。</dd></div>
           <div><dt>客户端找不到网络打印机</dt><dd>在打印电脑的系统设置中添加打印机，然后运行新版客户端并加上 <code>--printers</code>，检查是否列出该队列。</dd></div>
           <div><dt>打印请求一直等待</dt><dd>确认打印客户端在线、电脑能访问 Hydro、服务比赛和座位前缀匹配、打印机启用了「参与打印」。先打印测试页，再查看最近请求。</dd></div>
           <div><dt>滚榜成绩与最新评测不同</dt><dd>已有会话使用创建时的快照。确认评测完成并核对分榜和封榜点后，重新开始滚榜。</dd></div>
+          <div><dt>名次与 Hydro 原生榜不一致</dt><dd>检查「榜单与奖项」中的同分规则。ICPC 区域赛规则按分钟计罚时并比较最后一题通过时间，Hydro 原生榜始终按秒计罚时。</dd></div>
+          <div><dt>解除封榜按钮不可用</dt><dd>Hydro 只允许在比赛结束后解除封榜。按钮只对比赛所有者和有「编辑比赛」权限的管理员显示，解除后不能重新封榜。</dd></div>
         </dl>
       </section>
       <footer class="manual-footer">
