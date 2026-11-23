@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Hydro Contest Batter v1.13.0 操作手册，涵盖安装升级、ACM 比赛配置、增强榜、滚榜、大屏、气球配送、直播、打印和故障排查。">
+  <meta name="description" content="Hydro Contest Batter v1.14.0 操作手册，涵盖安装升级、ACM 比赛配置、增强榜、滚榜、大屏、气球配送与小票机、直播、打印和故障排查。">
   <meta name="theme-color" content="#811c39">
   <title>Hydro Contest Batter 操作手册</title>
   <link rel="stylesheet" href="./manual.css">
@@ -15,7 +15,7 @@
       <a class="brand" href="./">Hydro Contest Batter</a>
       <nav aria-label="项目链接">
         <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter">源码</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/releases/tag/v1.13.0">下载 v1.13.0</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/releases/tag/v1.14.0">下载 v1.14.0</a>
       </nav>
     </div>
   </header>
@@ -38,7 +38,7 @@
     </aside>
     <main id="manual">
       <header class="intro">
-        <p class="version">适用于插件 v1.13.0 · Hydro 5.x</p>
+        <p class="version">适用于插件 v1.14.0 · Hydro 5.x</p>
         <h1>Hydro 比赛操作手册</h1>
         <p class="lead">从安装插件、配置 ACM 比赛，到现场投屏、气球配送、打印、直播和赛后滚榜。</p>
         <a class="primary-link" href="#prepare">开始配置比赛</a>
@@ -56,33 +56,33 @@
       <section id="install" aria-labelledby="install-heading">
         <h2 id="install-heading">安装与升级</h2>
         <p>使用运行 Hydro 的系统账号执行命令。需要 Hydro 5.x、Node.js 22 或以上。用 PM2 管理 Hydro 时，默认进程名为 <code>hydrooj</code>。</p>
-        <p>从发布页下载 <code>hydro-scoreboard-xcpcio-plus-1.13.0.tgz</code> 和同名 <code>.sha256</code> 文件，放在同一个目录。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/releases/tag/v1.13.0">v1.13.0 下载</a></p>
+        <p>从发布页下载 <code>hydro-scoreboard-xcpcio-plus-1.14.0.tgz</code> 和同名 <code>.sha256</code> 文件，放在同一个目录。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/releases/tag/v1.14.0">v1.14.0 下载</a></p>
 
         <h3>校验并解压</h3>
-        <pre><code>sha256sum -c hydro-scoreboard-xcpcio-plus-1.13.0.tgz.sha256
-mkdir xcpcio-v1.13.0
-tar -xzf hydro-scoreboard-xcpcio-plus-1.13.0.tgz -C xcpcio-v1.13.0</code></pre>
+        <pre><code>sha256sum -c hydro-scoreboard-xcpcio-plus-1.14.0.tgz.sha256
+mkdir xcpcio-v1.14.0
+tar -xzf hydro-scoreboard-xcpcio-plus-1.14.0.tgz -C xcpcio-v1.14.0</code></pre>
 
         <h3>首次安装</h3>
-        <pre><code>bash xcpcio-v1.13.0/package/install.sh install</code></pre>
+        <pre><code>bash xcpcio-v1.14.0/package/install.sh install</code></pre>
         <p>脚本将插件复制到 <code>$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus</code>，执行 <code>hydrooj addon add</code>，然后重启 Hydro。</p>
         <details>
           <summary>手动安装到新目录</summary>
           <pre><code>addon_dir="$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 mkdir -p "$addon_dir"
-tar -xzf hydro-scoreboard-xcpcio-plus-1.13.0.tgz -C "$addon_dir" --strip-components=1
+tar -xzf hydro-scoreboard-xcpcio-plus-1.14.0.tgz -C "$addon_dir" --strip-components=1
 hydrooj addon add "$addon_dir"
 pm2 restart hydrooj</code></pre>
         </details>
 
         <h3>已有安装时升级</h3>
-        <pre><code>bash xcpcio-v1.13.0/package/install.sh upgrade
+        <pre><code>bash xcpcio-v1.14.0/package/install.sh upgrade
 pm2 status hydrooj</code></pre>
         <p>在浏览器打开 Hydro 首页和一场 ACM 比赛，确认榜单、滚榜和大屏入口可用。自定义目录用 <code>--dir</code> 指向原安装位置，非默认 PM2 进程用 <code>--service</code>。容器部署用 <code>--no-restart</code>，然后通过容器管理方式重启 Hydro。</p>
         <details>
           <summary>卸载与恢复旧版</summary>
           <pre><code>bash "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus/install.sh" uninstall</code></pre>
-          <p>卸载解除 addon 注册并把文件归档。MongoDB 中的比赛配置、滚榜会话和直播资料可在重新安装后继续使用。安装目录旁的 <code>.hydro-addon-backups/hydro-scoreboard-xcpcio-plus/</code> 保存每次操作的旧插件和注册记录。需恢复时，根据备份的 <code>operation.json</code> 和 <code>addon.json</code> 核对原目录及注册项，恢复插件后重启 Hydro。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.13.0/docs/usage.md#卸载与恢复">安装参数和恢复说明</a></p>
+          <p>卸载解除 addon 注册并把文件归档。MongoDB 中的比赛配置、滚榜会话和直播资料可在重新安装后继续使用。安装目录旁的 <code>.hydro-addon-backups/hydro-scoreboard-xcpcio-plus/</code> 保存每次操作的旧插件和注册记录。需恢复时，根据备份的 <code>operation.json</code> 和 <code>addon.json</code> 核对原目录及注册项，恢复插件后重启 Hydro。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.14.0/docs/usage.md#卸载与恢复">安装参数和恢复说明</a></p>
         </details>
       </section>
 
@@ -95,7 +95,7 @@ pm2 status hydrooj</code></pre>
           <li>选择同分规则：「Hydro 规则」罚时精确到秒；「ICPC 区域赛规则」罚时按分钟计，再比最后一题通过时间，仍相同则并列。设置赛事默认奖项，名额可填固定数量，或按有效队伍（正式且至少通过一题）的比例，如金 10%、银 20%、铜 30%，各自向上取整。在「各榜奖项」展开目标榜并勾选「单独设置此榜奖项」，可独立配置金银铜、并列同奖、一血和前三名。增强榜、滚榜、大屏、直播和 CCS API 共用这些规则。</li>
           <li>按赛事需求开启「公开榜单」「向所有观众显示学校」和「替换原生榜单」。保存后用未登录窗口检查已开启的公开榜链接与学校显示。</li>
         </ol>
-        <p><strong>打星选手</strong>以星号显示，不占正式名次、奖牌或前三名。能否获得一血由各榜的「允许打星选手获一血奖」决定。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.13.0/docs/usage.md#规则">完整计分与奖项规则</a></p>
+        <p><strong>打星选手</strong>以星号显示，不占正式名次、奖牌或前三名。能否获得一血由各榜的「允许打星选手获一血奖」决定。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.14.0/docs/usage.md#规则">完整计分与奖项规则</a></p>
         <p class="path"><strong>常用地址</strong><br>榜单设置 <code>/d/&lt;域ID&gt;/contest/&lt;比赛ID&gt;/xcpcio-settings</code><br>公开榜单 <code>/d/&lt;域ID&gt;/contest/&lt;比赛ID&gt;/xcpcio-public</code></p>
       </section>
 
@@ -115,14 +115,22 @@ pm2 status hydrooj</code></pre>
 
       <section id="balloons" aria-labelledby="balloons-heading">
         <h2 id="balloons-heading">气球配送</h2>
-        <p>气球记录由 Hydro 生成，插件的「气球配送图」把待配送的气球按座位显示在大屏上。</p>
+        <p>在比赛侧边栏打开「气球配送」，点「开启气球配送」。插件为每支队伍每道题的第一次通过生成一个带编号的气球，不需要 Hydro 气球颜色，封榜后照常生成（可设为解封后再发），重测撤销通过时气球自动撤销。</p>
+        <h3>基本模式</h3>
         <ol>
-          <li>赛前在比赛管理的「气球」中为每道题设置颜色。<strong>未设置颜色时 Hydro 不生成气球记录</strong>，配送图会一直为空。</li>
-          <li>用 onsite-toolkit 导入座位号。配送图按座位前缀分区，例如 <code>A-01</code> 归入 A 区；没有座位的队伍不会出现在配送图上。</li>
-          <li>在「大屏」中打开「气球配送图」，选择分榜，复制链接到气球准备区的屏幕。气球以题目颜色的实心圆显示，有待配送气球的座位高亮；分区较多时按设置的间隔翻页。</li>
-          <li>配送员送达后，在 Hydro 的气球管理页（<code>/d/&lt;域ID&gt;/contest/&lt;比赛ID&gt;/balloon?todo=1</code>，只列出未送达）点击完成，配送图在几秒内去掉该气球。标记送达需要比赛所有者或「编辑比赛」权限；该权限对本域所有比赛生效，请只发给可信的配送负责人，或由一名管理员统一标记。</li>
+          <li>用 onsite-toolkit 导入座位号。考场取座位号去掉末尾数字的部分，例如 <code>A-12</code> 属于 A 区。</li>
+          <li>「各考场待配送」表列出每个考场每种颜色要送几个气球，点数字即可只看该考场该题。</li>
+          <li>在「按队伍」视图点击气球即标记送达，或在「按时间」视图批量标记。标记错了可以撤销。</li>
+          <li>把设置中的「配送员链接」发给志愿者。用手机打开即可查看并标记送达，不需要 Hydro 账号；链接可随时作废重建。</li>
         </ol>
-        <div class="callout"><strong>封榜后不再生成气球</strong><p>Hydro 只在榜单未封时为新的通过生成气球：封榜时刻之后评测为通过的提交（包括封榜前提交、封榜后才评完的）没有气球记录，解除封榜后也不会补发。需要在封榜期间继续发气球时，请安排人员按「评测监控」或实时榜人工核对，或在赛前确认赛事是否在封榜后停止发气球。重测把通过改为未通过时，已生成的气球记录不会撤销，请以榜单为准。</p></div>
+        <h3>小票机模式</h3>
+        <ol>
+          <li>系统管理员在「打印服务器管理」把打印电脑上的热敏打印机的「类型」改为「小票机」，选纸宽 58 或 80 mm 和输出方式（一般选 ESC/POS），点「测试小票」确认。打印客户端需要 1.14.0 或更新版本。</li>
+          <li>在气球配送的「设置」里设置每题的气球颜色和颜色名，勾选「开启小票打印」后保存。</li>
+          <li>按需添加分配规则：考场前缀加题目，对应一台或多台小票机，规则按顺序匹配。不设规则时，小票打印到负责该座位的打印服务器上的小票机。</li>
+          <li>每出现一个新气球就自动打印一张小票，上面有座位、题号与颜色、一血标记、队名和该队已通过的题。志愿者拿小票送气球，送达后标记。</li>
+        </ol>
+        <div class="callout"><strong>封榜期间的气球</strong><p>默认封榜后继续发放，现场可以从气球看出封榜后哪些队伍过题。若赛事规定封榜后停发，请在设置中选「暂缓，解除封榜后再发」，这些气球会显示为「封榜暂缓」，解封后自动转为待配送并打印小票。</p></div>
       </section>
 
       <section id="broadcast" aria-labelledby="broadcast-heading">
@@ -134,7 +142,7 @@ pm2 status hydrooj</code></pre>
         </ol>
         <pre><code>body { background-color: transparent; margin: 0; overflow: hidden; }</code></pre>
         <p>字幕页的 <strong>Title</strong> 点「+」先新建一条空字幕，再点编辑选择 SVG 模板（内置 ICPC 下三分之一条模板，也可在「媒体文件」上传）并填写数据，保存后即可显示；未选模板时点显示会提示原因。<strong>Picture</strong> 和滚动条中的图片可填写完整网址、以 <code>/</code> 开头的站内路径，或直接填写「媒体文件」里的文件名，保存后自动换成文件地址。</p>
-        <p>OBS 链接本身带访问凭证，发给负责播出的人员即可。重建链接后，记得在 OBS 替换旧地址。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.13.0/docs/usage.md#直播">导播台各标签说明</a></p>
+        <p>OBS 链接本身带访问凭证，发给负责播出的人员即可。重建链接后，记得在 OBS 替换旧地址。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.14.0/docs/usage.md#直播">导播台各标签说明</a></p>
       </section>
 
       <section id="print" aria-labelledby="print-heading">
@@ -151,7 +159,8 @@ pm2 status hydrooj</code></pre>
           <pre><code>chmod +x hydro-print-client-linux-amd64
 ./hydro-print-client-linux-amd64</code></pre>
         </details>
-        <p>多场比赛同时进行时，让各打印服务器仅服务指定比赛。每场可配置一台无座位前缀的电脑处理未被认领或没有座位号的请求；都设了前缀时，这类请求由任意一台在线电脑打印。同一电脑的多台打印机按权重轮转。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.13.0/docs/usage.md#打印服务器管理">客户端下载、连接与打印分工</a></p>
+        <p><strong>小票机</strong>：在打印机的「类型」中选「小票机」后，它只打印气球配送小票（见「气球配送」），不再打印代码。选纸宽和输出方式：ESC/POS 指令适用于绝大多数热敏小票机，系统驱动适合其他打印机。</p>
+        <p>多场比赛同时进行时，让各打印服务器仅服务指定比赛。每场可配置一台无座位前缀的电脑处理未被认领或没有座位号的请求；都设了前缀时，这类请求由任意一台在线电脑打印。同一电脑的多台打印机按权重轮转。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.14.0/docs/usage.md#打印服务器管理">客户端下载、连接与打印分工</a></p>
       </section>
 
       <section id="judging" aria-labelledby="judging-heading">
@@ -166,7 +175,7 @@ pm2 status hydrooj</code></pre>
           <li>选择评测结果。默认勾选「AC 不参与重测」。先点击「预览数量」，核对题号和提交数，再执行。</li>
           <li>在重测记录点「查看变化」，比较提交重测前后的结果和得分。比赛进行中可将独立评测机分为「只评新提交」和「只评重测任务」。</li>
         </ol>
-        <p>删除用户或队伍会永久移除相应数据。执行前在确认页核对账号、队伍和是否勾选了删除提交或取消报名。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.13.0/docs/usage.md#系统管理">系统管理详细说明</a></p>
+        <p>删除用户或队伍会永久移除相应数据。执行前在确认页核对账号、队伍和是否勾选了删除提交或取消报名。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.14.0/docs/usage.md#系统管理">系统管理详细说明</a></p>
       </section>
 
       <section id="resolver" aria-labelledby="resolver-heading">
@@ -178,14 +187,14 @@ pm2 status hydrooj</code></pre>
           <li>点击「开始滚榜」生成会话。主持端用前进、回退和自动推进控制节奏。另有投屏电脑时，在「大屏」中选择「滚榜观众画面」，绑定此会话并复制链接。</li>
           <li>滚榜结束后，在增强榜页点击「解除封榜」公开全部结果（比赛结束后可用，不可撤销）。</li>
         </ol>
-        <p>每次开始会固定当时的参赛名单、成绩和配置。遇到补评或重测，确认新结果后另建会话。各管理员的会话独立，刷新后按已保存进度恢复并暂停。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.13.0/docs/usage.md#resolver-滚榜">滚榜详细说明</a></p>
+        <p>每次开始会固定当时的参赛名单、成绩和配置。遇到补评或重测，确认新结果后另建会话。各管理员的会话独立，刷新后按已保存进度恢复并暂停。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.14.0/docs/usage.md#resolver-滚榜">滚榜详细说明</a></p>
       </section>
 
       <section id="integration" aria-labelledby="integration-heading">
         <h2 id="integration-heading">CCS API 对接</h2>
         <p>有外部工具需要比赛数据时，在「榜单与奖项设置」开启「开放 CCS API」，保存后复制页面上的比赛地址。在外部工具中使用站点 HTTPS 地址和所需权限的 Hydro 账号。匿名读取取决于公开榜设置，已启用双因素认证的账号用 Hydro 会话认证。</p>
         <p class="path"><strong>比赛 API</strong><br><code>/d/&lt;域ID&gt;/ccsapi/contests/&lt;比赛ID&gt;</code></p>
-        <p>先检查 <code>access</code> 返回的能力，再接入榜单或事件流。需要对外确认最终结果时，等比赛结束、解冻并处理完待评测提交，核对成绩后再点「确认 CCS 最终结果」。确认会保存固定快照。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.13.0/docs/usage.md#ccs-api2026-01">认证、端点与最终结果规则</a></p>
+        <p>先检查 <code>access</code> 返回的能力，再接入榜单或事件流。需要对外确认最终结果时，等比赛结束、解冻并处理完待评测提交，核对成绩后再点「确认 CCS 最终结果」。确认会保存固定快照。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.14.0/docs/usage.md#ccs-api2026-01">认证、端点与最终结果规则</a></p>
       </section>
 
       <section id="troubleshoot" aria-labelledby="troubleshoot-heading">
@@ -194,7 +203,8 @@ pm2 status hydrooj</code></pre>
           <div><dt>看不到比赛管理入口</dt><dd>先确认比赛规则为 ACM，再核对所有者或「编辑比赛」权限。升级后检查 <code>hydrooj addon list</code> 中的安装路径及 Hydro 服务状态。</dd></div>
           <div><dt>公开榜或大屏为空</dt><dd>检查比赛是否开始、公开榜是否开启、分榜是否有成员、大屏是否使用最新链接。校徽墙同时需要学校资料、可见性设置和对应校徽。</dd></div>
           <div><dt>大屏显示待定</dt><dd>检查赛程和封榜设置。公开画面在封榜后隐藏新提交结果，管理员可用「评测监控」核实是否仍在评测。</dd></div>
-          <div><dt>气球图没有待配送项</dt><dd>检查比赛是否在「气球」中为题目设置了颜色、队伍是否导入座位，以及对应记录在 Hydro 气球管理中是否已标记送达。封榜后的通过不会生成气球记录，见「气球配送」。</dd></div>
+          <div><dt>气球配送图或气球页没有待配送项</dt><dd>确认已在「气球配送」中开启（未开启时大屏读取 Hydro 自带的气球记录，需设置气球颜色，且封榜后不再生成），队伍已导入座位，气球没有被标记送达。设为「封榜后暂缓」时，封榜后的气球在解封前显示为「封榜暂缓」。</dd></div>
+          <div><dt>小票不打印</dt><dd>在「打印服务器管理」确认打印电脑在线、打印机类型为「小票机」且勾选了参与打印、客户端为 1.14.0 或以上；在气球配送设置中确认已开启小票打印，分配规则选中的小票机显示「可用」。ESC/POS 小票中文乱码时，把输出方式改为「系统驱动」，或检查小票机是否为中文（GB18030）机型。</dd></div>
           <div><dt>字幕或图片不显示</dt><dd>字幕需先在编辑中选择 SVG 模板；图片需填写网址、站内路径或「媒体文件」中的文件名。导播台会在点显示时提示缺少的内容。</dd></div>
           <div><dt>画面采集无法启动</dt><dd>用浏览器信任的 HTTPS 地址重新登录比赛，然后开启画面采集。HTTP 内网 IP 下浏览器禁用屏幕共享和摄像头。需要分发采集链接时，从 HTTPS 管理页重新复制。</dd></div>
           <div><dt>客户端找不到网络打印机</dt><dd>在打印电脑的系统设置中添加打印机，然后运行新版客户端并加上 <code>--printers</code>，检查是否列出该队列。</dd></div>
@@ -205,9 +215,9 @@ pm2 status hydrooj</code></pre>
         </dl>
       </section>
       <footer class="manual-footer">
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.13.0/docs/usage.md">完整使用文档</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.13.0/docs/verification.md">验证记录</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.13.0/NOTICE">来源与许可</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.14.0/docs/usage.md">完整使用文档</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.14.0/docs/verification.md">验证记录</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/blob/v1.14.0/NOTICE">来源与许可</a>
         <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/issues">报告问题</a>
       </footer>
     </main>

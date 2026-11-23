@@ -151,6 +151,46 @@ func printOn(printer string, job Job, paper Paper) error {
 	return err
 }
 
+// printRaw sends bytes the printer understands itself (ESC/POS) past any driver filter.
+func printRaw(printer, title string, data []byte) error {
+	file, err := os.CreateTemp("", "hydro-ticket-*.bin")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	if _, err := file.Write(data); err != nil {
+		file.Close()
+		return err
+	}
+	file.Close()
+	if title == "" {
+		title = "Hydro"
+	}
+	_, err = cups("lp", "-d", printer, "-t", title, "-o", "raw", file.Name())
+	return err
+}
+
+// printReceiptDriver prints a ticket through the printer's CUPS driver, on paper as long as the ticket.
+func printReceiptDriver(printer, title string, r Receipt) error {
+	data, paper := ReceiptPDF(r, title)
+	file, err := os.CreateTemp("", "hydro-ticket-*.pdf")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	if _, err := file.Write(data); err != nil {
+		file.Close()
+		return err
+	}
+	file.Close()
+	media := fmt.Sprintf("Custom.%.0fx%.0fmm", paper.Width/pointsPerMM, paper.Height/pointsPerMM+0.5)
+	if title == "" {
+		title = "Hydro"
+	}
+	_, err = cups("lp", "-d", printer, "-t", title, "-o", "media="+media, "-o", "print-scaling=none", file.Name())
+	return err
+}
+
 func systemName() string {
 	if runtime.GOOS == "darwin" {
 		if out, err := exec.Command("sw_vers", "-productVersion").Output(); err == nil {

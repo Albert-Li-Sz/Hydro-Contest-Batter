@@ -16,6 +16,13 @@ var (
 	winspool            = syscall.NewLazyDLL("winspool.drv")
 	procEnumPrinters    = winspool.NewProc("EnumPrintersW")
 	procGetDefault      = winspool.NewProc("GetDefaultPrinterW")
+	procOpenPrinter     = winspool.NewProc("OpenPrinterW")
+	procClosePrinter    = winspool.NewProc("ClosePrinter")
+	procStartDocPrinter = winspool.NewProc("StartDocPrinterW")
+	procEndDocPrinter   = winspool.NewProc("EndDocPrinter")
+	procStartPagePrint  = winspool.NewProc("StartPagePrinter")
+	procEndPagePrinter  = winspool.NewProc("EndPagePrinter")
+	procWritePrinter    = winspool.NewProc("WritePrinter")
 	gdi32               = syscall.NewLazyDLL("gdi32.dll")
 	procCreateDC        = gdi32.NewProc("CreateDCW")
 	procDeleteDC        = gdi32.NewProc("DeleteDC")
@@ -169,8 +176,54 @@ func caps(hdc uintptr, index int) float64 {
 	return float64(int32(r))
 }
 
+// DOC_INFO_1 for a RAW spool job.
+type docInfo1 struct {
+	DocName, OutputFile, Datatype *uint16
+}
+
+// printRaw spools bytes the printer understands itself (ESC/POS) as a RAW job: the driver passes them on unchanged.
+func printRaw(printer, title string, data []byte) error {
+	var handle uintptr
+	if r, _, err := procOpenPrinter.Call(uintptr(unsafe.Pointer(utf16Ptr(printer))), uintptr(unsafe.Pointer(&handle)), 0); r == 0 {
+		return fmt.Errorf("无法打开小票机 %s：%v", printer, err)
+	}
+	defer procClosePrinter.Call(handle)
+	info := docInfo1{DocName: utf16Ptr(title), Datatype: utf16Ptr("RAW")}
+	if r, _, err := procStartDocPrinter.Call(handle, 1, uintptr(unsafe.Pointer(&info))); r == 0 {
+		return fmt.Errorf("小票机 %s 拒绝了打印任务：%v", printer, err)
+	}
+	defer procEndDocPrinter.Call(handle)
+	if r, _, err := procStartPagePrint.Call(handle); r == 0 {
+		return fmt.Errorf("小票机 %s 无法开始打印：%v", printer, err)
+	}
+	var written uint32
+	r, _, err := procWritePrinter.Call(handle, uintptr(unsafe.Pointer(&data[0])), uintptr(len(data)), uintptr(unsafe.Pointer(&written)))
+	procEndPagePrinter.Call(handle)
+	if r == 0 || int(written) != len(data) {
+		return fmt.Errorf("向小票机 %s 发送数据失败：%v", printer, err)
+	}
+	return nil
+}
+
+// printReceiptDriver draws a ticket through the printer's driver at the width of its paper.
+func printReceiptDriver(printer, title string, r Receipt) error {
+	return drawPages(printer, title, func(paper Paper) []Page {
+		margin := receiptPaper(r).Margin
+		if paper.Margin > margin {
+			margin = paper.Margin
+		}
+		page, _ := ReceiptLayout(r, paper.Width, margin)
+		return []Page{page}
+	})
+}
+
 // printOn draws the job straight to the printer: the page size comes from the printer itself.
 func printOn(printer string, job Job, _ Paper) error {
+	return drawPages(printer, job.Title, func(paper Paper) []Page { return Layout(job, paper) })
+}
+
+// drawPages draws the pages `layout` makes for the printer's own page size, with GDI.
+func drawPages(printer, title string, layout func(Paper) []Page) error {
 	hdc, _, err := procCreateDC.Call(uintptr(unsafe.Pointer(utf16Ptr("WINSPOOL"))), uintptr(unsafe.Pointer(utf16Ptr(printer))), 0, 0)
 	if hdc == 0 {
 		return fmt.Errorf("无法打开打印机 %s：%v", printer, err)
@@ -190,9 +243,9 @@ func printOn(printer string, job Job, _ Paper) error {
 	if unprintable > paper.Margin {
 		paper.Margin = unprintable
 	}
-	pages := Layout(job, paper)
+	pages := layout(paper)
 
-	info := docInfo{DocName: utf16Ptr(job.Title)}
+	info := docInfo{DocName: utf16Ptr(title)}
 	info.Size = int32(unsafe.Sizeof(info))
 	if r, _, err := procStartDoc.Call(hdc, uintptr(unsafe.Pointer(&info))); int32(r) <= 0 {
 		return fmt.Errorf("打印机 %s 拒绝了打印任务：%v", printer, err)

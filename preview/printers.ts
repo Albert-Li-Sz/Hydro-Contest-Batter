@@ -9,6 +9,8 @@ import {
     tokenMatches,
 } from '../lib/print';
 import { printJob } from '../lib/print-render';
+import { defaultReceiptConfig, type ReceiptConfig, type ReceiptPrinter } from '../lib/balloons';
+import type { ReceiptJob } from '../lib/escpos';
 import { resolverCodeBase } from '../lib/resolver-data';
 import { toScriptJson } from '../lib/settings';
 import { previewAdminPassword } from './manage';
@@ -31,7 +33,17 @@ const samples = [
  * Local preview of 打印服务器管理 and the print client protocol (lib/print-routes.ts), in memory:
  * the demo contest's teams send a print request every 20 seconds, so a real client can be tried.
  */
-export function createPrintersPreview(env: Environment, version: string, demo: () => BoardData) {
+interface PreviewReceipts {
+    claim(serverId: string, now: number): Promise<ReceiptJob[]>;
+    report(id: string, serverId: string, status: 'printed' | 'failed' | 'released', printer: string, message: string): Promise<boolean>;
+    testJob(id: string, serverName: string, printer: string, config: ReceiptConfig): ReceiptJob;
+    printed(server: string, printer: string): number;
+}
+
+export function createPrintersPreview(env: Environment, version: string, demo: () => BoardData, receipts?: () => PreviewReceipts) {
+    const preference = (server: Server, printer: { name: string; virtual?: boolean }): PrinterPreference => (server.preferences[printer.name]
+        ? normalizePrinterPreference(server.preferences[printer.name]) : { enabled: !printer.virtual, weight: 1, kind: 'document', receipt: defaultReceiptConfig() });
+    const capable = (server: Server) => !!(server.client as { capabilities?: string[] } | null)?.capabilities?.includes('receipt');
     const codeBase = resolverCodeBase(version);
     const data = demo();
     // Three contests: the demo final and warm-up accept print requests, the trial does not.
@@ -115,20 +127,34 @@ export function createPrintersPreview(env: Environment, version: string, demo: (
         }
     }
 
-    function client(action: string, server: Server, body: any) {
+    async function client(action: string, server: Server, body: any) {
         const now = Date.now();
         server.lastSeen = now;
         if (action === 'heartbeat') {
-            server.client = { version: String(body.version || ''), host: String(body.host || ''), os: String(body.os || ''), ip: '127.0.0.1' };
+            server.client = { version: String(body.version || ''), host: String(body.host || ''), os: String(body.os || ''), ip: '127.0.0.1',
+                capabilities: (Array.isArray(body.capabilities) ? body.capabilities : []).map(String) } as unknown as Record<string, string>;
             server.printers = (body.printers || []).slice(0, 50);
             return { name: server.name, enabled: server.enabled, pollMs: 3000,
-                preferences: Object.fromEntries(server.printers.map((printer) => [printer.name, server.preferences[printer.name] ?? { enabled: !printer.virtual, weight: 1 }])) };
+                preferences: Object.fromEntries(server.printers.map((printer) => {
+                    const value = preference(server, printer);
+                    return [printer.name, value.kind === 'receipt' && !capable(server) ? { ...value, enabled: false } : value];
+                })) };
         }
         if (action === 'next') {
             if (!server.enabled) return { jobs: [] };
             release(now);
-            const slots = Math.max(1, Math.min(10, Number(body.slots) || 1));
-            const jobs: unknown[] = server.tests.splice(0, slots).map((test) => ({ ...sheet({ id: test.id, contest: contestKey, owner: 1, title: 'test.cpp', content: samples[0][1], status: '', attempts: 0, time: new Date() }), printer: test.printer, title: `测试页 · ${server.name}` }));
+            const receiptsAsked = body.receipts === true;
+            const slots = receiptsAsked && Number(body.slots) === 0 ? 0 : Math.max(1, Math.min(10, Number(body.slots) || 1));
+            const jobs: unknown[] = [];
+            for (const test of server.tests.splice(0, Math.max(slots, receiptsAsked ? 3 : 1))) {
+                const printer = server.printers.find((candidate) => candidate.name === test.printer);
+                const value = printer ? preference(server, printer) : null;
+                if (value?.kind === 'receipt') {
+                    if (receipts && capable(server)) jobs.push(receipts().testJob(test.id, server.name, test.printer, value.receipt));
+                    continue;
+                }
+                jobs.push({ ...sheet({ id: test.id, contest: contestKey, owner: 1, title: 'test.cpp', content: samples[0][1], status: '', attempts: 0, time: new Date() }), printer: test.printer, title: `测试页 · ${server.name}` });
+            }
             const others = servers.filter((candidate) => candidate.enabled && candidate.lastSeen && now - candidate.lastSeen < ONLINE_MS);
             for (const task of tasks) {
                 if (jobs.length >= slots) break;
@@ -136,9 +162,16 @@ export function createPrintersPreview(env: Environment, version: string, demo: (
                 Object.assign(task, { status: 'printing', server: server.id, claimedAt: now });
                 jobs.push(sheet(task));
             }
+            if (receipts && receiptsAsked && capable(server)) jobs.push(...await receipts().claim(server.id, now));
             return { jobs };
         }
         if (action === 'report') {
+            if (String(body.id).startsWith('balloon-')) {
+                const status = body.status === 'printed' ? 'printed' : body.status === 'released' ? 'released' : 'failed';
+                if (!receipts || !await receipts().report(String(body.id), server.id, status, String(body.printer || ''), String(body.message || ''))) throw new PrintError('气球小票不存在或已交给其他打印服务器', 404);
+                if (status === 'printed') server.stats.printed++; else if (status === 'failed') server.stats.failed++;
+                return { ok: true };
+            }
             if (String(body.id).startsWith('test-')) { server.lastTest = { at: new Date(), printer: body.printer, status: body.status, message: body.message || '' }; return { ok: true }; }
             const task = tasks.find((candidate) => candidate.id === body.id && candidate.server === server.id && candidate.status === 'printing');
             if (!task) throw new PrintError('打印请求不存在或已交给其他打印服务器', 404);
@@ -166,9 +199,11 @@ export function createPrintersPreview(env: Environment, version: string, demo: (
                 return {
                     id: server.id, name: server.name, note: server.note, enabled: server.enabled, contests: server.contests, seatPrefixes: server.seatPrefixes,
                     online, lastSeen: server.lastSeen ? new Date(server.lastSeen) : null, client: server.client, stats: server.stats, lastTest: server.lastTest, testsWaiting: server.tests.length,
+                    receipts: capable(server),
                     printers: server.printers.map((printer) => ({
-                        ...printer, status: online ? printer.status : 'offline', preference: server.preferences[printer.name] ?? { enabled: !printer.virtual, weight: 1 },
+                        ...printer, status: online ? printer.status : 'offline', preference: preference(server, printer),
                         printed: tasks.filter((task) => task.server === server.id && task.printer === printer.name && task.status === 'printed').length,
+                        tickets: receipts ? receipts().printed(server.id, printer.name) : 0,
                     })),
                 };
             }),
@@ -187,6 +222,26 @@ export function createPrintersPreview(env: Environment, version: string, demo: (
         });
         return true;
     };
+    /** The receipt printers of every print server, as the balloon tickets are routed to them. */
+    function receiptPrinters(): ReceiptPrinter[] {
+        const now = Date.now();
+        return servers.flatMap((server) => {
+            const online = server.enabled && !!server.lastSeen && now - server.lastSeen < ONLINE_MS;
+            const names = [...new Set([...server.printers.map((printer) => printer.name), ...Object.keys(server.preferences)])];
+            return names.flatMap((name) => {
+                const reported = server.printers.find((printer) => printer.name === name);
+                const value = preference(server, reported || { name });
+                if (value.kind !== 'receipt') return [];
+                const status = reported ? (online ? reported.status : 'offline') : 'missing';
+                return [{
+                    server: server.id, serverName: server.name, printer: name, contests: server.contests, seatPrefixes: server.seatPrefixes, config: value.receipt,
+                    usable: online && capable(server) && value.enabled && !!reported && !['offline', 'error', 'paused'].includes(status),
+                    online, capable: capable(server), status,
+                } as ReceiptPrinter];
+            });
+        });
+    }
+
     return Object.assign(async (request: IncomingMessage, response: ServerResponse, url: URL) => {
         const json = (value: unknown, status = 200) => response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(value));
         const api = /^\/xcpcio-print\/([a-f\d]{24})\/(heartbeat|next|report)$/.exec(url.pathname);
@@ -199,7 +254,7 @@ export function createPrintersPreview(env: Environment, version: string, demo: (
                 const token = /^Bearer\s+(\S+)$/i.exec(String(request.headers.authorization || ''))?.[1] || '';
                 const server = servers.find((candidate) => candidate.id === api[1]);
                 if (!server || !token || !tokenMatches(token, server.tokenHash)) throw new PrintError('连接信息无效或已重新生成，请在“打印服务器管理”中复制新的连接信息', 401);
-                json(client(api[2], server, body));
+                json(await client(api[2], server, body));
                 changed();
                 return true;
             }
@@ -216,5 +271,5 @@ export function createPrintersPreview(env: Environment, version: string, demo: (
             json({ error: error instanceof Error ? error.message : 'Invalid request' }, error instanceof PrintError ? error.status : 400);
         }
         return true;
-    }, { upgrade });
+    }, { upgrade, receiptPrinters });
 }

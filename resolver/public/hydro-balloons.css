@@ -1,0 +1,83 @@
+/* 气球配送: contest managers and volunteers (phones too). Builds on hydro-config.css and hydro-manage.css. */
+.xcpcio-balloons .resolver-heading { flex-wrap: wrap; }
+.xcpcio-balloons .balloon-heading-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.xcpcio-balloons .balloon-heading-actions .textbox { margin: 0; width: 220px; max-width: 100%; }
+.xcpcio-balloons .balloon-tabs { margin: 0; border-bottom: 0; }
+.xcpcio-balloons .balloon-stats { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+.xcpcio-balloons .balloon-inline { display: flex; align-items: center; gap: 8px; }
+.xcpcio-balloons .balloon-inline .button { margin: 0; }
+
+/* A balloon: the problem letter on its colour, with the colour's name. */
+.xcpcio-balloons .balloon-pill {
+  --balloon: #d9dde3; --balloon-ink: #111;
+  display: inline-flex; align-items: center; gap: 5px; margin: 2px 4px 2px 0; padding: 2px 10px 2px 3px; border-radius: 999px;
+  border: 2px solid var(--balloon); background: var(--balloon); color: var(--balloon-ink); font: inherit; font-size: 13px; line-height: 22px; white-space: nowrap;
+}
+.xcpcio-balloons button.balloon-pill { cursor: pointer; }
+.xcpcio-balloons button.balloon-pill:hover { filter: brightness(1.06); box-shadow: 0 1px 4px rgba(0, 0, 0, .25); }
+.xcpcio-balloons .balloon-pill b { display: inline-grid; place-items: center; min-width: 22px; height: 22px; border-radius: 999px; background: rgba(255, 255, 255, .85); color: #111; font-weight: 700; }
+.xcpcio-balloons .balloon-pill i { font-style: normal; color: #c62828; font-weight: 700; }
+.xcpcio-balloons .balloon-pill--first { box-shadow: 0 0 0 2px #c62828; }
+.xcpcio-balloons .balloon-pill--delivered { background: transparent; color: inherit; opacity: .55; }
+.xcpcio-balloons .balloon-pill--delivered::after { content: '✓'; font-weight: 700; color: #3cba54; }
+.xcpcio-balloons .balloon-pill--held { background: repeating-linear-gradient(135deg, var(--balloon) 0 6px, transparent 6px 12px); color: inherit; }
+.xcpcio-balloons .balloon-pill--revoked { background: transparent; color: inherit; text-decoration: line-through; opacity: .6; border-style: dashed; }
+.xcpcio-balloons .balloon-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; border: 1px solid rgba(127, 127, 127, .4); }
+
+.xcpcio-balloons .balloon-link { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.xcpcio-balloons .balloon-link:hover { text-decoration: underline; }
+.xcpcio-balloons .balloon-matrix summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
+.xcpcio-balloons .balloon-matrix table { width: auto; min-width: 100%; }
+.xcpcio-balloons .balloon-matrix td, .xcpcio-balloons .balloon-matrix th { text-align: center; padding: 4px 8px; }
+.xcpcio-balloons .balloon-matrix tbody th { text-align: left; white-space: nowrap; }
+.xcpcio-balloons .balloon-matrix .balloon-pill { margin: 0; }
+.xcpcio-balloons .balloon-matrix-hot { font-weight: 700; font-size: 16px; }
+.xcpcio-balloons .balloon-matrix-total td, .xcpcio-balloons .balloon-matrix-total th { font-weight: 700; border-top: 2px solid var(--manage-line); }
+
+.xcpcio-balloons .balloon-filters { display: grid; gap: 8px; margin: 12px 0; }
+.xcpcio-balloons .balloon-filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.xcpcio-balloons .balloon-filter-row > b { min-width: 3em; font-size: 13px; }
+.xcpcio-balloons .balloon-filter-tools { margin: 0; }
+.xcpcio-balloons .balloon-filter-tools .select { width: auto; margin: 0; }
+.xcpcio-balloons .balloon-layout { margin: 0; border-bottom: 0; }
+.xcpcio-balloons .balloon-chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--manage-line);
+  background: transparent; color: inherit; font: inherit; font-size: 13px; line-height: 24px; cursor: pointer;
+}
+.xcpcio-balloons .balloon-chip .balloon-pill { margin: 0 0 0 -6px; line-height: 18px; padding-right: 8px; }
+.xcpcio-balloons .balloon-chip .balloon-pill b { min-width: 18px; height: 18px; }
+.xcpcio-balloons .balloon-chip small { font-size: 11px; padding: 0 6px; border-radius: 999px; background: #e6a23c; color: #fff; line-height: 16px; }
+.xcpcio-balloons .balloon-chip.is-active { border-color: #5f9fd6; background: rgba(95, 159, 214, .16); font-weight: 600; }
+.xcpcio-balloons .balloon-hints { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
+
+.xcpcio-balloons .balloon-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.xcpcio-balloons .balloon-card { border: 1px solid var(--manage-line); border-radius: 6px; padding: 10px 12px; display: grid; gap: 4px; align-content: start; }
+.xcpcio-balloons .balloon-card--waiting { border-color: #e6a23c; box-shadow: inset 4px 0 #e6a23c; }
+.xcpcio-balloons .balloon-card header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.xcpcio-balloons .balloon-card-seat { font-size: 22px; line-height: 1.2; }
+.xcpcio-balloons .balloon-card-team { font-weight: 600; overflow-wrap: anywhere; }
+.xcpcio-balloons .balloon-card-pills { margin-top: 4px; }
+.xcpcio-balloons .balloon-card footer { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.xcpcio-balloons .balloon-card footer .button { margin: 0; }
+.xcpcio-balloons .balloon-seat { font-weight: 700; }
+.xcpcio-balloons .balloon-table .col-actions .button.primary { min-width: 64px; }
+
+.xcpcio-balloons .balloon-rule { margin-bottom: 12px; }
+.xcpcio-balloons .balloon-rule label { display: block; margin: 6px 0; }
+.xcpcio-balloons .balloon-printer-picks { display: grid; gap: 4px; margin-top: 4px; }
+.xcpcio-balloons .balloon-printer-picks .checkbox { display: flex; align-items: center; gap: 6px; }
+.xcpcio-balloons .balloon-savebar { position: sticky; bottom: 0; display: flex; align-items: center; gap: 10px; padding: 10px 0; margin-top: 12px; background: #fff; border-top: 1px solid var(--manage-line); z-index: 2; }
+.theme--dark .xcpcio-balloons .balloon-savebar { background: #323334; }
+.xcpcio-balloons .balloon-savebar .button { margin: 0; }
+
+@media (max-width: 600px) {
+  .xcpcio-balloons .balloon-cards { grid-template-columns: 1fr; }
+  .xcpcio-balloons .balloon-heading-actions, .xcpcio-balloons .balloon-heading-actions .textbox { width: 100%; }
+  .xcpcio-balloons .balloon-filter-tools > * { flex: 1 1 100%; }
+  .xcpcio-balloons .balloon-card-seat { font-size: 26px; }
+  .xcpcio-balloons .balloon-pill { font-size: 15px; line-height: 28px; padding-right: 12px; }
+  .xcpcio-balloons .balloon-pill b { min-width: 28px; height: 28px; }
+}
+.theme--dark .xcpcio-balloons .balloon-pill b { background: rgba(0, 0, 0, .55); color: #fff; }
+.xcpcio-balloons .balloon-intro p, .xcpcio-balloons .balloon-intro li { font-size: 14px; line-height: 1.7; }
+.xcpcio-balloons .balloon-intro ul { margin: 6px 0 12px 1.2em; }

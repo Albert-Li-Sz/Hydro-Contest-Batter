@@ -164,9 +164,13 @@ func (c *Client) call(action string, body any, out any) error {
 }
 
 type Preference struct {
-	Enabled bool `json:"enabled"`
-	Weight  int  `json:"weight"`
+	Enabled bool   `json:"enabled"`
+	Weight  int    `json:"weight"`
+	Kind    string `json:"kind"` // "receipt": a 小票机, which prints only balloon tickets
 }
+
+// Whether the printer takes printouts (code): enabled and not a receipt printer.
+func (p Preference) documents() bool { return p.Enabled && p.Kind != "receipt" }
 
 type heartbeatReply struct {
 	Name        string                `json:"name"`
@@ -193,7 +197,7 @@ func (b *Balancer) pick(printers []SysPrinter, prefs map[string]Preference) (str
 	total, best := 0, ""
 	for _, p := range printers {
 		pref, ok := prefs[p.Name]
-		if !ok || !pref.Enabled || p.Status == "offline" || p.Status == "error" || p.Status == "paused" {
+		if !ok || !pref.documents() || p.Status == "offline" || p.Status == "error" || p.Status == "paused" {
 			continue
 		}
 		if until, resting := b.resting[p.Name]; resting && time.Now().Before(until) {
@@ -223,13 +227,24 @@ func (b *Balancer) available(printers []SysPrinter, prefs map[string]Preference)
 	n := 0
 	for _, p := range printers {
 		pref, ok := prefs[p.Name]
-		if !ok || !pref.Enabled || p.Status == "offline" || p.Status == "error" || p.Status == "paused" {
+		if !ok || !pref.documents() || p.Status == "offline" || p.Status == "error" || p.Status == "paused" {
 			continue
 		}
 		if until, resting := b.resting[p.Name]; resting && time.Now().Before(until) {
 			continue
 		}
 		n++
+	}
+	return n
+}
+
+// Receipt printers that can print a ticket now.
+func receiptPrinters(printers []SysPrinter, prefs map[string]Preference) int {
+	n := 0
+	for _, p := range printers {
+		if pref, ok := prefs[p.Name]; ok && pref.Enabled && pref.Kind == "receipt" && p.Status != "offline" && p.Status != "error" && p.Status != "paused" {
+			n++
+		}
 	}
 	return n
 }
@@ -246,7 +261,7 @@ func (b *Balancer) rest(name string) {
 func usable(printers []SysPrinter, prefs map[string]Preference) int {
 	n := 0
 	for _, p := range printers {
-		if pref, ok := prefs[p.Name]; ok && pref.Enabled && p.Status != "offline" && p.Status != "error" && p.Status != "paused" {
+		if pref, ok := prefs[p.Name]; ok && pref.documents() && p.Status != "offline" && p.Status != "error" && p.Status != "paused" {
 			n++
 		}
 	}
@@ -276,7 +291,8 @@ func run(client *Client, paper Paper) error {
 			printers = list
 		}
 		var next heartbeatReply
-		if err := client.call("heartbeat", map[string]any{"version": version, "host": host, "os": system, "printers": printers}, &next); err != nil {
+		// "receipt": this client prints balloon tickets, so the server may use its receipt printers.
+		if err := client.call("heartbeat", map[string]any{"version": version, "host": host, "os": system, "printers": printers, "capabilities": []string{"receipt"}}, &next); err != nil {
 			return err
 		}
 		if next.Name != reply.Name || next.Enabled != reply.Enabled || lastBeat.IsZero() {
@@ -284,7 +300,7 @@ func run(client *Client, paper Paper) error {
 			if !next.Enabled {
 				state = "已在管理页停用，暂不领取打印请求"
 			}
-			logf("已连接打印服务器“%s”（%s），本机 %d 台打印机，%d 台参与打印", next.Name, state, len(printers), usable(printers, next.Preferences))
+			logf("已连接打印服务器“%s”（%s），本机 %d 台打印机，%d 台参与打印，%d 台小票机", next.Name, state, len(printers), usable(printers, next.Preferences), receiptPrinters(printers, next.Preferences))
 		}
 		reply = next
 		lastBeat = time.Now()
@@ -312,14 +328,15 @@ func run(client *Client, paper Paper) error {
 		}
 		// Only printers that can print now: one resting after a failure takes no new jobs.
 		slots := balancer.available(printers, reply.Preferences)
-		if !reply.Enabled || slots == 0 {
+		// Receipt printers take balloon tickets also when no printer is free for printouts.
+		if !reply.Enabled || (slots == 0 && receiptPrinters(printers, reply.Preferences) == 0) {
 			time.Sleep(poll)
 			continue
 		}
 		var next struct {
 			Jobs []Job `json:"jobs"`
 		}
-		if err := client.call("next", map[string]any{"slots": slots}, &next); err != nil {
+		if err := client.call("next", map[string]any{"slots": slots, "receipts": true}, &next); err != nil {
 			if errors.Is(err, errUnauthorized) {
 				return err
 			}
@@ -331,6 +348,27 @@ func run(client *Client, paper Paper) error {
 		failures = 0
 		released := false
 		for _, job := range next.Jobs {
+			if job.Kind == "receipt" {
+				// Tickets name their receipt printer (the contest's plan picked it).
+				result := map[string]any{"id": job.ID, "printer": job.Printer, "status": "printed"}
+				start := time.Now()
+				var err error
+				if !hasPrinter(printers, job.Printer) {
+					err = fmt.Errorf("本机没有小票机 %s", job.Printer)
+				} else {
+					err = printReceipt(job.Printer, job)
+				}
+				if err != nil {
+					result["status"], result["message"] = "failed", err.Error()
+					logf("小票打印失败  %s → %s：%v", job.Title, job.Printer, err)
+				} else {
+					logf("已打印小票  %s → %s（%.1f 秒）", job.Title, job.Printer, time.Since(start).Seconds())
+				}
+				if err := report(client, result); err != nil {
+					logf("回报结果失败：%v", err)
+				}
+				continue
+			}
 			printer := job.Printer
 			if printer == "" || !hasPrinter(printers, printer) {
 				var ok bool

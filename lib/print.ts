@@ -142,14 +142,29 @@ export interface PrinterPreference {
     enabled: boolean;
     /** Share of the PC's printouts, 1 to 10. */
     weight: number;
+    /** document: prints code; receipt (小票机): prints only balloon tickets (lib/balloons.ts). */
+    kind: 'document' | 'receipt';
+    receipt: { width: 58 | 80; mode: 'escpos' | 'driver'; cut: boolean };
 }
 
 export function normalizePrinterPreference(input: unknown): PrinterPreference {
     const raw = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
     const weight = raw.weight === undefined ? 1 : Number(raw.weight);
     if (!Number.isSafeInteger(weight) || weight < 1 || weight > 10) throw new PrintError('打印机权重需为 1 至 10 的整数');
-    return { enabled: raw.enabled !== false, weight };
+    if (raw.kind !== undefined && raw.kind !== 'document' && raw.kind !== 'receipt') throw new PrintError('打印机类型无效');
+    const receipt = (raw.receipt && typeof raw.receipt === 'object' ? raw.receipt : {}) as Record<string, unknown>;
+    const width = receipt.width === undefined ? 80 : Number(receipt.width);
+    if (width !== 58 && width !== 80) throw new PrintError('小票纸宽只能是 58 或 80 毫米');
+    if (receipt.mode !== undefined && receipt.mode !== 'escpos' && receipt.mode !== 'driver') throw new PrintError('小票输出方式无效');
+    return {
+        enabled: raw.enabled !== false, weight, kind: raw.kind === 'receipt' ? 'receipt' : 'document',
+        receipt: { width, mode: receipt.mode === 'driver' ? 'driver' : 'escpos', cut: receipt.cut !== false },
+    };
 }
+
+/** A saved preference from before printer types: a printer for printouts. */
+export const preferenceOf = (saved: Partial<PrinterPreference> | undefined, fallback: () => PrinterPreference): PrinterPreference =>
+    (saved ? normalizePrinterPreference(saved) : fallback());
 
 /** A new secret for a print server; only its hash is stored. */
 export const newPrintToken = () => randomBytes(24).toString('base64url');

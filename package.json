@@ -1,6 +1,6 @@
 {
   "name": "hydro-scoreboard-xcpcio-plus",
-  "version": "1.13.0",
+  "version": "1.14.0",
   "description": "Hydro XCPCIO 榜单增强、Resolver 滚榜、大屏、ICPC Live 直播与 CCS Contest API 2026-01",
   "repository": {
     "type": "git",
@@ -35,6 +35,8 @@
     "print-client/main.go",
     "print-client/pdf.go",
     "print-client/queue_test.go",
+    "print-client/receipt.go",
+    "print-client/receipt_test.go",
     "print-client/sample.go",
     "print-client/system_unix.go",
     "print-client/system_windows.go",

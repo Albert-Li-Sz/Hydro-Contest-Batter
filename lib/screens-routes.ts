@@ -10,6 +10,7 @@ import { toScriptJson } from './settings';
 import { resolverBoards, resolverCodeBase } from './resolver-data';
 import { awardsFor } from './settings';
 import { ResolverSessions } from './resolver-sessions';
+import type { BalloonScreenData } from './balloon-routes';
 import {
     broadcastRows, decodePoster, defaultScreenConfig, groupSources, hiddenBeforeStart, intervalTypes, isPosterId, judgeScreen,
     maxPosterImages, normalizeScreenConfig, presentationItem, problemRows, saveScreenConfig, screenCategories, ScreenConfig,
@@ -40,6 +41,8 @@ export function applyScreens(ctx: Context, dependencies: {
     loadSettings: (tdoc: Tdoc) => Promise<BoardSettings>;
     loadData: (tdoc: Tdoc, realtime: boolean, identity: boolean, staffResults: boolean) => Promise<BoardData>;
     machines: (now: number) => Promise<MonitorMachine[]>;
+    /** 气球配送 (lib/balloon-routes.ts): its balloons and colours, when the contest uses it. */
+    balloons?: (tdoc: Tdoc) => Promise<BalloonScreenData | null>;
 }) {
     const collection = ctx.db.collection('xcpcio.screens');
     const media = ctx.db.collection('xcpcio.screens.media');
@@ -319,12 +322,22 @@ export function applyScreens(ctx: Context, dependencies: {
                     });
                     if (type === 'logo-wall' && !projection.contest.organizations.length) throw new ScreenError('暂无可展示的学校，请检查公开榜的学校显示设置');
                     const balloons = type === 'balloons' ? await cached(`${prefix}|balloons`, async () => {
+                        // 气球配送 tracks the balloons itself when the contest uses it (also after the freeze, in its colours).
+                        const own = await dependencies.balloons?.(tdoc);
+                        if (own) return own;
                         const index = new Map(tdoc.pids.map((pid, i) => [pid, String(i)]));
                         const rows = await ContestModel.getMultiBalloon(tdoc.domainId, tdoc.docId, { sent: { $exists: false } })
                             .project<{ _id: ObjectId; uid: number; pid: number }>({ uid: 1, pid: 1 }).toArray();
-                        return rows.flatMap((row) => index.has(row.pid) ? [{ teamId: String(row.uid), problemId: index.get(row.pid)!, submissionId: String(row._id) }] : []);
+                        return { pending: rows.flatMap((row) => index.has(row.pid) ? [{ teamId: String(row.uid), problemId: index.get(row.pid)!, submissionId: String(row._id) }] : []), colors: null };
                     }) : undefined;
-                    payload = screenProjection(type, item, projection, balloons);
+                    payload = screenProjection(type, item, projection, balloons?.pending);
+                    // The colours 气球配送 sets for its tickets are the balloons' colours on the screen too.
+                    if (balloons?.colors && payload && typeof payload === 'object' && Array.isArray((payload as { problems?: unknown }).problems)) {
+                        for (const problem of (payload as { problems: { id: string; color: string }[] }).problems) {
+                            const color = balloons.colors[Number(problem.id)];
+                            if (color) problem.color = color;
+                        }
+                    }
                 }
                 this.response.body = { ...base, item: program, data: payload, title: tdoc.title };
             } catch (error) {

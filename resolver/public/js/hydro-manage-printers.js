@@ -42,9 +42,11 @@ const tag = ([label, tone]) => el('span', { class: `manage-tag ${tone}`, text: l
 function renderStats() {
     const online = state.servers.filter((server) => server.online);
     const printers = online.flatMap((server) => server.printers).filter((printer) => !['offline', 'missing'].includes(printer.status));
+    const receipts = printers.filter((printer) => printer.preference.kind === 'receipt');
     stats.replaceChildren(...[
         [`${online.length} / ${state.servers.length}`, '在线打印服务器'],
-        [printers.length, '在线打印机'],
+        [printers.length - receipts.length, '在线打印机'],
+        [receipts.length, '在线小票机'],
         [state.queue.pending || 0, '待打印'],
         [state.queue.printing || 0, '打印中'],
         [state.queue.failed || 0, '打印失败'],
@@ -81,25 +83,50 @@ function binding(server) {
 function serverCard(server) {
     const state_ = !server.enabled ? ['已停用', 'manage-tag--warn'] : server.online ? ['在线', 'manage-tag--ok'] : server.lastSeen ? ['离线', 'manage-tag--bad'] : ['尚未连接', 'manage-tag--warn'];
     const client = server.client ? [server.client.host, server.client.os, server.client.version && `客户端 ${server.client.version}`, server.client.ip].filter(Boolean).join(' · ') : '';
+    const small = 'width:auto;margin:0';
     const printers = el('table', { class: 'data-table' },
-        el('thead', {}, el('tr', {}, ...['打印机', '状态', '排队', '参与打印', '权重', '已打印'].map((text) => el('th', { text })), el('th', { class: 'col-actions', text: '' }))),
+        el('thead', {}, el('tr', {}, ...['打印机', '状态', '排队', '类型', '参与打印', '权重 / 小票', '已打印'].map((text) => el('th', { text })), el('th', { class: 'col-actions', text: '' }))),
         el('tbody', {}, ...server.printers.length ? server.printers.map((printer) => {
-            const enabled = el('input', { type: 'checkbox', checked: printer.preference.enabled, 'aria-label': `${printer.name} 参与打印` });
-            enabled.addEventListener('change', () => savePrinter(server, printer, { ...printer.preference, enabled: enabled.checked }));
-            const weight = el('select', { class: 'select', 'aria-label': `${printer.name} 权重`, style: 'width:auto;margin:0' },
-                ...Array.from({ length: 10 }, (_, index) => new Option(String(index + 1), String(index + 1), false, printer.preference.weight === index + 1)));
-            weight.addEventListener('change', () => savePrinter(server, printer, { ...printer.preference, weight: Number(weight.value) }));
+            const preference = printer.preference;
+            const receipt = preference.kind === 'receipt';
+            const save = (change) => savePrinter(server, printer, { ...preference, ...change, receipt: { ...preference.receipt, ...change.receipt } });
+            const enabled = el('input', { type: 'checkbox', checked: preference.enabled, 'aria-label': `${printer.name} ${receipt ? '打印气球小票' : '参与打印'}` });
+            enabled.addEventListener('change', () => save({ enabled: enabled.checked }));
+            // 小票机: thermal receipt printers that print only balloon tickets (气球配送), never code.
+            const kind = el('select', { class: 'select', 'aria-label': `${printer.name} 类型`, style: small },
+                new Option('普通打印机', 'document', false, !receipt), new Option('小票机', 'receipt', false, receipt));
+            kind.addEventListener('change', () => save({ kind: kind.value }));
+            let options;
+            if (receipt) {
+                const width = el('select', { class: 'select', 'aria-label': `${printer.name} 纸宽`, style: small },
+                    new Option('80 mm', '80', false, preference.receipt.width === 80), new Option('58 mm', '58', false, preference.receipt.width === 58));
+                width.addEventListener('change', () => save({ receipt: { width: Number(width.value) } }));
+                const mode = el('select', { class: 'select', 'aria-label': `${printer.name} 输出方式`, style: small,
+                    title: 'ESC/POS：直接发送小票机指令，适用于绝大多数热敏小票机（含中文）；系统驱动：通过系统打印驱动绘制，适合不支持 ESC/POS 的打印机' },
+                new Option('ESC/POS 指令', 'escpos', false, preference.receipt.mode === 'escpos'), new Option('系统驱动', 'driver', false, preference.receipt.mode === 'driver'));
+                mode.addEventListener('change', () => save({ receipt: { mode: mode.value } }));
+                const cut = el('input', { type: 'checkbox', checked: preference.receipt.cut, 'aria-label': `${printer.name} 自动切纸` });
+                cut.addEventListener('change', () => save({ receipt: { cut: cut.checked } }));
+                options = el('div', { class: 'manage-toolbar', style: 'margin:0' }, width, mode, el('label', { class: 'checkbox manage-small' }, cut, ' 切纸'));
+            } else {
+                options = el('select', { class: 'select', 'aria-label': `${printer.name} 权重`, style: small },
+                    ...Array.from({ length: 10 }, (_, index) => new Option(String(index + 1), String(index + 1), false, preference.weight === index + 1)));
+                options.addEventListener('change', () => save({ weight: Number(options.value) }));
+            }
             return el('tr', {},
                 el('td', {}, printer.name, printer.isDefault ? el('span', { class: 'manage-tag', text: '默认' }) : null,
                     printer.message ? el('div', { class: 'manage-dim manage-small', text: printer.message }) : null),
                 el('td', {}, tag(printerStates[printer.status] || [printer.status, ''])),
                 el('td', { text: printer.queue }),
+                el('td', {}, kind),
                 el('td', {}, enabled),
-                el('td', {}, weight),
-                el('td', { text: printer.printed }),
-                el('td', { class: 'col-actions' }, el('button', { class: 'button', type: 'button', text: '测试页', disabled: !server.online, onclick: () => testPage(server, printer.name) })),
+                el('td', {}, options),
+                el('td', { text: receipt ? `${printer.tickets || 0} 张小票` : printer.printed }),
+                el('td', { class: 'col-actions' }, el('button', { class: 'button', type: 'button', text: receipt ? '测试小票' : '测试页',
+                    disabled: !server.online || (receipt && !server.receipts), onclick: () => testPage(server, printer.name) })),
             );
-        }) : [el('tr', {}, el('td', { class: 'manage-empty', colspan: 7, text: server.lastSeen ? '这台电脑没有报告任何打印机' : '在打印电脑上运行客户端并粘贴连接信息后，打印机会显示在这里' }))]));
+        }) : [el('tr', {}, el('td', { class: 'manage-empty', colspan: 8, text: server.lastSeen ? '这台电脑没有报告任何打印机' : '在打印电脑上运行客户端并粘贴连接信息后，打印机会显示在这里' }))]));
+    const outdated = server.online && !server.receipts && server.printers.some((printer) => printer.preference.kind === 'receipt');
     return el('section', { class: 'manage-server' },
         el('div', { class: 'manage-toolbar' },
             el('h3', { style: 'margin:0' }, server.name, ' ', tag(state_)),
@@ -109,6 +136,7 @@ function serverCard(server) {
             el('button', { class: 'button', type: 'button', text: '打印测试页', disabled: !server.online, onclick: () => testPage(server, '') }),
             el('button', { class: 'button manage-danger', type: 'button', text: '删除', onclick: () => remove(server) })),
         binding(server),
+        outdated ? el('p', { class: 'manage-alert', text: '这台电脑的打印客户端版本较旧，不能打印气球小票，小票机已暂停使用。请在这台电脑上运行 1.14.0 或更新版本的客户端。' }) : null,
         el('p', { class: 'resolver-muted manage-small' },
             server.note ? `${server.note} · ` : '',
             client ? `${client} · 最近联系 ${formatTime(server.lastSeen)}` : '尚未连接',

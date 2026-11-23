@@ -5,9 +5,12 @@ import {
 } from 'hydrooj';
 import {
     CLAIM_TIMEOUT_MS, connectionCode, headerFields, languageOfFile, lineCount, MAX_ATTEMPTS, MAX_PRINT_BYTES, newPrintToken, hashToken,
-    normalizePrinterPreference, normalizePrintSettings, normalizeServerInput, ONLINE_MS, PrintError, type PrinterPreference,
+    normalizePrinterPreference, normalizePrintSettings, normalizeServerInput, ONLINE_MS, PrintError, preferenceOf, type PrinterPreference,
     type PrintServerInput, type PrintSettings, seatOf, serverTakes, tokenMatches,
 } from './print';
+import type { ReceiptQueue } from './balloon-routes';
+import type { ReceiptJob } from './escpos';
+import { defaultReceiptConfig } from './balloons';
 import { printJob, type PrintSheet } from './print-render';
 import { resolverCodeBase } from './resolver-data';
 import { toScriptJson } from './settings';
@@ -34,11 +37,11 @@ interface ServerDoc extends PrintServerInput {
     createdAt: Date;
     createdBy: number;
     lastSeen: Date | null;
-    client: { version: string; host: string; os: string; ip: string } | null;
+    client: { version: string; host: string; os: string; ip: string; capabilities?: string[] } | null;
     printers: ClientPrinter[];
     preferences: Record<string, PrinterPreference>;
     stats: { printed: number; failed: number };
-    /** Test pages waiting for the PC, each for one printer or any. */
+    /** Test pages (or test tickets, for a receipt printer) waiting for the PC, each for one printer or any. */
     tests: { id: string; printer: string }[];
     lastTest: { at: Date; printer: string; status: string; message: string } | null;
 }
@@ -66,14 +69,22 @@ const CLIENT_PREFIX = 'hydro-print-client-';
 /** A poll looks at up to SCAN_PAGES × SCAN_PAGE waiting requests for ones this PC may take. */
 const SCAN_PAGE = 200;
 const SCAN_PAGES = 10;
-const defaultPreference = (printer: { virtual?: boolean }): PrinterPreference => ({ enabled: !printer.virtual, weight: 1 });
+const defaultPreference = (printer: { virtual?: boolean }): PrinterPreference => ({
+    enabled: !printer.virtual, weight: 1, kind: 'document', receipt: defaultReceiptConfig(),
+});
+/** A printer's saved preference (or the default), also for preferences saved before printer types. */
+const preferenceFor = (doc: { preferences?: Record<string, PrinterPreference> }, printer: { name: string; virtual?: boolean }) =>
+    preferenceOf(doc.preferences?.[printer.name], () => defaultPreference(printer));
+/** Clients from before 1.14.0 know no receipt printers: theirs must stay out of their rotation. */
+const printsReceipts = (doc: { client: { capabilities?: string[] } | null }) => !!doc.client?.capabilities?.includes('receipt');
 
 /**
  * Print servers for system administrators (/manage): each is a PC running the print client, which
  * takes Hydro's print requests for the contests and seats it is bound to and prints them on its
  * printers, balancing between them. The PC reports its printers, so they show here per server.
  */
-export function applyPrintServers(ctx: Context) {
+export function applyPrintServers(ctx: Context, dependencies: { receipts?: ReceiptQueue } = {}) {
+    const { receipts } = dependencies;
     const root = path.join(__dirname, '..');
     const codeBase = resolverCodeBase(JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version);
     const raw = (name: string): any => ctx.db.collection(name as never);
@@ -332,6 +343,11 @@ export function applyPrintServers(ctx: Context) {
                     .project({ domainId: 1, docId: 1, title: 1, beginAt: 1, endAt: 1, allowPrint: 1, rule: 1 }).toArray());
             }
             const printed = new Map<string, number>(perPrinter.map((row: { _id: { server: string; printer: string }; n: number }) => [`${row._id.server}\n${row._id.printer}`, row.n]));
+            // Balloon tickets each receipt printer printed (lib/balloon-routes.ts).
+            const tickets = new Map<string, number>((await raw('xcpcio.balloons').aggregate([
+                { $match: { 'ticket.prints': { $gt: 0 }, 'ticket.server': { $exists: true } } },
+                { $group: { _id: { server: '$ticket.server', printer: '$ticket.printer' }, n: { $sum: '$ticket.prints' } } },
+            ]).toArray()).map((row: { _id: { server: string; printer: string }; n: number }) => [`${row._id.server}\n${row._id.printer}`, row.n]));
             const names = new Map(list.map((doc) => [String(doc._id), doc.name]));
             const infos = new Map<string, Awaited<ReturnType<typeof contestInfo>>>();
             for (const task of recent) {
@@ -353,10 +369,12 @@ export function applyPrintServers(ctx: Context) {
                     return {
                         id: String(doc._id), name: doc.name, note: doc.note, enabled: doc.enabled, contests: doc.contests, seatPrefixes: doc.seatPrefixes,
                         online, lastSeen: doc.lastSeen, client: doc.client, stats: doc.stats, lastTest: doc.lastTest, testsWaiting: doc.tests?.length || 0,
+                        receipts: printsReceipts(doc),
                         printers: printers.map((printer) => ({
                             ...printer, status: online ? printer.status : printer.status === 'missing' ? 'missing' : 'offline',
-                            preference: doc.preferences?.[printer.name] ?? defaultPreference(printer),
+                            preference: preferenceFor(doc, printer),
                             printed: printed.get(`${doc._id}\n${printer.name}`) || 0,
+                            tickets: tickets.get(`${doc._id}\n${printer.name}`) || 0,
                         })),
                     };
                 }),
@@ -416,14 +434,21 @@ export function applyPrintServers(ctx: Context) {
                 name: text(printer.name, 200), status: text(printer.status, 20) || 'idle', queue: Math.max(0, Math.min(9999, Number(printer.queue) || 0)),
                 message: text(printer.message, 200), isDefault: printer.isDefault === true, virtual: printer.virtual === true,
             })).filter((printer: ClientPrinter) => printer.name);
-            const client = { version: text(body.version, 40), host: text(body.host, 100), os: text(body.os, 60), ip: String(this.request.ip || '') };
+            const capabilities = (Array.isArray(body.capabilities) ? body.capabilities : []).map((value: unknown) => text(value, 20)).filter(Boolean).slice(0, 10);
+            const client = { version: text(body.version, 40), host: text(body.host, 100), os: text(body.os, 60), ip: String(this.request.ip || ''), capabilities };
             await servers.updateOne({ _id: this.doc._id }, { $set: { lastSeen: new Date(), client, printers } });
             // Heartbeats come every few seconds: only coming back online or a printer change is news.
             const wasOnline = !!this.doc.lastSeen && Date.now() - new Date(this.doc.lastSeen).getTime() < ONLINE_MS;
-            if (!wasOnline || JSON.stringify(printers) !== JSON.stringify(this.doc.printers)) changed();
+            if (!wasOnline || JSON.stringify(printers) !== JSON.stringify(this.doc.printers)
+                || JSON.stringify(capabilities) !== JSON.stringify(this.doc.client?.capabilities || [])) changed();
+            const receiptsKnown = capabilities.includes('receipt');
             this.response.body = {
                 name: this.doc.name, enabled: this.doc.enabled, pollMs: 3000,
-                preferences: Object.fromEntries(printers.map((printer) => [printer.name, this.doc.preferences?.[printer.name] ?? defaultPreference(printer)])),
+                preferences: Object.fromEntries(printers.map((printer) => {
+                    const preference = preferenceFor(this.doc, printer);
+                    // An older client would send printouts to a receipt printer: it is off for it.
+                    return [printer.name, preference.kind === 'receipt' && !receiptsKnown ? { ...preference, enabled: false } : preference];
+                })),
             };
         }
     }
@@ -434,14 +459,27 @@ export function applyPrintServers(ctx: Context) {
             await servers.updateOne({ _id: this.doc._id }, { $set: { lastSeen: new Date(now) } });
             if (!this.doc.enabled) { this.response.body = { jobs: [] }; return; }
             const settings = await loadSettings();
-            const jobs: ReturnType<typeof printJob>[] = [];
-            const slots = Math.max(1, Math.min(10, Number(this.body().slots) || 1));
+            const jobs: (ReturnType<typeof printJob> | ReceiptJob)[] = [];
+            // A client that prints tickets polls also when none of its printers takes printouts (slots 0).
+            const receiptsAsked = this.body().receipts === true;
+            const requested = Number(this.body().slots);
+            const slots = receiptsAsked && requested === 0 ? 0 : Math.max(1, Math.min(10, requested || 1));
+            const testSlots = Math.max(slots, receiptsAsked ? 3 : 1);
             // Test pages first, taken atomically so two overlapping polls do not both print them.
             if (this.doc.tests?.length) {
                 const taken = await servers.findOneAndUpdate({ _id: this.doc._id, 'tests.0': { $exists: true } }, { $set: { tests: [] } }, { returnDocument: 'before' }) as ServerDoc | null;
                 const tests = taken?.tests || [];
-                if (tests.length > slots) await servers.updateOne({ _id: this.doc._id }, { $push: { tests: { $each: tests.slice(slots), $position: 0 } } });
-                for (const test of tests.slice(0, slots)) jobs.push({ ...testJob(test.id, this.doc.name, settings), printer: test.printer });
+                if (tests.length > testSlots) await servers.updateOne({ _id: this.doc._id }, { $push: { tests: { $each: tests.slice(testSlots), $position: 0 } } });
+                for (const test of tests.slice(0, testSlots)) {
+                    const printer = this.doc.printers.find((candidate) => candidate.name === test.printer);
+                    const preference = printer ? preferenceFor(this.doc, printer) : null;
+                    // A receipt printer gets a test ticket (if its client prints them; else nothing that could jam it).
+                    if (preference?.kind === 'receipt') {
+                        if (receipts && printsReceipts(this.doc)) jobs.push(receipts.testJob(test.id, this.doc.name, test.printer, preference.receipt));
+                        continue;
+                    }
+                    jobs.push({ ...testJob(test.id, this.doc.name, settings), printer: test.printer });
+                }
             }
             await releaseStale(now);
             const active = await servers.find({ enabled: true, lastSeen: { $gt: new Date(now - ONLINE_MS) } })
@@ -481,6 +519,8 @@ export function applyPrintServers(ctx: Context) {
                 }
                 if (candidates.length < SCAN_PAGE) break;
             }
+            // Balloon tickets for this PC's receipt printers, from clients that print them.
+            if (receipts && receiptsAsked && printsReceipts(this.doc)) jobs.push(...await receipts.claim(String(this.doc._id), now));
             this.response.body = { jobs };
             if (jobs.length) changed();
         }
@@ -499,6 +539,13 @@ export function applyPrintServers(ctx: Context) {
             const message = text(body.message, 300);
             // `released`: the PC had no printer free for it; back to the queue without using up an attempt.
             const status = body.status === 'printed' ? 'printed' : body.status === 'released' ? 'released' : 'failed';
+            if (id.startsWith('balloon-')) {
+                if (!receipts || !await receipts.report(id, String(this.doc._id), status, printer, message)) throw new PrintError('气球小票不存在或已交给其他打印服务器', 404);
+                await servers.updateOne({ _id: this.doc._id }, status === 'released' ? { $set: { lastSeen: new Date() } }
+                    : { $set: { lastSeen: new Date() }, $inc: { [status === 'printed' ? 'stats.printed' : 'stats.failed']: 1 } });
+                this.response.body = { ok: true };
+                return;
+            }
             if (id.startsWith('test-')) {
                 await servers.updateOne({ _id: this.doc._id }, { $set: { lastTest: { at: new Date(), printer, status, message }, lastSeen: new Date() } });
                 this.response.body = { ok: true };

@@ -15,6 +15,7 @@ import { createOverviewPreview } from '../preview/overview';
 import { createCcsPreview, previewCcsId } from '../preview/ccs';
 import { createManagePreview } from '../preview/manage';
 import { createPrintersPreview } from '../preview/printers';
+import { createBalloonsPreview } from '../preview/balloons';
 import { previewDatabase } from '../preview/resolver-memory-db';
 
 async function main() {
@@ -35,7 +36,9 @@ const screensPreview = createScreensPreview(env, logoNames, pluginVersion, previ
 const monitorPreview = createMonitorPreview(env, pluginVersion, demoData);
 const overviewPreview = createOverviewPreview(env, pluginVersion);
 const managePreview = createManagePreview(env, pluginVersion);
-const printersPreview = createPrintersPreview(env, pluginVersion, demoData);
+// 气球配送 tickets print on the receipt printers of the print servers preview, which takes them from it.
+const balloonsPreview = createBalloonsPreview(env, pluginVersion, demoData, () => printersPreview.receiptPrinters());
+const printersPreview = createPrintersPreview(env, pluginVersion, demoData, () => balloonsPreview.receipts);
 const livePreview = createLivePreview(env, logoNames, pluginVersion, demoData, () => settings);
 const ccsPreview = createCcsPreview(demoData(), () => settings);
 const base = '/contest/demo';
@@ -62,6 +65,7 @@ const server = http.createServer(async (request, response) => {
         if (await monitorPreview(request, response, url)) return;
         if (await overviewPreview(request, response, url)) return;
         if (await printersPreview(request, response, url)) return;
+        if (await balloonsPreview.handle(request, response, url)) return;
         if (await managePreview(request, response, url)) return;
         if (request.method === 'POST' && url.pathname === settingsUrl) {
             let body = '';

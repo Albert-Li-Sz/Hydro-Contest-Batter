@@ -18,6 +18,7 @@ import { applyOverview } from './lib/overview-routes';
 import { applyCcs } from './lib/ccs/routes';
 import { applyManage } from './lib/manage-routes';
 import { applyPrintServers } from './lib/print-routes';
+import { applyBalloons } from './lib/balloon-routes';
 
 export const name = 'scoreboard-xcpcio-plus';
 export const Config = Schema.object({
@@ -287,11 +288,13 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     ctx.Route('contest_xcpcio_plus_settings', '/contest/:tid/xcpcio-settings', SettingsHandler);
     applyResolver(ctx, { loadSettings, loadData: loadContestData, sessionDays: config.resolverSessionDays ?? 0 });
     const monitor = applyMonitor(ctx);
-    applyScreens(ctx, { loadSettings, loadData: loadContestData, machines: monitor.machines });
+    // 气球配送: its balloons feed the 气球配送图 screen, its tickets the print servers' receipt printers.
+    const balloons = applyBalloons(ctx, { loadSettings });
+    applyScreens(ctx, { loadSettings, loadData: loadContestData, machines: monitor.machines, balloons: balloons.screen });
     applyOverview(ctx, { loadSettings, loadData: loadContestData });
     applyCcs(ctx, { loadSettings, loadData: loadContestData });
     applyManage(ctx, { machines: monitor.machines });
-    applyPrintServers(ctx);
+    applyPrintServers(ctx, { receipts: balloons.receipts });
     if (config.live !== false) applyLive(ctx, { loadSettings, loadData: loadContestData, capture: config.liveCapture !== false, captureStunPort: config.liveCaptureStunPort ?? 3478 });
     ctx.Route('contest_xcpcio_plus_public', '/contest/:tid/xcpcio-public', PublicBoardHandler);
     ctx.i18n.load('zh', { 'XCPCIO Plus': 'XCPCIO 增强榜' });

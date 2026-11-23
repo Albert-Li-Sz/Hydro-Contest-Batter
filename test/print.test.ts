@@ -79,7 +79,7 @@ describe('打印服务器', () => {
             .toEqual({ name: '1 号机', note: '', enabled: true, contests: ['system/6740a0000000000000000001'], seatPrefixes: ['A', 'B'] });
         expect(() => normalizeServerInput({ name: '' })).toThrow('名称');
         expect(() => normalizeServerInput({ name: 'x', contests: ['bad'] })).toThrow('比赛无效');
-        expect(normalizePrinterPreference({ weight: 3 })).toEqual({ enabled: true, weight: 3 });
+        expect(normalizePrinterPreference({ weight: 3 })).toEqual({ enabled: true, weight: 3, kind: 'document', receipt: { width: 80, mode: 'escpos', cut: true } });
         expect(() => normalizePrinterPreference({ weight: 11 })).toThrow('权重');
     });
 

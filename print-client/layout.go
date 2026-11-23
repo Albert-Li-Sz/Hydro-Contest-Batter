@@ -16,6 +16,9 @@ type Job struct {
 	FontSize float64       `json:"fontSize"`
 	Numbers  bool          `json:"lineNumbers"`
 	Printer  string        `json:"printer"`
+	// "receipt": a balloon ticket for the receipt printer in Printer (receipt.go).
+	Kind    string   `json:"kind"`
+	Receipt *Receipt `json:"receipt"`
 }
 
 type Header struct {

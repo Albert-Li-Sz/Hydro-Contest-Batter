@@ -18,7 +18,7 @@ const contest = '/contest/demo';
 const screen = `${contest}/screen/preview0000000000000000000000000000000000000000`;
 const themed = [
     `${contest}/scoreboard/xcpcio-plus`, `${contest}/xcpcio-settings`, `${contest}/resolver`, `${contest}/screens`,
-    `${contest}/live`, `${contest}/live/capture`, `${contest}/monitor`, `${contest}/overview`,
+    `${contest}/live`, `${contest}/live/capture`, `${contest}/monitor`, `${contest}/overview`, `${contest}/balloons`,
     '/manage/xcpcio-users', '/manage/xcpcio-judges', '/manage/xcpcio-rejudge', '/manage/xcpcio-printers',
 ];
 const plain = [`${contest}/live-capture/me?as=1`, `${contest}/problems?as=1`,
@@ -202,6 +202,37 @@ async function interactions(browser, base) {
         }, name);
         const seen = await printers.getByText(name).first().waitFor({ timeout: 5000 }).then(() => true, () => false);
         check(where, seen, 'a print server added elsewhere did not appear');
+        // 气球配送: enabling lists the balloons; one is delivered from its card; the settings render.
+        where = 'balloons';
+        const balloons = await open(context, base, `${contest}/balloons`, where);
+        await balloons.waitForTimeout(1000);
+        const intro = balloons.getByRole('button', { name: '开启气球配送' });
+        if (await intro.count()) await intro.click();
+        await balloons.waitForTimeout(1500);
+        const cards = await balloons.locator('.balloon-card').count();
+        check(where, cards > 0, 'no balloons after enabling');
+        if (cards) {
+            await balloons.locator('.balloon-card button.balloon-pill').first().click();
+            await balloons.waitForTimeout(1200);
+            check(where, (await balloons.locator('[role=status]').first().innerText()).includes('已标记送达'), 'delivering a balloon did not report');
+        }
+        await balloons.getByRole('radio', { name: '按时间' }).click();
+        await balloons.waitForTimeout(400);
+        check(where, (await balloons.locator('.balloon-table tbody tr').count()) > 0, 'the time view is empty');
+        await balloons.getByRole('tab', { name: '设置' }).click();
+        await balloons.waitForTimeout(500);
+        check(where, (await balloons.locator('input[type=color]').count()) > 0, 'the colour settings did not render');
+        await checkLayout(balloons, where);
+        // The volunteers' link, on a phone.
+        where = 'balloon desk';
+        const phone = await browser.newContext({ viewport: { width: 375, height: 812 } });
+        try {
+            const desk = await open(phone, base, `${contest}/balloon-desk/desk00000000000000000000000000000000`, where);
+            await desk.waitForTimeout(1500);
+            check(where, (await desk.locator('.balloon-card').count()) > 0, 'the volunteer page lists no balloons');
+            check(where, (await desk.getByRole('tab', { name: '设置' }).count()) === 0, 'volunteers see the settings');
+            await checkLayout(desk, where);
+        } finally { await phone.close(); }
         // The announce screen turns pages from the first frame on.
         where = 'announce';
         for (let i = 0; i < 4; i++) {
