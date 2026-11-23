@@ -96,11 +96,11 @@ Schema 测试固定使用官方 2026-01 分支文件；上游 schema 对 runs �
 
 需要 Node.js 22 或以上版本及 Hydro 5.x。使用运行 Hydro 的系统用户操作；命令中的 `$HOME` 对应这个用户。自 0.8.1 起，安装包包含供 Hydro 直接加载的源码和完整预构建资源。
 
-下载 `hydro-scoreboard-xcpcio-plus-1.16.0.tgz` 并放入当前目录。首次安装按以下步骤解压、注册 addon 并重启服务。
+下载 `hydro-scoreboard-xcpcio-plus-1.17.0.tgz` 并放入当前目录。首次安装按以下步骤解压、注册 addon 并重启服务。
 
 ```bash
 mkdir -p "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
-tar -xzf hydro-scoreboard-xcpcio-plus-1.16.0.tgz \
+tar -xzf hydro-scoreboard-xcpcio-plus-1.17.0.tgz \
   -C "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus" --strip-components=1
 hydrooj addon add "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 pm2 restart hydrooj
@@ -112,7 +112,7 @@ pm2 restart hydrooj
 
 ```bash
 mkdir -p xcpcio-update
-tar -xzf hydro-scoreboard-xcpcio-plus-1.16.0.tgz -C xcpcio-update
+tar -xzf hydro-scoreboard-xcpcio-plus-1.17.0.tgz -C xcpcio-update
 bash xcpcio-update/package/install.sh install
 # 已有安装时
 bash xcpcio-update/package/install.sh upgrade
@@ -425,6 +425,17 @@ Hydro 5.1 起支持组队比赛（比赛设置中允许组队）。组队参赛�
 - 系统管理员在详情中可跳转到“座位与 IP”修正座位和 IP 登录。
 
 选手页面上的报告由插件的前端脚本发出（`frontend/presence.page.js`，随 Hydro 前端一同构建）；即使前端未重新构建，打开比赛页面本身也会被记录，只是页面停留期间不会持续报告。
+
+## 答疑台
+
+ACM 比赛的所有者和拥有“编辑比赛”权限的管理员可在比赛侧边栏打开“答疑台”。选手继续在 Hydro 原生比赛题目页提问和查看回复。答疑台、Hydro 原生答疑、大屏的公开公告和 CCS API 共用比赛的答疑数据。
+
+1. 在“待回复”按题号、通用或技术问题筛选。列表显示队伍、座位和等待时间，超过 5 分钟标红。答疑台打开且在前台时每 4 秒刷新。可打开“提示音”。页面同时显示各分类提问数和平均响应时间。
+2. 点“标记处理中”认领，避免多名裁判重复处理。同一条提问只允许一人持有认领，10 分钟后自动释放，也可手动释放。管理员可解除其他人的认领。
+3. 套用比赛配置的标准回复，或自行填写。默认模板包括“否”“是”“请仔细阅读题面”“无可奉告”和“不提供额外数据”。私下回复只回给提问队伍。需要同步给全体时，勾选“同时向全体发布公告”并填写单独的公开稿。
+4. 在“公告”发布封榜、延时、题面更正等通知。公开稿会进入大屏的“比赛公告滚动”。开启直播的站点可把公开稿推送到直播滚动条，持续 5 分钟。
+
+在“设置”可以修改回复模板、设置提前多少分钟自动公告封榜时间（0 表示关闭），以及按实际题号生成答疑员链接。收到链接的人员无需登录，可认领并回复该题提问，也能随回复发布本题公开稿。发布独立公告、推送直播与修改设置由比赛管理员完成。更换或删除链接后旧地址即刻失效，也可从“座位与 IP”的“免登录链接”随其他链接一起更换。
 
 ## 评测监控
 

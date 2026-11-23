@@ -13,14 +13,14 @@ import {
 } from '../lib/screens-data';
 
 /** Local preview of the big-screen pages. Mirrors lib/screens-routes.ts without Hydro or MongoDB. */
-export function createScreensPreview(env: Environment, logoNames: Record<string, string>, version: string, db: Context['db']) {
+export function createScreensPreview(env: Environment, logoNames: Record<string, string>, version: string, db: Context['db'],
+    announcements: () => { subject: number; text: string; at: number }[] = () => []) {
     const codeBase = resolverCodeBase(version);
     const sessions = new ResolverSessions(db);
     const base = '/contest/demo';
     let config = defaultScreenConfig();
     let token = 'preview0000000000000000000000000000000000000000';
     const images = new Map<string, ReturnType<typeof decodePoster>>();
-    const started = Date.now();
     return async (request: IncomingMessage, response: ServerResponse, url: URL, data: BoardData, settings: BoardSettings) => {
         const json = (value: unknown, status = 200) => response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(value));
         const boards = resolverBoards(data, settings, settings.showIdentity);
@@ -103,10 +103,9 @@ export function createScreensPreview(env: Environment, logoNames: Record<string,
             let payload: unknown;
             const problems = data.contest.problem_id as string[];
             if (type === 'poster') payload = item.images.map((id) => `${base}/screen/${token}/poster/images/${id}`);
-            else if (type === 'clarifications') payload = [
-                { text: '请各队核对座位号和队伍名。如有疑问，请通过比赛页面向裁判提问。', at: started - 60000, subject: '' },
-                { text: '比赛结束前请勿离开座位。', at: started - 120000, subject: '' },
-            ];
+            else if (type === 'clarifications') payload = announcements().map((item) => ({
+                ...item, subject: item.subject === -1 ? '技术' : problems[item.subject - 101] || '',
+            }));
             else if (type === 'problem-list') payload = problems.map((label, i) => ({ label, title: ['热身题', '星际旅行', '排列组合', '树上路径'][i % 4],
                 color: (data.contest.balloon_color as { background_color: string }[])[i]?.background_color, timeMs: 2000, memoryMb: 256 }));
             else if (type === 'judges') payload = { queueLength: 3, alerts: 1, machines: [

@@ -20,6 +20,7 @@ const themed = [
     `${contest}/scoreboard/xcpcio-plus`, `${contest}/xcpcio-settings`, `${contest}/resolver`, `${contest}/screens`,
     `${contest}/live`, `${contest}/live/capture`, `${contest}/monitor`, `${contest}/presence`, `${contest}/overview`, `${contest}/balloons`,
     '/manage/xcpcio-users', '/manage/xcpcio-users#seats', '/manage/xcpcio-judges', '/manage/xcpcio-rejudge', '/manage/xcpcio-printers',
+    `${contest}/clarification-desk`,
     `${contest}/results`,
 ];
 const plain = [`${contest}/live-capture/me?as=1`, `${contest}/problems?as=1`, `${contest}/presence?phase=before`,
@@ -301,6 +302,56 @@ async function interactions(browser, base) {
             check(where, (await desk.getByRole('tab', { name: '设置' }).count()) === 0, 'volunteers see the settings');
             await checkLayout(desk, where);
         } finally { await phone.close(); }
+        // 答疑台: claim a question through a scoped link, reply and verify what goes public.
+        where = 'clarification desk';
+        const deskPage = await open(context, base, `${contest}/clarification-desk`, where);
+        await deskPage.locator('[data-question]').first().waitFor();
+        check(where, await deskPage.locator('.desk-delayed').count() > 0, 'no delayed question was highlighted');
+        await deskPage.getByRole('button', { name: '设置', exact: true }).click();
+        await deskPage.getByLabel('负责题目').selectOption('101');
+        await deskPage.locator('#desk-link-name').fill('A 题裁判');
+        await deskPage.getByRole('button', { name: '生成答疑员链接' }).click();
+        const juryLink = deskPage.getByRole('link', { name: '打开答疑员链接' });
+        await juryLink.waitFor();
+        const scopedPath = await juryLink.getAttribute('href');
+        const juryPage = await open(context, base, scopedPath, 'scoped clarification desk');
+        await juryPage.locator('[data-question]').waitFor();
+        check(where, await juryPage.locator('[data-question]').count() === 1 && !await juryPage.getByText('星际旅行').isVisible(), 'delegated scope included other questions');
+        await juryPage.locator('[data-question]').click();
+        await juryPage.getByRole('button', { name: '标记处理中' }).click();
+        await juryPage.getByRole('button', { name: '释放认领' }).waitFor();
+        await deskPage.bringToFront();
+        await deskPage.getByRole('button', { name: '待回复', exact: true }).click();
+        await deskPage.getByRole('button', { name: /热身题.*林澈/ }).click();
+        await deskPage.getByRole('button', { name: '解除认领' }).waitFor();
+        check(where, !await deskPage.getByRole('button', { name: '发送回复', exact: true }).isEnabled(), 'another judge could reply to a claimed question');
+        await juryPage.bringToFront();
+        await juryPage.getByLabel('套用回复模板').selectOption('请仔细阅读题面');
+        await juryPage.getByLabel('同时向全体发布公告').check();
+        await juryPage.getByLabel('公开公告内容').fill('A 题的输入以题面描述为准。');
+        await juryPage.getByRole('button', { name: '发送回复并公告' }).click();
+        await juryPage.getByText('已发送回复并发布公告。').waitFor();
+        await juryPage.getByRole('button', { name: '已回复', exact: true }).click();
+        await juryPage.locator('[data-question]').click();
+        check(where, await juryPage.locator('#desk-existing-text').innerText() === '请仔细阅读题面', 'template reply did not persist');
+        await juryPage.close();
+        await deskPage.getByRole('button', { name: '公告', exact: true }).click();
+        await deskPage.getByText('A 题的输入以题面描述为准。', { exact: true }).waitFor();
+        const screenData = await context.request.get(`${base}${screen}/clarifications/data`).then((response) => response.json());
+        check(where, screenData.data?.some((row) => row.text === 'A 题的输入以题面描述为准。')
+            && !screenData.data?.some((row) => row.text === '请仔细阅读题面'), 'screen did not honor public and private text');
+        await deskPage.getByLabel('公告内容', { exact: true }).fill('现场通知：请保持安静。');
+        await deskPage.locator('#desk-announcement-form').getByLabel('同时推送至直播滚动条（5 分钟）').check();
+        await deskPage.getByRole('button', { name: '向全体发布' }).click();
+        await deskPage.getByText('现场通知：请保持安静。', { exact: true }).waitFor();
+        const tickerData = await context.request.get(`${base}${contest}/live/api/admin/tickerMessage`).then((response) => response.json());
+        check(where, tickerData.some((row) => row.settings?.text === '现场通知：请保持安静。'), 'announcement was not sent to the ticker');
+        await deskPage.getByRole('button', { name: '设置', exact: true }).click();
+        await deskPage.getByRole('button', { name: '更换链接' }).click();
+        await deskPage.getByText('已更换链接。').waitFor();
+        const revoked = await context.request.get(`${base}${scopedPath}/data`);
+        check(where, revoked.status() === 404, 'old clarification link still works after rotation');
+        await checkLayout(deskPage, where);
         // The announce screen turns pages from the first frame on.
         where = 'announce';
         for (let i = 0; i < 4; i++) {

@@ -1,0 +1,42 @@
+#clarification-desk { --desk-border: #dce3ec; --desk-subtle: #f5f7fa; --desk-muted: #536278; --desk-active: #e7f1fc; --desk-warning: #a72d29; }
+.theme--dark #clarification-desk { --desk-border: #424d60; --desk-subtle: #29303b; --desk-muted: #c1cbd9; --desk-active: #214472; --desk-warning: #ffad9e; }
+#clarification-desk .desk-actions, #clarification-desk .desk-navigation { display: flex; gap: 7px; flex-wrap: wrap; }
+#clarification-desk .desk-actions .button, #clarification-desk .desk-navigation .button { margin: 0; }
+#clarification-desk .desk-metrics { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+#clarification-desk .desk-metrics > div { display: grid; gap: 4px; padding: 12px; background: var(--desk-subtle); border: 1px solid var(--desk-border); border-radius: 6px; }
+#clarification-desk .desk-metrics strong { font-size: 21px; }
+#clarification-desk .desk-meta, #clarification-desk .desk-metrics span { font-size: 13px; color: var(--desk-muted); }
+#clarification-desk .desk-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+#clarification-desk input:not([type=checkbox]), #clarification-desk textarea, #clarification-desk select { width: 100%; color: inherit; background: var(--desk-subtle); border: 1px solid var(--desk-border); border-radius: 5px; padding: 7px 9px; min-width: 0; }
+#clarification-desk textarea { resize: vertical; display: block; margin: 4px 0 10px; }
+#clarification-desk label { display: block; font-weight: 600; }
+#clarification-desk .desk-checkbox { display: flex; align-items: baseline; gap: 6px; font-weight: normal; margin: 8px 0; }
+#clarification-desk #desk-subject-label { display: flex; align-items: center; gap: 8px; }
+#clarification-desk #desk-subject { width: min(56vw, 280px); }
+#clarification-desk #desk-status { min-height: 1.4em; margin: 10px 0; color: var(--desk-muted); }
+#clarification-desk #desk-status[data-error], #clarification-desk .desk-delayed { color: var(--desk-warning); font-weight: 600; }
+#clarification-desk .desk-queue-layout { display: grid; grid-template-columns: minmax(240px, 0.85fr) minmax(0, 1.65fr); gap: 16px; }
+#clarification-desk .desk-queue, #clarification-desk .desk-history { margin: 0; list-style: none; display: grid; align-content: start; gap: 8px; min-width: 0; padding: 0; }
+#clarification-desk .desk-queue { max-height: 640px; overflow: auto; }
+#clarification-desk .desk-queue-item, #clarification-desk .desk-history li { display: grid; width: 100%; gap: 6px; padding: 10px; text-align: left; background: var(--desk-subtle); border: 1px solid var(--desk-border); border-radius: 5px; color: inherit; }
+#clarification-desk .desk-queue-item { cursor: pointer; font: inherit; }
+#clarification-desk .desk-queue-item[aria-current=true] { border-color: #649ad8; background: var(--desk-active); }
+#clarification-desk .desk-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#clarification-desk #desk-question, #clarification-desk .desk-panel { border: 1px solid var(--desk-border); border-radius: 6px; padding: 14px; min-width: 0; }
+#clarification-desk .desk-panel { margin: 0 0 14px; }
+#clarification-desk #desk-question h2, #clarification-desk .desk-panel h2 { font-size: 17px; margin: 0 0 10px; }
+#clarification-desk h3 { font-size: 15px; }
+#clarification-desk .desk-message { white-space: pre-wrap; overflow-wrap: anywhere; }
+#clarification-desk .desk-form-row { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; margin-bottom: 10px; }
+#clarification-desk .desk-statistics { padding: 12px 0 0; }
+#clarification-desk .desk-statistics summary { cursor: pointer; }
+#clarification-desk #desk-count-by-subject { display: flex; flex-wrap: wrap; gap: 7px 14px; margin-top: 8px; }
+#clarification-desk #desk-reply .desk-actions, #clarification-desk .desk-panel input[type=number] { margin-bottom: 8px; }
+#clarification-desk .desk-panel input[type=number] { max-width: 115px; }
+#clarification-desk [hidden] { display: none !important; }
+@media(max-width: 680px) {
+  #clarification-desk .desk-queue-layout, #clarification-desk .desk-form-row { grid-template-columns: minmax(0,1fr); }
+  #clarification-desk .desk-queue { max-height: 290px; }
+  #clarification-desk .desk-metrics > div { padding: 7px; }
+  #clarification-desk .desk-metrics strong { font-size: 17px; }
+}

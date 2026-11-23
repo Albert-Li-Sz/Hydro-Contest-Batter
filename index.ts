@@ -22,6 +22,7 @@ import { applyPrintServers } from './lib/print-routes';
 import { applyBalloons } from './lib/balloon-routes';
 import { ContestLinks } from './lib/links';
 import { applyPresence } from './lib/presence-routes';
+import { applyClarificationDesk } from './lib/clarification-desk-routes';
 import { displaySpecialAwards } from './lib/special-awards';
 
 export const name = 'scoreboard-xcpcio-plus';
@@ -311,9 +312,10 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     applyManage(ctx, { machines: monitor.machines, links, beforeRejudge: results.beforeRejudge });
     applyPresence(ctx);
     applyPrintServers(ctx, { receipts: balloons.receipts });
-    if (config.live !== false) {
-        applyLive(ctx, { loadSettings, loadData: loadContestData, capture: config.liveCapture !== false, captureStunPort: config.liveCaptureStunPort ?? 3478, links });
-    }
+    const live = config.live !== false
+        ? applyLive(ctx, { loadSettings, loadData: loadContestData, capture: config.liveCapture !== false, captureStunPort: config.liveCaptureStunPort ?? 3478, links })
+        : null;
+    applyClarificationDesk(ctx, { links, liveTicker: live?.announceOnTicker });
     ctx.Route('contest_xcpcio_plus_public', '/contest/:tid/xcpcio-public', PublicBoardHandler);
     ctx.i18n.load('zh', { 'XCPCIO Plus': 'XCPCIO 增强榜' });
     ctx.inject(['scoreboard', 'server'], ({ scoreboard, server }) => {

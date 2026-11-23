@@ -1,4 +1,4 @@
-const entryIds = ['xcpcio-resolver-entry', 'xcpcio-screens-entry', 'xcpcio-live-entry', 'xcpcio-capture-entry', 'xcpcio-monitor-entry', 'xcpcio-overview-entry', 'xcpcio-awards-entry', 'xcpcio-balloons-entry', 'xcpcio-presence-entry'];
+const entryIds = ['xcpcio-resolver-entry', 'xcpcio-screens-entry', 'xcpcio-live-entry', 'xcpcio-capture-entry', 'xcpcio-monitor-entry', 'xcpcio-overview-entry', 'xcpcio-awards-entry', 'xcpcio-balloons-entry', 'xcpcio-presence-entry', 'xcpcio-clarification-desk-entry'];
 const resultsEntryId = 'xcpcio-results-entry';
 const entries = (url, { live = true, capture = false } = {}) => [
     // One place for the boards and every award the board, the resolver, the screens and the broadcast use.
@@ -15,6 +15,7 @@ const entries = (url, { live = true, capture = false } = {}) => [
     [entryIds[8], url.replace(/\/resolver$/, '/presence'), 'icon-user--multiple', '机位监控'],
     [entryIds[4], url.replace(/\/resolver$/, '/monitor'), 'icon-stopwatch', '评测监控'],
     [entryIds[5], url.replace(/\/resolver$/, '/overview'), 'icon-pie-chart', '赛况总览'],
+    [entryIds[9], url.replace(/\/resolver$/, '/clarification-desk'), 'icon-comment', '答疑台'],
 ];
 const removeEntries = () => { for (const id of [...entryIds, resultsEntryId]) document.getElementById(id)?.remove(); };
 

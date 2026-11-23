@@ -19,6 +19,7 @@ import { createCcsPreview, previewCcsId } from '../preview/ccs';
 import { createManagePreview } from '../preview/manage';
 import { createPrintersPreview } from '../preview/printers';
 import { createBalloonsPreview } from '../preview/balloons';
+import { createClarificationPreview } from '../preview/clarification-desk';
 import { previewDatabase } from '../preview/resolver-memory-db';
 
 async function main() {
@@ -35,7 +36,9 @@ const pluginVersion = JSON.parse(await fs.readFile(path.join(root, 'package.json
 // Resolver and screen previews share one in-memory store so the audience screen can follow a session.
 const previewDb = previewDatabase().db;
 const resolverPreview = createResolverPreview(env, logoNames, pluginVersion, previewDb);
-const screensPreview = createScreensPreview(env, logoNames, pluginVersion, previewDb);
+const screensPreview = createScreensPreview(env, logoNames, pluginVersion, previewDb, () => clarificationPreview.announcements().map((item) => ({
+    subject: item.subject, text: item.content, at: item.docId.getTimestamp().getTime(),
+})));
 const monitorPreview = createMonitorPreview(env, pluginVersion, demoData);
 const presencePreview = createPresencePreview(env, pluginVersion, demoData);
 const overviewPreview = createOverviewPreview(env, pluginVersion);
@@ -45,6 +48,9 @@ const managePreview = createManagePreview(env, pluginVersion);
 const balloonsPreview = createBalloonsPreview(env, pluginVersion, demoData, () => printersPreview.receiptPrinters());
 const printersPreview = createPrintersPreview(env, pluginVersion, demoData, () => balloonsPreview.receipts);
 const livePreview = createLivePreview(env, logoNames, pluginVersion, demoData, () => settings);
+const clarificationPreview = createClarificationPreview(env, pluginVersion, (text) => {
+    livePreview.hub.tickerMessage.createTemporaryFromInput({ type: 'text', part: 'long', periodMs: 30_000, text }, 5 * 60_000);
+});
 const ccsPreview = createCcsPreview(demoData(), () => settings);
 const base = '/contest/demo';
 let unlocked = false;
@@ -78,6 +84,7 @@ const server = http.createServer(async (request, response) => {
         if (await resultsPreview.handle(request, response, url, displayData, settings)) return;
         if (await printersPreview(request, response, url)) return;
         if (await balloonsPreview.handle(request, response, url)) return;
+        if (await clarificationPreview.handle(request, response, url)) return;
         if (await managePreview(request, response, url)) return;
         if (request.method === 'POST' && url.pathname === settingsUrl) {
             let body = '';

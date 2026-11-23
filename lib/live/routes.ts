@@ -531,4 +531,10 @@ export function applyLive(ctx: Context, dependencies: {
             if (capture) handler.UiContext.xcpcioCaptureEnabled = true;
         }
     });
+    return {
+        async announceOnTicker(tdoc: Tdoc, text: string) {
+            const hub = await hubFor(tdoc);
+            return hub.tickerMessage.createTemporaryFromInput({ type: 'text', part: 'long', periodMs: 30_000, text }, 5 * 60_000);
+        },
+    };
 }

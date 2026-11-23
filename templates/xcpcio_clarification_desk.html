@@ -1,0 +1,111 @@
+{% set page_name = 'contest_xcpcio_clarification_desk' %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<link rel="stylesheet" href="{{ codeBase }}/hydro-config.css">
+<link rel="stylesheet" href="{{ codeBase }}/clarification-desk.css">
+<div class="row resolver-config" id="hydro-resolver-config"><div class="medium-12 columns" id="clarification-desk">
+  <section class="section visible">
+    <div class="section__header resolver-heading">
+      <div><h1 class="section__title">答疑台</h1><p class="resolver-muted"><span id="desk-title"></span><span id="desk-viewer"></span></p></div>
+      <div class="desk-actions">
+        <button class="button" id="desk-sound" aria-pressed="false" type="button">提示音</button>
+        {% if manager %}<a class="button" id="desk-native">原生答疑</a>{% endif %}
+        <a class="button" id="desk-back">返回比赛</a>
+      </div>
+    </div>
+    <div class="section__body desk-body">
+      <div class="desk-metrics" aria-label="答疑统计">
+        <div><span>待回复</span><strong id="desk-pending-count">—</strong></div>
+        <div><span>已回复</span><strong id="desk-answered-count">—</strong></div>
+        <div><span>平均响应时间</span><strong id="desk-response">—</strong></div>
+      </div>
+      <div class="desk-toolbar">
+        <div class="desk-navigation" aria-label="答疑台视图">
+          <button class="button primary" type="button" data-desk-tab="pending" aria-pressed="true">待回复</button>
+          <button class="button" type="button" data-desk-tab="answered" aria-pressed="false">已回复</button>
+          <button class="button" type="button" data-desk-tab="announcements" aria-pressed="false">公告</button>
+          {% if manager %}<button class="button" type="button" data-desk-tab="settings" aria-pressed="false">设置</button>{% endif %}
+        </div>
+        <label for="desk-subject" id="desk-subject-label">分类 <select id="desk-subject"></select></label>
+      </div>
+      <p id="desk-status" role="status">正在载入答疑数据…</p>
+      <div id="desk-questions">
+        <div class="desk-queue-layout">
+          <ul id="desk-queue" class="desk-queue" aria-label="提问"></ul>
+          <article id="desk-question" aria-label="提问详情">
+            <p class="resolver-muted" id="desk-no-selection">选择一条提问以查看详情。</p>
+            <div id="desk-question-detail" hidden>
+              <h2 id="desk-question-title"></h2>
+              <p class="desk-meta" id="desk-question-meta"></p>
+              <p class="desk-message" id="desk-question-text"></p>
+              <div id="desk-existing-reply" hidden>
+                <h3>裁判回复</h3>
+                <p class="desk-message" id="desk-existing-text"></p>
+              </div>
+              <form id="desk-reply" hidden>
+                <div class="desk-actions">
+                  <button class="button" type="button" id="desk-claim">标记处理中</button>
+                  <button class="button" type="button" id="desk-release" hidden>释放认领</button>
+                </div>
+                <label for="desk-reply-text">私下回复</label>
+                <select id="desk-preset" aria-label="套用回复模板"></select>
+                <textarea id="desk-reply-text" rows="3" maxlength="2000" required></textarea>
+                <label class="desk-checkbox"><input type="checkbox" id="desk-public"> 同时向全体发布公告</label>
+                <div id="desk-public-fields" hidden>
+                  <label for="desk-public-text">公开公告内容</label>
+                  <p class="desk-meta">请单独填写要公开的内容，省略队名和选手提问中的私密信息。</p>
+                  <textarea id="desk-public-text" rows="3" maxlength="2000"></textarea>
+                  <label class="desk-checkbox" id="desk-public-live-label" hidden><input type="checkbox" id="desk-public-live"> 同时推送至直播滚动条（5 分钟）</label>
+                </div>
+                <button class="button primary" type="submit" id="desk-send">发送回复</button>
+              </form>
+            </div>
+          </article>
+        </div>
+        <details class="desk-statistics"><summary>各分类的提问数</summary><div id="desk-count-by-subject"></div></details>
+      </div>
+      <div id="desk-announcements" hidden>
+        {% if manager %}
+        <form id="desk-announcement-form" class="desk-panel">
+          <h2>发布全体公告</h2>
+          <div class="desk-form-row">
+            <label>公告分类 <select id="desk-announcement-subject"></select></label>
+            <label>公告模板 <select id="desk-announcement-preset"></select></label>
+          </div>
+          <label for="desk-announcement-text">公告内容</label>
+          <textarea id="desk-announcement-text" rows="4" maxlength="2000" required></textarea>
+          <label id="desk-announcement-live-label" class="desk-checkbox" hidden><input type="checkbox" id="desk-announcement-live"> 同时推送至直播滚动条（5 分钟）</label>
+          <button class="button primary" type="submit">向全体发布</button>
+        </form>
+        {% endif %}
+        <ul class="desk-history" id="desk-announcement-history" aria-label="已发布公告"></ul>
+      </div>
+      {% if manager %}
+      <div id="desk-settings" hidden>
+        <form id="desk-settings-form" class="desk-panel">
+          <h2>回复模板与封榜提醒</h2>
+          <label for="desk-reply-templates">回复模板（每行一条）</label>
+          <textarea id="desk-reply-templates" rows="6" maxlength="5020"></textarea>
+          <label for="desk-freeze-minutes">封榜前多少分钟自动公告（0 为关闭）</label>
+          <input type="number" id="desk-freeze-minutes" min="0" max="120" required>
+          <p class="desk-meta" id="desk-freeze-state"></p>
+          <button class="button primary" type="submit">保存设置</button>
+        </form>
+        <form id="desk-links-form" class="desk-panel">
+          <h2>答疑员链接</h2>
+          <p class="desk-meta">持链接者可查看、认领和回复指定题目的提问。链接可随时更换或撤销。</p>
+          <div class="desk-form-row">
+            <label>名称 <input id="desk-link-name" maxlength="60" required></label>
+            <label>负责题目 <select id="desk-link-subject" required></select></label>
+          </div>
+          <button class="button primary" type="submit">生成答疑员链接</button>
+        </form>
+        <ul class="desk-history" id="desk-link-list" aria-label="已生成的答疑员链接"></ul>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+</div></div>
+<script type="application/json" id="clarification-desk-runtime">{{ runtimeJson | safe }}</script>
+<script type="module" src="{{ codeBase }}/js/clarification-desk.js"></script>
+{% endblock %}

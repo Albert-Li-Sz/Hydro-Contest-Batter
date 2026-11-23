@@ -14,6 +14,7 @@ Hydro OJ 的 ACM 比赛榜单、滚榜、大屏与直播插件，集成 XCPCIO �
 - 大屏：23 种比赛画面，涵盖榜单、统计图表、队伍与学校展示、场馆、气球、评测机、海报和公告。每种画面有一个免登录投屏链接，支持预览与全屏。
 - 直播：集成 ICPC Live v3 的 OBS 直播画面与导播台，后端改写为 Node.js 运行在 Hydro 内，无需 Java；榜单、评测队列、统计、赛况总览、滚动字幕、队伍画面、标题字幕、图片与自动解说，数据与公开榜一致；导播台中英双语，默认中文；选手屏幕与摄像头由 Hydro 统一管理采集，免装中继服务器。
 - 机位监控：比赛管理员按考场查看每支队伍的电脑是否在线（在线、后台、可能离线、离线、未登录），开赛前用作签到；告警两队同一 IP、IP 与座位绑定不符、离线、换 IP、画面采集未连接和浏览器过旧，可开启提示音。
+- 答疑台：集中处理 Hydro 原生提问，支持按题目分派、认领、标准回复、响应统计和封榜提醒。公开公告可上大屏和直播滚动条。
 - 评测监控：比赛管理员实时查看每台评测机的连接状态、并发占用、评测速度与用时、通过率、系统错误和 CPU、内存、温度，以及各评测机上正在评测的任务和最新评测结果、本场待评测提交，异常时页面告警。
 - 赛况总览：供来宾视察的全屏大屏，一屏显示比赛时间、八项核心指标、实时排名前十、各题通过与首解、学校情况、最近通过、提交趋势、过题数分布、评测结果分布，以及服务器与评测机的 CPU、内存压力，实时数据，仅比赛管理员可打开。
 - 气球配送：比赛菜单的“气球配送”按考场（座位前缀）和题目列出各队待配送的气球，工作人员一键标记送达，志愿者可用免登录的配送员链接；不依赖 Hydro 气球记录，封榜后照常（可设为暂缓），重测撤销自动处理。打印服务器中的热敏打印机可设为“小票机”，每个新气球按考场 / 题目分配方案自动打印配送小票（座位、题号、颜色名、一血），每题气球颜色可单独设置。
@@ -25,11 +26,11 @@ Hydro OJ 的 ACM 比赛榜单、滚榜、大屏与直播插件，集成 XCPCIO �
 
 需要 Node.js 22+ 和 Hydro 5.x。请使用运行 Hydro 的系统用户，在主服务所在环境执行。
 
-下载完整安装包 `hydro-scoreboard-xcpcio-plus-1.16.0.tgz`，解压到固定目录，注册 addon 后重启。安装包包含预构建页面、字体和完整校徽。
+下载完整安装包 `hydro-scoreboard-xcpcio-plus-1.17.0.tgz`，解压到固定目录，注册 addon 后重启。安装包包含预构建页面、字体和完整校徽。
 
 ```bash
 mkdir -p "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
-tar -xzf hydro-scoreboard-xcpcio-plus-1.16.0.tgz \
+tar -xzf hydro-scoreboard-xcpcio-plus-1.17.0.tgz \
   -C "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus" --strip-components=1
 hydrooj addon add "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 pm2 restart hydrooj
@@ -43,7 +44,7 @@ pm2 restart hydrooj
 
 ```bash
 mkdir -p xcpcio-update
-tar -xzf hydro-scoreboard-xcpcio-plus-1.16.0.tgz -C xcpcio-update
+tar -xzf hydro-scoreboard-xcpcio-plus-1.17.0.tgz -C xcpcio-update
 bash xcpcio-update/package/install.sh install
 
 # 升级时下载并解压新包，运行新包中的脚本
@@ -83,6 +84,7 @@ bash "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus/install.sh" uninstall
 - **评测监控**：同样的管理员从比赛右侧菜单的“评测监控”进入，页面每 3 秒刷新。
 - **赛况总览**：同样的管理员从比赛右侧菜单的“赛况总览”进入，按 F 或点击页面全屏，适合在接待处或领导视察时投屏。
 - **成绩与导出**：在比赛菜单保存成绩快照、按分榜比较名次和奖项变化，导出成绩与获奖名单 CSV，或下载 Hydro 的全部比赛代码。详见 [成绩与导出](docs/usage.md#成绩与导出)。
+- **答疑台**：在比赛菜单认领并回复提问，从“设置”生成各题答疑员链接。详见 [答疑台](docs/usage.md#答疑台)。
 - **直播**：同样的管理员从比赛右侧菜单的“直播”进入，复制“直播画面”链接添加为 OBS 浏览器源（1920×1080），再打开“导播台”切换画面内容。导播台需要 Hydro 登录，多名导播可同时操作；直播画面链接免登录，可随时作废重建。
 
 榜单类大屏使用与公开榜相同的数据：开赛前不显示，封榜后冻结，选手名显示 Hydro 中的显示名，按“向所有观众显示学校”决定是否显示学校。滚榜观众画面与主持端一致，显示选手名与学校，链接请只在场馆使用。作废链接后旧链接立即失效。
