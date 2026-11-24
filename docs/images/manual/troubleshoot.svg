@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="285" viewBox="0 0 840 285" role="img" aria-labelledby="title desc">
+<title id="title">先定位哪一步出现异常</title>
+<desc id="desc">从看见问题的地方开始，分清是访问配置、任务执行还是比赛结果的问题。</desc>
+<rect x="0" y="0" width="840" height="285" rx="0" fill="#fffdfb" stroke="none"/>
+<rect x="0" y="0" width="8" height="285" rx="0" fill="#8c2043" stroke="none"/>
+<text x="32" y="45" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="29" font-weight="680" fill="#4d1930">先定位哪一步出现异常</text>
+<path d="M32 64 L808 64" fill="none" stroke="#e4dadc" stroke-width="2"/>
+<rect x="32" y="82" width="152" height="46" rx="5" fill="#f6e8ec" stroke="none"/>
+<text x="44" y="112" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="620" fill="#651d39">页面进不去</text>
+<path d="M186 105 L212 105" fill="none" stroke="#c9bdc2" stroke-width="2"/>
+<path d="M207 99l7 6-7 6" fill="none" stroke="#a18792" stroke-width="2"/>
+<text x="228" y="112" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="21" font-weight="610" fill="#25212b">核对入口与账号</text>
+<text x="460" y="112" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="400" fill="#514951">比赛规则、访问权限、公开设置</text>
+<rect x="32" y="145" width="152" height="46" rx="5" fill="#f6e8ec" stroke="none"/>
+<text x="44" y="175" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="620" fill="#651d39">设备没响应</text>
+<path d="M186 168 L212 168" fill="none" stroke="#c9bdc2" stroke-width="2"/>
+<path d="M207 162l7 6-7 6" fill="none" stroke="#a18792" stroke-width="2"/>
+<text x="228" y="175" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="21" font-weight="610" fill="#25212b">核对连接与队列</text>
+<text x="460" y="175" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="400" fill="#514951">签到、采集、配送、打印任务</text>
+<rect x="32" y="208" width="152" height="46" rx="5" fill="#f6e8ec" stroke="none"/>
+<text x="44" y="238" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="620" fill="#651d39">结果对不上</text>
+<path d="M186 231 L212 231" fill="none" stroke="#c9bdc2" stroke-width="2"/>
+<path d="M207 225l7 6-7 6" fill="none" stroke="#a18792" stroke-width="2"/>
+<text x="228" y="238" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="21" font-weight="610" fill="#25212b">核对成绩来源</text>
+<text x="460" y="238" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="400" fill="#514951">封榜时刻、重测记录、会话快照</text>
+</svg>

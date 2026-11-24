@@ -94,8 +94,12 @@ summary { cursor: pointer; font-weight: 650; }
 
 .guide-download { display: inline-block; margin: .5rem 0 .5rem .75rem; }
 .guide-shot { margin: 1.25rem 0 1rem; }
-.guide-shot img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: .3rem; }
+.guide-shot a { display: block; width: fit-content; max-width: 100%; cursor: zoom-in; }
+.guide-shot img { display: block; max-width: 100%; height: auto; border: 1px solid var(--line); border-radius: .3rem; }
 .guide-shot figcaption { margin-top: .4rem; color: var(--muted); font-size: .9rem; }
+.diagnostic-example { margin-top: .45rem; padding: .3rem .7rem; }
+.diagnostic-example summary { color: var(--accent); font-size: .91rem; }
+.diagnostic-example .guide-shot { margin: .7rem 0 .25rem; }
 .guide-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .25rem 1rem; }
 .guide-pair h3 { margin-top: .35rem; }
 @media (max-width: 620px) {

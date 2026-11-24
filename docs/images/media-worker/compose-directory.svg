@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="350" viewBox="0 0 640 350" role="img" aria-labelledby="title desc">
+  <title id="title">工作目录与输出卷</title>
+  <desc id="desc">将 compose.yaml 与 .env 放在同一层，容器的 /app/out 映射到当前工作目录下的 out。</desc>
+  <defs><marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="m1 1 6 3-6 3" fill="none" stroke="#56505b" stroke-width="1.4" stroke-linejoin="round"/></marker></defs>
+  <rect width="640" height="350" fill="#fffcf9"/>
+  <g transform="translate(24 23) scale(1.5)" stroke="#8b2444" fill="none" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7V5c0-1 .7-2 2-2h5l3 3h8a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7Zm0 1h20"/></g>
+  <text x="75" y="52" fill="#25202a" font-family="'SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="28" font-weight="650" text-anchor="start">hydro-reactions/</text>
+  <path d="M50 68V221m0-116h29m-29 58h29m-29 57h29" fill="none" stroke="#d9cfd5" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <g transform="translate(87 90) scale(1.25)" stroke="#8b2444" fill="none" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2h9l5 5v15H5V2Zm9 0v6h5M8 12h8m-8 4h6"/></g>
+  <text x="133" y="114" fill="#25202a" font-family="'SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="24" font-weight="650" text-anchor="start">compose.yaml</text>
+  <text x="375" y="114" fill="#25202a" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="22" font-weight="450" text-anchor="start">服务与镜像配置</text>
+  <g transform="translate(87 148) scale(1.25)" stroke="#8b2444" fill="none" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="8" r="4.5"/><path d="m10 11 10 10 2-2-2-2 1.5-1.5-2-2L18 15l-5-5"/></g>
+  <text x="133" y="171" fill="#25202a" font-family="'SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="24" font-weight="650" text-anchor="start">.env</text>
+  <text x="375" y="171" fill="#25202a" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="22" font-weight="450" text-anchor="start">本场接口地址</text>
+  <g transform="translate(87 203) scale(1.25)" stroke="#8b2444" fill="none" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7V5c0-1 .7-2 2-2h5l3 3h8a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7Zm0 1h20"/></g>
+  <text x="133" y="226" fill="#25202a" font-family="'SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="24" font-weight="650" text-anchor="start">out/</text>
+  <text x="375" y="226" fill="#25202a" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="22" font-weight="450" text-anchor="start">本机输出目录</text>
+  <rect x="77" y="264" width="542" height="66" rx="12" fill="#e9f5f3" stroke="#d9cfd5"/>
+  <g transform="translate(91 282) scale(1.25)" stroke="#135f61" fill="none" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 10 5v11l-10 5-10-5V7l10-5ZM2 7l10 5 10-5M12 12v11M7 4.5l10 5"/></g>
+  <text x="136" y="304" fill="#135f61" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="23" font-weight="650" text-anchor="start">容器内 /app/out</text>
+  <path d="M328 296H399" fill="none" stroke="#56505b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <text x="418" y="304" fill="#135f61" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="23" font-weight="650" text-anchor="start">本机 ./out</text>
+</svg>

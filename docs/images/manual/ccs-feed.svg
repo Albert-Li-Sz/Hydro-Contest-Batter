@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="334" viewBox="0 0 840 334" role="img" aria-labelledby="title desc">
+<title id="title">从角色权限到可恢复的事件流</title>
+<desc id="desc">先用同一组凭据读取 access，再读榜单或持续消费事件。</desc>
+<rect x="0" y="0" width="840" height="334" rx="0" fill="#fffdfb" stroke="none"/>
+<rect x="0" y="0" width="8" height="334" rx="0" fill="#8c2043" stroke="none"/>
+<text x="32" y="45" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="29" font-weight="680" fill="#4d1930">从角色权限到可恢复的事件流</text>
+<path d="M32 64 L808 64" fill="none" stroke="#e4dadc" stroke-width="2"/>
+<rect x="37" y="94" width="9" height="9" rx="4" fill="#91264a" stroke="none"/>
+<path d="M41.5 105 L41.5 152" fill="none" stroke="#ddc8d0" stroke-width="2"/>
+<text x="70" y="109" font-family="ui-monospace, Consolas, monospace" font-size="20" font-weight="650" fill="#632340">/access</text>
+<text x="315" y="109" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="19" font-weight="400" fill="#423a42">确认当前角色的 endpoints 和 capabilities</text>
+<rect x="37" y="155" width="9" height="9" rx="4" fill="#91264a" stroke="none"/>
+<path d="M41.5 166 L41.5 213" fill="none" stroke="#ddc8d0" stroke-width="2"/>
+<text x="70" y="170" font-family="ui-monospace, Consolas, monospace" font-size="20" font-weight="650" fill="#632340">/scoreboard</text>
+<text x="315" y="170" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="19" font-weight="400" fill="#423a42">用 rows 获取当前可见的排名</text>
+<rect x="37" y="216" width="9" height="9" rx="4" fill="#91264a" stroke="none"/>
+<path d="M41.5 227 L41.5 274" fill="none" stroke="#ddc8d0" stroke-width="2"/>
+<text x="70" y="231" font-family="ui-monospace, Consolas, monospace" font-size="20" font-weight="650" fill="#632340">/event-feed</text>
+<text x="315" y="231" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="19" font-weight="400" fill="#423a42">按行读取 type、id、data、token</text>
+<rect x="37" y="277" width="9" height="9" rx="4" fill="#34715a" stroke="none"/>
+<text x="70" y="292" font-family="ui-monospace, Consolas, monospace" font-size="20" font-weight="650" fill="#632340">?since_token=…</text>
+<text x="315" y="292" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="19" font-weight="400" fill="#423a42">重连时传回上次已处理的完整 token</text>
+</svg>

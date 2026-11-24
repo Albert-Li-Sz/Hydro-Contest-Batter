@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="309" viewBox="0 0 840 309" role="img" aria-labelledby="title desc">
+<title id="title">确认 CCS 最终结果的顺序</title>
+<desc id="desc">比赛结束、解冻、待评测清零并核对成绩后，管理员才执行确认。</desc>
+<rect x="0" y="0" width="840" height="309" rx="0" fill="#fffdfb" stroke="none"/>
+<rect x="0" y="0" width="8" height="309" rx="0" fill="#8c2043" stroke="none"/>
+<text x="32" y="45" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="29" font-weight="680" fill="#4d1930">确认 CCS 最终结果的顺序</text>
+<path d="M32 64 L808 64" fill="none" stroke="#e4dadc" stroke-width="2"/>
+<rect x="38" y="81" width="103" height="35" rx="4" fill="#e5f2ea" stroke="none"/>
+<text x="52" y="105" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="630" fill="#235e43">已结束</text>
+<text x="167" y="105" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="400" fill="#302630">比赛计时结束</text>
+<rect x="38" y="131" width="103" height="35" rx="4" fill="#e5f2ea" stroke="none"/>
+<text x="52" y="155" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="630" fill="#235e43">已解冻</text>
+<text x="167" y="155" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="400" fill="#302630">公开榜可见封榜后的结果</text>
+<rect x="38" y="181" width="103" height="35" rx="4" fill="#e5f2ea" stroke="none"/>
+<text x="52" y="205" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="630" fill="#235e43">已评完</text>
+<text x="167" y="205" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="400" fill="#302630">待评测提交全部处理完毕</text>
+<path d="M39 239 L805 239" fill="none" stroke="#c9bdc2" stroke-width="2"/>
+<text x="40" y="278" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="22" font-weight="660" fill="#651d39">核对成绩</text>
+<text x="165" y="278" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="24" font-weight="400" fill="#302630">→</text>
+<text x="211" y="278" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="22" font-weight="660" fill="#651d39">确认 CCS 最终结果</text>
+<text x="452" y="278" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="24" font-weight="400" fill="#302630">→</text>
+<text x="503" y="278" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="22" font-weight="660" fill="#651d39">保存最终快照</text>
+</svg>

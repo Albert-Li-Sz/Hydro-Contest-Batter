@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="282" viewBox="0 0 840 282" role="img" aria-labelledby="title desc">
+<title id="title">按现场职责找到入口</title>
+<desc id="desc">从账号职责定位系统或比赛菜单，再确认需要打开的具体页面。</desc>
+<rect x="0" y="0" width="840" height="282" rx="0" fill="#fffdfb" stroke="none"/>
+<rect x="0" y="0" width="8" height="282" rx="0" fill="#8c2043" stroke="none"/>
+<text x="32" y="45" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="29" font-weight="680" fill="#4d1930">按现场职责找到入口</text>
+<path d="M32 64 L808 64" fill="none" stroke="#e4dadc" stroke-width="2"/>
+<rect x="32" y="83" width="152" height="46" rx="5" fill="#f6e8ec" stroke="none"/>
+<text x="44" y="113" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="620" fill="#651d39">系统管理员</text>
+<path d="M186 106 L212 106" fill="none" stroke="#c9bdc2" stroke-width="2"/>
+<path d="M207 100l7 6-7 6" fill="none" stroke="#a18792" stroke-width="2"/>
+<text x="228" y="113" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="21" font-weight="610" fill="#25212b">Hydro 控制面板</text>
+<text x="460" y="113" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="400" fill="#514951">用户配置、评测机、打印服务器</text>
+<rect x="32" y="145" width="152" height="46" rx="5" fill="#f6e8ec" stroke="none"/>
+<text x="44" y="175" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="620" fill="#651d39">比赛管理员</text>
+<path d="M186 168 L212 168" fill="none" stroke="#c9bdc2" stroke-width="2"/>
+<path d="M207 162l7 6-7 6" fill="none" stroke="#a18792" stroke-width="2"/>
+<text x="228" y="175" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="21" font-weight="610" fill="#25212b">比赛右侧菜单</text>
+<text x="460" y="175" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="400" fill="#514951">赛事中控、榜单与奖项、导播台</text>
+<rect x="32" y="207" width="152" height="46" rx="5" fill="#f6e8ec" stroke="none"/>
+<text x="44" y="237" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="620" fill="#651d39">投屏与配送人员</text>
+<path d="M186 230 L212 230" fill="none" stroke="#c9bdc2" stroke-width="2"/>
+<path d="M207 224l7 6-7 6" fill="none" stroke="#a18792" stroke-width="2"/>
+<text x="228" y="237" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="21" font-weight="610" fill="#25212b">管理员发放的链接</text>
+<text x="460" y="237" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="400" fill="#514951">在投屏电脑或志愿者手机打开</text>
+</svg>

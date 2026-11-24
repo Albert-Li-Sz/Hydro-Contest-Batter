@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="321" viewBox="0 0 840 321" role="img" aria-labelledby="title desc">
+<title id="title">外部工具以哪个身份读取比赛</title>
+<desc id="desc">同一比赛的可见数据取决于发起请求的 Hydro 用户。</desc>
+<rect x="0" y="0" width="840" height="321" rx="0" fill="#fffdfb" stroke="none"/>
+<rect x="0" y="0" width="8" height="321" rx="0" fill="#8c2043" stroke="none"/>
+<text x="32" y="45" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="29" font-weight="680" fill="#4d1930">外部工具以哪个身份读取比赛</text>
+<path d="M32 64 L808 64" fill="none" stroke="#e4dadc" stroke-width="2"/>
+<rect x="38" y="82" width="113" height="37" rx="4" fill="#f6e8ec" stroke="none"/>
+<text x="50" y="107" font-family="ui-monospace, Consolas, monospace" font-size="20" font-weight="650" fill="#651d39">public</text>
+<text x="177" y="108" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="400" fill="#302630">遵守公开榜、开赛时间和封榜规则</text>
+<rect x="38" y="137" width="113" height="37" rx="4" fill="#f6e8ec" stroke="none"/>
+<text x="50" y="162" font-family="ui-monospace, Consolas, monospace" font-size="20" font-weight="650" fill="#651d39">team</text>
+<text x="177" y="163" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="400" fill="#302630">可读本队完整判题、测试点和本队代码</text>
+<rect x="38" y="192" width="113" height="37" rx="4" fill="#f6e8ec" stroke="none"/>
+<text x="50" y="217" font-family="ui-monospace, Consolas, monospace" font-size="20" font-weight="650" fill="#651d39">judge</text>
+<text x="177" y="218" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="400" fill="#302630">可查看实时数据与代码，参与裁判澄清</text>
+<rect x="38" y="247" width="113" height="37" rx="4" fill="#f6e8ec" stroke="none"/>
+<text x="50" y="272" font-family="ui-monospace, Consolas, monospace" font-size="20" font-weight="650" fill="#651d39">admin</text>
+<text x="177" y="273" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="400" fill="#302630">可管理比赛时钟、解冻并确认最终结果</text>
+</svg>

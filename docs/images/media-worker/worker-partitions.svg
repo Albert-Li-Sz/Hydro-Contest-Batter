@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="346" viewBox="0 0 640 346" role="img" aria-labelledby="title desc">
+  <title id="title">两台媒体机按提交 ID 分区</title>
+  <desc id="desc">以零填充的两个演示提交 ID 为例，末尾 0003 的两个版式进入分区 0，末尾 0001 的两个版式进入分区 1。</desc>
+  <defs><marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="m1 1 6 3-6 3" fill="none" stroke="#56505b" stroke-width="1.4" stroke-linejoin="round"/></marker></defs>
+  <rect width="640" height="346" fill="#fffcf9"/>
+  <rect x="149" y="22" width="342" height="63" rx="12" fill="#f9edf1" stroke="#d9cfd5"/>
+  <g transform="translate(173 38) scale(1.25)" stroke="#8b2444" fill="none" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="m9 7 3-3c4-4 11 2 7 7l-3 3M8 10l-3 3c-4 5 2 11 7 7l3-3m-7-2 8-8"/></g>
+  <text x="220" y="61" fill="#8b2444" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="24" font-weight="650" text-anchor="start">按本场提交 ID 分区</text>
+  <path d="M320 87v35H158v35" fill="none" stroke="#56505b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <path d="M320 122h162v35" fill="none" stroke="#56505b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <rect x="22" y="164" width="276" height="160" rx="12" fill="#e9f5f3" stroke="#d9cfd5"/>
+  <rect x="342" y="164" width="276" height="160" rx="12" fill="#f9edf1" stroke="#d9cfd5"/>
+  <g transform="translate(38 185) scale(1.22)" stroke="#135f61" fill="none" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M5 6.5h2m-2 11h2m9-11h3m-3 11h3"/></g>
+  <text x="83" y="206" fill="#135f61" font-family="'SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="29" font-weight="650" text-anchor="start">0 / 2</text>
+  <g transform="translate(358 185) scale(1.22)" stroke="#8b2444" fill="none" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M5 6.5h2m-2 11h2m9-11h3m-3 11h3"/></g>
+  <text x="403" y="206" fill="#8b2444" font-family="'SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="29" font-weight="650" text-anchor="start">1 / 2</text>
+  <text x="42" y="249" fill="#25202a" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="23" font-weight="450" text-anchor="start">提交 …0003</text>
+  <text x="362" y="249" fill="#25202a" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="23" font-weight="450" text-anchor="start">提交 …0001</text>
+  <text x="42" y="295" fill="#135f61" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="22" font-weight="650" text-anchor="start">横屏 + 竖屏</text>
+  <text x="362" y="295" fill="#8b2444" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="22" font-weight="650" text-anchor="start">横屏 + 竖屏</text>
+</svg>

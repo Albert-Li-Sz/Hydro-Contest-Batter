@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="226" viewBox="0 0 840 226" role="img" aria-labelledby="title desc">
+<title id="title">在打印电脑上列出已安装的队列</title>
+<desc id="desc">在系统里添加打印机后，运行客户端的 --printers，并找到队列名称、状态以及排队数量。示例用“赛场打印机”替代实际队列名。</desc>
+<rect x="0" y="0" width="840" height="226" rx="0" fill="#fffdfb" stroke="none"/>
+<rect x="0" y="0" width="8" height="226" rx="0" fill="#8c2043" stroke="none"/>
+<text x="32" y="45" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="29" font-weight="680" fill="#4d1930">在打印电脑上列出已安装的队列</text>
+<path d="M32 64 L808 64" fill="none" stroke="#e4dadc" stroke-width="2"/>
+<rect x="32" y="81" width="776" height="125" rx="6" fill="#29232c" stroke="none"/>
+<text x="51" y="110" font-family="ui-monospace, Consolas, monospace" font-size="19" font-weight="500" fill="#fff4f7">$ ./hydro-print-client-darwin-arm64 --printers</text>
+<text x="51" y="146" font-family="ui-monospace, Consolas, monospace" font-size="19" font-weight="500" fill="#d4c8d1">Hydro 打印客户端 1.21.0 · macOS 27.2 · darwin/arm64</text>
+<text x="51" y="182" font-family="ui-monospace, Consolas, monospace" font-size="19" font-weight="500" fill="#a6edc5">  赛场打印机（默认）  状态 idle  排队 0</text>
+</svg>

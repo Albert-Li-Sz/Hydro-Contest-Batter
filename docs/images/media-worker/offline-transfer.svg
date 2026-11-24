@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="406" viewBox="0 0 640 406" role="img" aria-labelledby="title desc">
+  <title id="title">离线导入与启动</title>
+  <desc id="desc">按目标架构下载归档和校验清单，复制到媒体机，校验并导入，将本地镜像标签填入 .env，以禁止拉取模式运行。</desc>
+  <defs><marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="m1 1 6 3-6 3" fill="none" stroke="#56505b" stroke-width="1.4" stroke-linejoin="round"/></marker></defs>
+  <rect width="640" height="406" fill="#fffcf9"/>
+  <rect x="22" y="23" width="252" height="87" rx="12" fill="#f9edf1" stroke="#d9cfd5"/>
+  <g transform="translate(37 37) scale(1.25)" stroke="#8b2444" fill="none" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 10 5v11l-10 5-10-5V7l10-5ZM2 7l10 5 10-5M12 12v11M7 4.5l10 5"/></g>
+  <text x="81" y="60" fill="#8b2444" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="23" font-weight="650" text-anchor="start">联网电脑</text>
+  <text x="38" y="91" fill="#25202a" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="19" font-weight="450" text-anchor="start">下载目标架构的归档</text>
+  <rect x="365" y="23" width="252" height="87" rx="12" fill="#e9f5f3" stroke="#d9cfd5"/>
+  <g transform="translate(380 37) scale(1.25)" stroke="#135f61" fill="none" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M5 6.5h2m-2 11h2m9-11h3m-3 11h3"/></g>
+  <text x="424" y="60" fill="#135f61" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="23" font-weight="650" text-anchor="start">赛场媒体机</text>
+  <text x="381" y="91" fill="#25202a" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="19" font-weight="450" text-anchor="start">归档、校验清单、配置</text>
+  <path d="M277 68h80" fill="none" stroke="#56505b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <text x="319" y="54" fill="#56505b" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="17" font-weight="450" text-anchor="middle">复制</text>
+  <path d="M490 112v25" fill="none" stroke="#56505b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <rect x="70" y="143" width="546" height="58" rx="12" fill="white" stroke="#d9cfd5"/>
+  <g transform="translate(87 155) scale(1.3)" stroke="#135f61" fill="none" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12 5 5L20 5"/></g>
+  <text x="132" y="179" fill="#135f61" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="23" font-weight="650" text-anchor="start">校验成功</text>
+  <path d="M256 173h51" fill="none" stroke="#56505b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <text x="327" y="180" fill="#25202a" font-family="'SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="23" font-weight="650" text-anchor="start">docker load</text>
+  <path d="M490 202v28" fill="none" stroke="#56505b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <rect x="70" y="235" width="546" height="58" rx="12" fill="white" stroke="#d9cfd5"/>
+  <g transform="translate(87 249) scale(1.1)" stroke="#8b2444" fill="none" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2h9l5 5v15H5V2Zm9 0v6h5M8 12h8m-8 4h6"/></g>
+  <text x="132" y="271" fill="#25202a" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="23" font-weight="650" text-anchor="start">.env 指向导入后的本地标签</text>
+  <path d="M490 294v28" fill="none" stroke="#56505b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+  <rect x="70" y="327" width="546" height="58" rx="12" fill="#e9f5f3" stroke="#d9cfd5"/>
+  <g transform="translate(87 341) scale(1.15)" stroke="#135f61" fill="none" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="22" height="18" rx="2"/><path d="m5.5 8 4 4-4 4M12 16h5"/></g>
+  <text x="132" y="364" fill="#135f61" font-family="'SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="20" font-weight="650" text-anchor="start">docker compose up -d --pull never</text>
+</svg>

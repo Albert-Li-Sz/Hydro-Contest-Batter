@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="298" viewBox="0 0 840 298" role="img" aria-labelledby="title desc">
+<title id="title">根据当前安装状态选择命令</title>
+<desc id="desc">两条路径最终都需要重启服务，并打开比赛验证。</desc>
+<rect x="0" y="0" width="840" height="298" rx="0" fill="#fffdfb" stroke="none"/>
+<rect x="0" y="0" width="8" height="298" rx="0" fill="#8c2043" stroke="none"/>
+<text x="32" y="45" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="29" font-weight="680" fill="#4d1930">根据当前安装状态选择命令</text>
+<path d="M32 64 L808 64" fill="none" stroke="#e4dadc" stroke-width="2"/>
+<rect x="32" y="86" width="152" height="46" rx="5" fill="#f6e8ec" stroke="none"/>
+<text x="44" y="116" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="620" fill="#651d39">全新安装</text>
+<path d="M186 109 L212 109" fill="none" stroke="#c9bdc2" stroke-width="2"/>
+<path d="M207 103l7 6-7 6" fill="none" stroke="#a18792" stroke-width="2"/>
+<text x="228" y="116" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="21" font-weight="610" fill="#25212b">install</text>
+<text x="460" y="116" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="400" fill="#514951">从已校验的新安装包执行</text>
+<rect x="32" y="151" width="152" height="46" rx="5" fill="#f6e8ec" stroke="none"/>
+<text x="44" y="181" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="20" font-weight="620" fill="#651d39">已有安装</text>
+<path d="M186 174 L212 174" fill="none" stroke="#c9bdc2" stroke-width="2"/>
+<path d="M207 168l7 6-7 6" fill="none" stroke="#a18792" stroke-width="2"/>
+<text x="228" y="181" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="21" font-weight="610" fill="#25212b">upgrade</text>
+<text x="460" y="181" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="18" font-weight="400" fill="#514951">从新包执行，原目录自动归档</text>
+<path d="M108 204 L108 241" fill="none" stroke="#c9bdc2" stroke-width="2"/>
+<path d="M108 241 L189 241" fill="none" stroke="#c9bdc2" stroke-width="2"/>
+<text x="214" y="249" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="22" font-weight="630" fill="#375c4a">重启 Hydro，在 ACM 比赛里打开增强榜。</text>
+</svg>

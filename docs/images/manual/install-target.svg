@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="281" viewBox="0 0 840 281" role="img" aria-labelledby="title desc">
+<title id="title">手动安装时，先认准注册目录</title>
+<desc id="desc">从左侧目录找到右侧列出的文件或操作。</desc>
+<rect x="0" y="0" width="840" height="281" rx="0" fill="#fffdfb" stroke="none"/>
+<rect x="0" y="0" width="8" height="281" rx="0" fill="#8c2043" stroke="none"/>
+<text x="32" y="45" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="29" font-weight="680" fill="#4d1930">手动安装时，先认准注册目录</text>
+<path d="M32 64 L808 64" fill="none" stroke="#e4dadc" stroke-width="2"/>
+<text x="38" y="101" font-family="ui-monospace, Consolas, monospace" font-size="21" font-weight="610" fill="#651d39">~/.hydro/addons/hydro-scoreboard-xcpcio-plus/</text>
+<path d="M57 114 L57 229" fill="none" stroke="#ae8b99" stroke-width="2"/>
+<path d="M57 133 L83 133" fill="none" stroke="#ae8b99" stroke-width="2"/>
+<text x="94" y="140" font-family="ui-monospace, Consolas, monospace" font-size="20" font-weight="600" fill="#302630">package.json</text>
+<text x="409" y="140" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="19" font-weight="400" fill="#574c56">包信息应在目录的第一层</text>
+<path d="M57 181 L83 181" fill="none" stroke="#ae8b99" stroke-width="2"/>
+<text x="94" y="188" font-family="ui-monospace, Consolas, monospace" font-size="20" font-weight="600" fill="#302630">install.sh</text>
+<text x="409" y="188" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="19" font-weight="400" fill="#574c56">解压时用 --strip-components=1</text>
+<path d="M57 229 L83 229" fill="none" stroke="#ae8b99" stroke-width="2"/>
+<text x="94" y="236" font-family="ui-monospace, Consolas, monospace" font-size="20" font-weight="600" fill="#302630">index.ts</text>
+<text x="409" y="236" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="19" font-weight="400" fill="#574c56">用 hydrooj addon add 注册此目录</text>
+</svg>

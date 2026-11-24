@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="397" viewBox="0 0 840 397" role="img" aria-labelledby="title desc">
+<title id="title">从域根地址找到比赛对象</title>
+<desc id="desc">比赛端点位于 contests/{id} 下，榜单和事件流描述这场比赛。webhooks 位于域根地址。</desc>
+<rect x="0" y="0" width="840" height="397" rx="0" fill="#fffdfb" stroke="none"/>
+<rect x="0" y="0" width="8" height="397" rx="0" fill="#8c2043" stroke="none"/>
+<text x="32" y="45" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="29" font-weight="680" fill="#4d1930">从域根地址找到比赛对象</text>
+<path d="M32 64 L808 64" fill="none" stroke="#e4dadc" stroke-width="2"/>
+<text x="38" y="100" font-family="ui-monospace, Consolas, monospace" font-size="21" font-weight="650" fill="#651d39">/d/{domain}/ccsapi/</text>
+<path d="M53 112 L53 352" fill="none" stroke="#c9bdc2" stroke-width="2"/>
+<path d="M53 141 L77 141" fill="none" stroke="#c9bdc2" stroke-width="2"/>
+<text x="89" y="148" font-family="ui-monospace, Consolas, monospace" font-size="21" font-weight="620" fill="#302630">contests/{id}/</text>
+<text x="366" y="148" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="19" font-weight="400" fill="#554c54">进入一场已开放的比赛</text>
+<path d="M53 352 L77 352" fill="none" stroke="#c9bdc2" stroke-width="2"/>
+<text x="89" y="359" font-family="ui-monospace, Consolas, monospace" font-size="21" font-weight="620" fill="#302630">webhooks</text>
+<text x="366" y="359" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="19" font-weight="400" fill="#554c54">在域根下管理事件回调</text>
+<path d="M105 162 L105 302" fill="none" stroke="#c9bdc2" stroke-width="2"/>
+<path d="M105 182 L125 182" fill="none" stroke="#c9bdc2" stroke-width="2"/>
+<text x="137" y="190" font-family="ui-monospace, Consolas, monospace" font-size="19" font-weight="550" fill="#4e3441">teams、problems</text>
+<text x="366" y="190" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="19" font-weight="400" fill="#554c54">队伍与题目信息</text>
+<path d="M105 223 L125 223" fill="none" stroke="#c9bdc2" stroke-width="2"/>
+<text x="137" y="231" font-family="ui-monospace, Consolas, monospace" font-size="19" font-weight="550" fill="#4e3441">submissions</text>
+<text x="366" y="231" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="19" font-weight="400" fill="#554c54">提交记录，可按 team_id 筛选</text>
+<path d="M105 264 L125 264" fill="none" stroke="#c9bdc2" stroke-width="2"/>
+<text x="137" y="272" font-family="ui-monospace, Consolas, monospace" font-size="19" font-weight="550" fill="#4e3441">scoreboard</text>
+<text x="366" y="272" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="19" font-weight="400" fill="#554c54">当前账号可见的榜单</text>
+<path d="M105 305 L125 305" fill="none" stroke="#c9bdc2" stroke-width="2"/>
+<text x="137" y="313" font-family="ui-monospace, Consolas, monospace" font-size="19" font-weight="550" fill="#4e3441">event-feed</text>
+<text x="366" y="313" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="19" font-weight="400" fill="#554c54">持续更新的 NDJSON 事件</text>
+</svg>

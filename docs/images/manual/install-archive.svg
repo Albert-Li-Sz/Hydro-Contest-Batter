@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="262" viewBox="0 0 840 262" role="img" aria-labelledby="title desc">
+<title id="title">从发布包找到安装脚本</title>
+<desc id="desc">校验成功后展开 tgz，安装脚本位于新目录的 package 子目录。</desc>
+<rect x="0" y="0" width="840" height="262" rx="0" fill="#fffdfb" stroke="none"/>
+<rect x="0" y="0" width="8" height="262" rx="0" fill="#8c2043" stroke="none"/>
+<text x="32" y="45" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="29" font-weight="680" fill="#4d1930">从发布包找到安装脚本</text>
+<path d="M32 64 L808 64" fill="none" stroke="#e4dadc" stroke-width="2"/>
+<rect x="32" y="81" width="776" height="161" rx="6" fill="#29232c" stroke="none"/>
+<text x="51" y="110" font-family="ui-monospace, Consolas, monospace" font-size="19" font-weight="500" fill="#fff4f7">$ sha256sum -c hydro-scoreboard-xcpcio-plus-1.21.0.tgz.sha256</text>
+<text x="51" y="146" font-family="ui-monospace, Consolas, monospace" font-size="19" font-weight="500" fill="#a6edc5">hydro-scoreboard-xcpcio-plus-1.21.0.tgz: OK</text>
+<text x="51" y="182" font-family="ui-monospace, Consolas, monospace" font-size="19" font-weight="500" fill="#fff4f7">$ ls xcpcio-v1.21.0/package/install.sh</text>
+<text x="51" y="218" font-family="ui-monospace, Consolas, monospace" font-size="19" font-weight="500" fill="#a6edc5">xcpcio-v1.21.0/package/install.sh</text>
+</svg>

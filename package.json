@@ -56,7 +56,7 @@
     "docs/index.html",
     "docs/media-worker.html",
     "docs/media-worker.compose.yaml",
-    "docs/images/media-worker",
+    "docs/images",
     "docs/manual.css",
     "docs/usage.md",
     "docs/verification.md",
