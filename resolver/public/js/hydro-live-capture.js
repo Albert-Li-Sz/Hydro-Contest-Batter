@@ -197,7 +197,8 @@ function renderTable() {
                     ? (device.streams.length ? device.streams.map((stream) => tag(streamName[stream], 'manage-tag--ok')) : [tag('在线', 'manage-tag--ok')])
                     : [tag(device.lastSeen ? '离线' : '未打开', device.lastSeen ? 'manage-tag--bad' : '')],
                     device.online && device.recordingStatus?.backlogBytes > 0 ? tag(`待传 ${(device.recordingStatus.backlogBytes / 1048576).toFixed(1)} MB · ${device.recordingStatus.backlogSeconds || 0} 秒`) : null,
-                    device.online && device.recordingStatus?.failures > 0 ? tag(`上传失败 ${device.recordingStatus.failures} 次`, 'manage-tag--bad') : null),
+                    device.online && device.recordingStatus?.failures > 0 ? tag(`上传失败 ${device.recordingStatus.failures} 次`, 'manage-tag--bad') : null,
+                    device.online && device.recordingStatus?.recordingError ? tag(device.recordingStatus.recordingError, 'manage-tag--bad') : null),
                 el('td', { class: 'manage-nowrap manage-small', text: formatTime(device.lastSeen) }),
                 el('td', { class: 'manage-small', text: device.client ? [device.client.ip, device.client.screen].filter(Boolean).join(' · ') : '—' }),
                 el('td', { class: 'col-actions manage-nowrap' },

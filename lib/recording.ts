@@ -2,15 +2,35 @@
 export class RecordingError extends Error {
     constructor(message: string, public status = 400) { super(message); }
 }
+export function reportedVideoCodec(value: unknown) {
+    if (value === 'hevc' || value === 'av1' || value === 'h264' || value === 'vp9' || value === 'vp8') return value;
+    return undefined;
+}
+
+export function uploadedRecordingQuality(raw: unknown) {
+    if (typeof raw !== 'string' || !raw) return undefined;
+    let q;
+    try { q = JSON.parse(raw); } catch { throw new RecordingError('画质格式无效'); }
+    const inRange = (n: unknown, min: number, max: number) => typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max;
+    if (!q || !inRange(q.height, 1, 8192) || !inRange(q.fps, 0.01, 240) || !inRange(q.kbps, 1, 100000)) return undefined;
+    const codec = reportedVideoCodec(q.codec);
+    return { height: q.height, fps: q.fps, kbps: q.kbps,
+        ...(Number.isInteger(q.width) && inRange(q.width, 1, 16384) ? { width: q.width } : {}),
+        ...(inRange(q.requestedHeight, 1, 8192) ? { requestedHeight: q.requestedHeight } : {}),
+        ...(codec ? { codec } : {}) };
+}
+
 export type StreamName = 'screen' | 'webcam';
 export type SourceName = 'clipScreen' | 'clipWebcam' | 'archiveScreen' | 'archiveWebcam';
-export type Preset = 'low' | 'standard' | 'high';
+type CommonPreset = 'low' | 'standard' | 'high';
+export type Preset = CommonPreset | 'archiveHd';
 export interface Quality { preset: Preset | 'custom'; height: number; fps: number; kbps: number }
 type Triple = [number, number, number];
-export const presets: Record<SourceName, Record<Preset, Triple>> = {
+type SourcePresets = Record<CommonPreset, Triple> & { archiveHd?: Triple };
+export const presets: Record<SourceName, SourcePresets> = {
     clipScreen: { low: [720, 5, 500], standard: [720, 10, 1000], high: [1080, 15, 2500] },
     clipWebcam: { low: [360, 15, 300], standard: [480, 15, 500], high: [720, 30, 1200] },
-    archiveScreen: { low: [480, 0.5, 50], standard: [480, 1, 100], high: [720, 2, 250] },
+    archiveScreen: { low: [480, 0.5, 50], standard: [480, 1, 100], high: [720, 2, 250], archiveHd: [720, 24, 1200] },
     archiveWebcam: { low: [240, 1, 30], standard: [360, 2, 60], high: [480, 5, 150] },
 };
 export interface RecordingSettings {
@@ -20,13 +40,16 @@ export interface RecordingSettings {
     planning: { uplinkMbps: number | null; submissionsPerTeam: number; acceptedPerTeam: number; peakFactor: number };
 }
 export function qualityPreset(source: SourceName, preset: Preset): Quality {
-    const [height, fps, kbps] = presets[source][preset];
+    const choices = presets[source];
+    const values = Object.hasOwn(choices, preset) ? choices[preset] : undefined;
+    if (!values) throw new RecordingError('该录制通道不支持此画质预设');
+    const [height, fps, kbps] = values;
     return { preset, height, fps, kbps };
 }
 export const defaultRecordingSettings = (): RecordingSettings => ({
     clips: { enabled: false, scope: 'all', beforeSeconds: 20, afterAcceptedSeconds: 40, afterOtherSeconds: 10, screen: qualityPreset('clipScreen', 'standard'), webcam: qualityPreset('clipWebcam', 'standard') },
-    archive: { enabled: false, screen: qualityPreset('archiveScreen', 'standard'), webcam: null, segmentSeconds: 60 },
-    autoDowngrade: true, planning: { uplinkMbps: null, submissionsPerTeam: 40, acceptedPerTeam: 10, peakFactor: 3 },
+    archive: { enabled: false, screen: qualityPreset('archiveScreen', 'archiveHd'), webcam: null, segmentSeconds: 60 },
+    autoDowngrade: false, planning: { uplinkMbps: null, submissionsPerTeam: 40, acceptedPerTeam: 10, peakFactor: 3 },
 });
 const object = (raw: unknown): Record<string, any> => raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, any> : {};
 function numeric(raw: unknown, min: number, max: number, name: string) {
@@ -44,8 +67,8 @@ export function normalizeRecording(input: unknown, base: RecordingSettings, capt
         if (!q || typeof q !== 'object') throw new RecordingError('录制画质无效');
         const fields = object(q);
         const preset = fields.preset;
-        if (!['standard', 'low', 'high', 'custom'].includes(preset)) throw new RecordingError('请选择画质预设');
-        const value: Quality = preset !== 'custom' ? qualityPreset(source, preset) : {
+        if (typeof preset !== 'string') throw new RecordingError('请选择画质预设');
+        const value: Quality = preset !== 'custom' ? qualityPreset(source, preset as Preset) : {
             preset, height: numeric(fields.height, 120, 2160, '录制高度'), fps: numeric(fields.fps, 0.1, 60, '录制帧率'), kbps: numeric(fields.kbps, 10, 20000, '录制码率'),
         };
         if (enabled && value.height > (source.endsWith('Screen') ? capture.screenHeight : capture.webcamHeight)) throw new RecordingError('录制分辨率不能超过采集分辨率');

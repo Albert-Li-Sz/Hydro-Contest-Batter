@@ -1,5 +1,5 @@
 import { evictedSegments, nextUpload, openBuffer, segmentsFor } from './hydro-recording-buffer.js';
-import { recordingSource, recordSegment } from './hydro-recording-media.js';
+import { ArchiveEncoderUnavailable, recordingSource, recordSegment } from './hydro-recording-media.js';
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const keyOf = (kind, stream) => kind + (stream === 'screen' ? 'Screen' : 'Webcam');
@@ -13,6 +13,7 @@ export class CaptureRecorder {
         this.show = show;
         this.sources = sources;
         this.loops = new Map();
+        this.blocked = new Map();
         this.pendingRequests = new Map();
         this.offset = 0;
         this.failures = 0;
@@ -27,9 +28,12 @@ export class CaptureRecorder {
     display() {
         this.show({ active: this.loops.size > 0, enabled: !!(this.settings?.clips?.enabled || this.settings?.archive?.enabled),
             backlogBytes: this.backlogBytes || 0, backlogSeconds: this.backlogSeconds, failures: this.failures,
-            error: this.error, testing: !!this.test, supported: this.supported });
+            error: this.recordingError() || this.error, testing: !!this.test, supported: this.supported });
     }
 
+    recordingError() {
+        return [...this.blocked.values()].map((entry) => entry.message).join(' · ');
+    }
     async config(profile) {
         this.settings = profile.recording;
         this.idleUntil = 0;
@@ -72,6 +76,7 @@ export class CaptureRecorder {
         this.opening = null;
         for (const entry of this.loops.values()) entry.abort.abort();
         this.loops.clear();
+        this.blocked.clear();
         this.test?.abort.abort();
         this.test = null;
         this.db?.close();
@@ -117,14 +122,22 @@ export class CaptureRecorder {
                     if (!source?.getVideoTracks().some((t) => t.readyState === 'live') || !quality) continue;
                     const congested = this.settings.autoDowngrade && this.backlogSeconds > 60;
                     const add = (low) => {
-                        const q = low ? reducedQuality(quality) : quality;
+                        const q = low ? { ...reducedQuality(quality), requestedHeight: quality.height } : quality;
                         const key = kind + ':' + stream + (kind === 'clip' && low ? ':low' : '');
-                        desired.set(key, { source, quality: q, kind, stream, reduced: kind === 'clip' && low, signature: JSON.stringify(q) });
+                        const archiveScreen = kind === 'archive' && stream === 'screen';
+                        const archiveHd = archiveScreen && quality.preset === 'archiveHd';
+                        desired.set(key, { source, quality: q, kind, stream, archiveScreen, archiveHd, reduced: kind === 'clip' && low,
+                            signature: JSON.stringify([archiveHd, q, this.begin, this.end]), configured: JSON.stringify(quality) });
                     };
                     add(kind === 'archive' && congested);
                     if (kind === 'clip' && congested && this.backlogSeconds > 120) add(true);
                 }
             }
+        }
+        for (const [key, failure] of this.blocked) {
+            const want = desired.get(key);
+            if (want?.source === failure.source && want.configured === failure.configured) desired.delete(key);
+            else this.blocked.delete(key);
         }
         for (const [key, active] of this.loops) {
             const want = desired.get(key);
@@ -134,7 +147,12 @@ export class CaptureRecorder {
         for (const [key, options] of desired) {
             const entry = { ...options, abort: new AbortController() };
             this.loops.set(key, entry);
-            this.recordLoop(entry, this.db).catch((e) => { if (!entry.abort.signal.aborted) this.warn(e); }).finally(() => {
+            this.recordLoop(entry, this.db).catch((e) => {
+                if (entry.abort.signal.aborted) return;
+                if (e instanceof ArchiveEncoderUnavailable) {
+                    this.blocked.set(key, { source: entry.source, configured: entry.configured, message: e.message });
+                } else this.warn(e);
+            }).finally(() => {
                 if (this.loops.get(key) === entry) this.loops.delete(key);
                 this.display();
             });
@@ -144,24 +162,35 @@ export class CaptureRecorder {
 
     async recordLoop(entry, db) {
         const { kind, stream, quality, reduced, abort } = entry;
-        const source = await recordingSource(entry.source, quality, stream === 'webcam');
+        // A contest may be shortened or extended while the browser is live. sync() rotates
+        // the encoder on a schedule change; the finishing segment also sees the new boundary.
+        const cutoff = () => this.end + (kind === 'clip' ? 120000 : 0);
+        const source = await recordingSource(entry.source, quality, stream === 'webcam', entry.archiveScreen, entry.archiveHd, () => this.now() < cutoff());
+        if (kind === 'archive') source.onLost = (from, to) => {
+            if (db !== this.db) return;
+            const row = { id: crypto.randomUUID(), stream, startMs: from, endMs: to };
+            return db.write([this.gap(row, 'failed')]).catch((error) => this.warn(error));
+        };
         try {
             while (!abort.signal.aborted) {
                 entry.segmentStart = this.now();
-                const remaining = this.end + (kind === 'clip' ? 120000 : 0) - entry.segmentStart;
+                const remaining = cutoff() - entry.segmentStart;
                 const duration = Math.min(kind === 'clip' ? 10000 : 60000, remaining);
                 if (duration <= 0) break;
-                const segment = await recordSegment(source.stream, quality, duration, abort.signal, this.now);
-                if (!segment || db !== this.db) break;
+                const segment = await recordSegment(source, quality, duration, abort.signal, this.now, false, cutoff);
+                if (db !== this.db || source.stream.getVideoTracks()[0].readyState === 'ended' && !segment) break;
+                if (!segment) continue;
                 await this.save(db, segment, { kind, stream, quality, reduced });
             }
         } finally { source.close(); }
     }
 
     async save(db, segment, fields) {
-        const { blob, dropRate, ...timing } = segment;
+        const { blob, dropRate, codec, width, height, ...timing } = segment;
         const id = crypto.randomUUID();
-        const row = { id, ...timing, ...fields, bytes: blob.size };
+        const quality = { ...fields.quality, codec };
+        if (width > 0 && height > 0) Object.assign(quality, { requestedHeight: fields.quality.requestedHeight || fields.quality.height, width, height });
+        const row = { id, ...timing, ...fields, quality, bytes: blob.size };
         const entries = [['segments', id, row], ['blobs', id, blob]];
         if (fields.kind !== 'clip') entries.push(['jobs', id, { id, segment: id, created: Date.now(), priority: 3 }]);
         if (blob.size > 20 * 1024 * 1024) {
@@ -233,7 +262,7 @@ export class CaptureRecorder {
             this.backlogBytes = jobs.reduce((sum, j) => sum + (byId.get(j.segment)?.bytes || 0), 0);
             this.backlogSeconds = jobs.length ? Math.floor((Date.now() - Math.min(...jobs.map((j) => j.created))) / 1000) : 0;
             if (Date.now() - (this.lastStatus || 0) >= 5000) {
-                this.send({ type: 'record-status', backlogBytes: this.backlogBytes, backlogSeconds: this.backlogSeconds, failures: this.failures });
+                this.send({ type: 'record-status', backlogBytes: this.backlogBytes, backlogSeconds: this.backlogSeconds, failures: this.failures, recordingError: this.recordingError() });
                 this.lastStatus = Date.now();
                 this.sync();
             }
@@ -277,6 +306,7 @@ export class CaptureRecorder {
                 currentTest.bytes += row.bytes;
                 currentTest.uploadMs += performance.now() - began;
                 currentTest.uploads++;
+                if (row.sourceKind === 'archive' && row.stream === 'screen') currentTest.archiveScreenCodec = row.quality?.codec;
                 const meter = currentTest.rates[keyOf(row.sourceKind, row.stream)] ||= { bytes: 0, ms: 0 };
                 meter.bytes += row.bytes;
                 meter.ms += row.endMs - row.startMs;
@@ -325,7 +355,7 @@ export class CaptureRecorder {
         }
         const report = (done) => {
             const bitrates = Object.fromEntries(Object.entries(test.rates).map(([key, r]) => [key, r.bytes * 8 / Math.max(1, r.ms)]));
-            this.send({ type: 'test-report', testId: id, bytes: test.bytes, uploads: test.uploads, failures: test.failures, backlogBytes: this.backlogBytes || 0,
+            this.send({ type: 'test-report', testId: id, archiveScreenCodec: test.archiveScreenCodec, recordingError: test.recordingError, bytes: test.bytes, uploads: test.uploads, failures: test.failures, backlogBytes: this.backlogBytes || 0,
                 pressure: test.pressure, dropRate: test.dropRates.length ? Math.max(...test.dropRates) : null,
                 throughputMbps: test.uploadMs ? test.bytes * 8 / test.uploadMs / 1000 : 0, bitrates, done });
         };
@@ -346,11 +376,12 @@ export class CaptureRecorder {
                     continue;
                 }
                 jobs.push((async () => {
-                    const source = await recordingSource(raw, quality, stream === 'webcam');
+                    const archiveScreen = sourceKind === 'archive' && stream === 'screen';
+                    const source = await recordingSource(raw, quality, stream === 'webcam', archiveScreen, archiveScreen && quality.preset === 'archiveHd');
                     try {
                         let nextClip = Date.now();
                         let clipLeft = 0;
-                        while (!test.abort.signal.aborted && Date.now() < deadline) {
+                        while (!test.abort.signal.aborted && Date.now() < deadline - 100) {
                             let segmentMs = 30_000;
                             if (kind === 'venue') {
                                 segmentMs = sourceKind === 'clip' ? 10_000 : 60_000;
@@ -362,14 +393,18 @@ export class CaptureRecorder {
                                 }
                                 if (sourceKind === 'clip') segmentMs = Math.min(segmentMs, Math.max(1000, clipLeft));
                             }
-                            const part = await recordSegment(source.stream, quality, Math.min(segmentMs, deadline - Date.now()), test.abort.signal, this.now, true);
+                            const part = await recordSegment(source, quality, Math.min(segmentMs, deadline - Date.now()), test.abort.signal, this.now, true);
                             if (!part || this.db !== db) break;
                             await this.save(db, part, { kind: 'test', sourceKind, stream, quality, testId: id });
                             clipLeft -= part.endMs - part.startMs;
-                            if (kind === 'device') break;
+
                         }
                     } finally { source.close(); }
-                })().catch((error) => { test.failures++; this.warn(error); }));
+                })().catch((error) => {
+                    test.failures++;
+                    if (error instanceof ArchiveEncoderUnavailable) test.recordingError = error.message;
+                    this.warn(error);
+                }));
             }
         }
         try {

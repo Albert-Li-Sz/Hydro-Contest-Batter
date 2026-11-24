@@ -3,9 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Context, Handler } from 'hydrooj';
 import { describe, expect, it, vi } from 'vitest';
-import { clipPriority, clipWindow, defaultRecordingSettings, estimateRecording, gradeTest, inScope, missingIntervals, normalizeRecording, readRange } from '../lib/recording';
+import { clipPriority, clipWindow, defaultRecordingSettings, estimateRecording, gradeTest, inScope, missingIntervals, normalizeRecording, presets, readRange, uploadedRecordingQuality } from '../lib/recording';
 import { inspectSegment, RecordingStore, segmentId, serveRecordingMedia } from '../lib/recording-store';
-import { defaultCaptureSettings, normalizeCaptureSettings } from '../lib/live/capture';
+import { defaultCaptureSettings, normalizeCaptureSettings, readCaptureSettings } from '../lib/live/capture';
 
 describe('recording settings and match planning', () => {
     it('makes old capture settings opt in, preserves recording independently of edits to capture', () => {
@@ -16,8 +16,35 @@ describe('recording settings and match planning', () => {
         expect(normalizeCaptureSettings({ prompt: false }, s).recording.archive.enabled).toBe(true);
         expect(() => normalizeCaptureSettings({ recording: { clips: { enabled: true, screen: { preset: 'high' } } } }, s)).toThrow('不能超过');
     });
+    it('defaults new contests to 1080p30 capture and opt-in 60-second HD screen archives', () => {
+        const settings = readCaptureSettings(undefined);
+        expect(settings).toMatchObject({
+            enabled: false, screenHeight: 1080, screenFps: 30, recording: { autoDowngrade: false, clips: { enabled: false },
+                archive: { enabled: false, webcam: null, segmentSeconds: 60, screen: { preset: 'archiveHd', height: 720, fps: 24, kbps: 1200 } } },
+        });
+        expect(readCaptureSettings(settings)).toEqual(settings);
+        const active = normalizeCaptureSettings({ enabled: true, recording: { archive: { enabled: true } } }, settings);
+        const totals = estimateRecording(active.recording, { teams: 1, seconds: 60 });
+        expect(totals.sources.archiveScreen).toBe(9_000_000);
+        expect(totals.storageBytes).toBe(9_450_000);
+    });
+    it('preserves saved capture, archive and congestion choices, including historical partial documents', () => {
+        const old = readCaptureSettings({ enabled: true, screenFps: 5, recording: { archive: { enabled: true, screen: { preset: 'standard' } } } });
+        expect(old).toMatchObject({ screenHeight: 720, screenFps: 5, recording: { autoDowngrade: true, archive: { screen: { fps: 1, kbps: 100 } } } });
+        const custom = { preset: 'custom', height: 480, fps: 12, kbps: 750 };
+        const saved = readCaptureSettings({ screenHeight: 720, screenFps: 15, recording: { autoDowngrade: false, archive: { screen: custom } } });
+        expect(normalizeCaptureSettings({ prompt: false }, saved)).toMatchObject({
+            screenHeight: 720, screenFps: 15, recording: { autoDowngrade: false, archive: { screen: custom } },
+        });
+    });
+    it('advertises and accepts the extra archive preset only on the screen archive', () => {
+        expect(Object.entries(presets).filter(([, choices]) => choices.archiveHd).map(([source]) => source)).toEqual(['archiveScreen']);
+        for (const [kind, stream] of [['clips', 'screen'], ['clips', 'webcam'], ['archive', 'webcam']]) {
+            expect(() => normalizeCaptureSettings({ recording: { [kind]: { [stream]: { preset: 'archiveHd' } } } })).toThrow('不支持');
+        }
+    });
     it('projects aggregate bandwidth and storage from actual rates, enabled streams and live submission counts', () => {
-        const s = normalizeRecording({ clips: { enabled: true }, archive: { enabled: true }, planning: { uplinkMbps: 5 } }, defaultRecordingSettings(), defaultCaptureSettings());
+        const s = normalizeRecording({ clips: { enabled: true }, archive: { enabled: true, screen: { preset: 'standard' } }, planning: { uplinkMbps: 5 } }, defaultRecordingSettings(), defaultCaptureSettings());
         const q = estimateRecording(s, { teams: 2, seconds: 3600 }, { clipScreen: 500 });
         expect(q.sources.clipScreen).toBe(500 * 125 * 2 * (10 * 60 + 30 * 30));
         expect(q.sources.archiveScreen).toBe(100 * 125 * 2 * 3600);
@@ -55,6 +82,17 @@ describe('recording settings and match planning', () => {
 });
 
 describe('recording file boundaries', () => {
+    it('preserves legacy quality and exposes measured dimensions and codec only when valid', () => {
+        const legacy = { height: 480, fps: 1, kbps: 100 };
+        expect(uploadedRecordingQuality(JSON.stringify(legacy))).toEqual(legacy);
+        for (const codec of ['hevc', 'av1', 'h264']) {
+            const measured = { height: 720, width: 1280, requestedHeight: 720, fps: 24, kbps: 1200, codec };
+            expect(uploadedRecordingQuality(JSON.stringify(measured))).toEqual(measured);
+        }
+        expect(uploadedRecordingQuality(JSON.stringify({ ...legacy, width: -1, codec: 'other' }))).toEqual(legacy);
+        expect(uploadedRecordingQuality(undefined)).toBeUndefined();
+        expect(() => uploadedRecordingQuality('{')).toThrow('画质格式无效');
+    });
     it('validates single, suffix and open-ended HTTP ranges', () => {
         expect(readRange('bytes=2-4', 10)).toEqual({ start: 2, end: 4 });
         expect(readRange('bytes=-5', 10)).toEqual({ start: 5, end: 9 });

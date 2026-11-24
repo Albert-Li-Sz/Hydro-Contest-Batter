@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { Context } from 'hydrooj';
-import { gradeTest, qualityPreset, RecordingError, type Measured, type RecordingSettings, type SourceName } from './recording';
+import { gradeTest, qualityPreset, reportedVideoCodec, RecordingError, type Measured, type RecordingSettings, type SourceName } from './recording';
 import type { RecordingStore } from './recording-store';
 
 const sources: SourceName[] = ['clipScreen', 'clipWebcam', 'archiveScreen', 'archiveWebcam'];
@@ -82,9 +82,11 @@ export function recordingTests(ctx: Context, store: RecordingStore, send: (devic
         }
         const dropRate = finite(raw.dropRate, 1), throughputMbps = finite(raw.throughputMbps, 1e6);
         const pressure = ['nominal', 'fair', 'serious', 'critical'].includes(String(raw.pressure)) ? String(raw.pressure) : 'unknown';
-        const grade = gradeTest(dropRate, pressure, throughputMbps, testedPeak(test.settings, bitrates));
+        const recordingError = typeof raw.recordingError === 'string' ? raw.recordingError.slice(0, 180) : '';
+        const archiveScreenCodec = reportedVideoCodec(raw.archiveScreenCodec);
+        const grade = recordingError ? 'fail' : gradeTest(dropRate, pressure, throughputMbps, testedPeak(test.settings, bitrates));
         const value = { bytes: finite(raw.bytes, 1e13, 0), backlogBytes: finite(raw.backlogBytes, 1e12, 0), failures: finite(raw.failures, 1e9, 0), uploads: finite(raw.uploads, 1e9, 0),
-            dropRate, throughputMbps, pressure, bitrates, grade, done: raw.done === true, at: Date.now(), recommendation: grade === 'fail' ? 'low' : grade === 'unknown' ? null : 'current' };
+            dropRate, throughputMbps, pressure, bitrates, grade, recordingError, ...(archiveScreenCodec ? { archiveScreenCodec } : {}), done: raw.done === true, at: Date.now(), recommendation: grade === 'fail' ? 'low' : grade === 'unknown' ? null : 'current' };
         await tests.updateOne({ _id: test._id, endedAt: null, [`devices.${device}.done`]: { $ne: true } }, {
             $set: { [`devices.${device}`]: value }, $max: { maxBacklog: value.backlogBytes },
         });
@@ -112,11 +114,15 @@ export function recordingTests(ctx: Context, store: RecordingStore, send: (devic
         const uplink = test.settings.planning.uplinkMbps;
         const passed = !failedDevices.length && !failed && peakMbps > 0 && (uplink == null || peakMbps < uplink * .8);
         const budget = uplink == null ? null : uplink * .8;
-        const candidates = ['high', 'standard', 'low'] as const;
+        const candidates = ['archiveHd', 'high', 'standard', 'low'] as const;
         const baseline = testedPeak(test.settings, {});
         const active = testQualities(test.settings);
         const recommended = budget && peakMbps > 0 ? candidates.find((preset) => {
-            const sum = sources.reduce((n, source, i) => n + (active[i] ? qualityPreset(source, preset).kbps : 0), 0) / 1000;
+            if (preset === 'archiveHd' && !active[2]) return false;
+            const sum = sources.reduce((n, source, i) => {
+                const channelPreset = preset === 'archiveHd' && source !== 'archiveScreen' ? 'high' : preset;
+                return n + (active[i] ? qualityPreset(source, channelPreset).kbps : 0);
+            }, 0) / 1000;
             return sum / baseline * peakMbps < budget;
         }) || null : null;
         const summary = { peakMbps, p95Mbps: rates[Math.max(0, Math.ceil(rates.length * .95) - 1)] || 0, peakFactor: avg > 0 ? peakMbps / avg : null,

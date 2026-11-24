@@ -6,7 +6,7 @@
  * tested without Hydro; lib/live/capture-routes.ts connects it to Hydro.
  */
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { defaultRecordingSettings, normalizeRecording, type RecordingSettings } from '../recording';
+import { defaultRecordingSettings, normalizeRecording, qualityPreset, type RecordingSettings } from '../recording';
 import type { MediaType } from './types';
 
 export class CaptureError extends Error {
@@ -48,7 +48,7 @@ export interface CaptureSettings {
 }
 
 export const defaultCaptureSettings = (): CaptureSettings => ({
-    enabled: false, screenDuringContest: true, webcam: true, prompt: true, webcamAudio: false, screenHeight: 720, screenFps: 15, webcamHeight: 480, iceServers: [], recording: defaultRecordingSettings(),
+    enabled: false, screenDuringContest: true, webcam: true, prompt: true, webcamAudio: false, screenHeight: 1080, screenFps: 30, webcamHeight: 480, iceServers: [], recording: defaultRecordingSettings(),
 });
 
 function pick<T>(value: unknown, allowed: readonly T[], label: string, fallback: T): T {
@@ -102,6 +102,17 @@ export function normalizeCaptureSettings(input: unknown, base = defaultCaptureSe
     return settings;
 }
 
+// Old partial documents inherited the original defaults. Their next save persists those effective values.
+export function readCaptureSettings(saved: unknown): CaptureSettings {
+    const base = defaultCaptureSettings();
+    if (saved == null) return base;
+    base.screenHeight = 720;
+    base.screenFps = 15;
+    base.recording.archive.screen = qualityPreset('archiveScreen', 'standard');
+    base.recording.autoDowngrade = true;
+    return normalizeCaptureSettings(saved, base);
+}
+
 /** What a capture page is told to capture (`webcam: null` for screens only). */
 export function captureProfile(settings: CaptureSettings) {
     return {
@@ -133,7 +144,7 @@ export interface CaptureDevice {
     /** What the capture page has captured right now. */
     streams: CaptureStream[];
     client: { agent: string; ip: string; screen: string } | null;
-    recordingStatus?: { backlogBytes: number; backlogSeconds: number; failures: number; at: number };
+    recordingStatus?: { backlogBytes: number; backlogSeconds: number; failures: number; recordingError?: string; at: number };
 }
 
 export const newCaptureSecret = () => randomBytes(24).toString('base64url');

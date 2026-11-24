@@ -76,7 +76,7 @@ export function createCapturePreview(env: Environment, options: {
                 id: device._id, name: device.name, seat: device.seat, teamUid: device.teamUid,
                 team: device.teamUid !== null ? teams.find((team) => team.uid === device.teamUid) ?? null : bySeat.get(device.seat.toLowerCase()) ?? null,
                 url: captureUrl(device), online: isCaptureOnline(device, now), streams: isCaptureOnline(device, now) ? device.streams : [],
-                lastSeen: device.lastSeen, client: device.client,
+                lastSeen: device.lastSeen, client: device.client, recordingStatus: device.recordingStatus,
             })),
         };
     }

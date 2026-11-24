@@ -20,7 +20,8 @@ permissions:
 
 jobs:
   build:
-    if: github.event_name == 'workflow_dispatch' || !github.event.release.prerelease
+    # Plugin-only updates continue using the previously published worker image.
+    if: github.event_name == 'workflow_dispatch' || (!github.event.release.prerelease && contains(join(github.event.release.assets.*.name, ','), 'reactions-generator-hydro-'))
     strategy:
       fail-fast: false
       matrix:

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { Context, ContestModel, Handler, ObjectId, param, RecordModel, Tdoc, Types } from 'hydrooj';
 import { captureSecretMatches, isCaptureOnline, type CaptureDevice, type CaptureSettings } from './live/capture';
 import type { CaptureHelpers } from './live/capture-routes';
-import { clipPriority, clipWindow, estimateRecording, missingIntervals, inScope, normalizeRecording, presets, RecordingError, type Measured, type SourceName, type StreamName } from './recording';
+import { clipPriority, clipWindow, estimateRecording, missingIntervals, inScope, normalizeRecording, presets, uploadedRecordingQuality, RecordingError, type Measured, type SourceName, type StreamName } from './recording';
 import { inspectSegment, RecordingStore, serveRecordingMedia, type Clip, type Segment } from './recording-store';
 import { probeRecordingStorage, recordingTests } from './recording-tests';
 
@@ -129,7 +129,10 @@ export function applyRecording(ctx: Context, hooks: Hooks) {
             }
         } else {
             const { backlogBytes, backlogSeconds, failures } = msg;
-            if (bounded(backlogBytes, 0, 1e13) && bounded(backlogSeconds, 0, 86400) && bounded(failures, 0, 1e9)) await hooks.devices.updateOne({ _id: doc._id, contestKey }, { $set: { recordingStatus: { backlogBytes, backlogSeconds, failures, at: Date.now() } } });
+            if (bounded(backlogBytes, 0, 1e13) && bounded(backlogSeconds, 0, 86400) && bounded(failures, 0, 1e9)) {
+                const recordingError = typeof msg.recordingError === 'string' ? msg.recordingError.slice(0, 180) : '';
+                await hooks.devices.updateOne({ _id: doc._id, contestKey }, { $set: { recordingStatus: { backlogBytes, backlogSeconds, failures, recordingError, at: Date.now() } } });
+            }
         }
     }
     function deviceRecording(settings: CaptureSettings) {
@@ -175,13 +178,7 @@ export function applyRecording(ctx: Context, hooks: Hooks) {
             const file = this.request.files?.file;
             if (!file?.filepath) throw new RecordingError('请选择录像段');
             const { bytes, mime, extension } = await inspectSegment(file.filepath, file.mimetype || '');
-            let quality: unknown;
-            if (a.quality) {
-                try {
-                    const q = JSON.parse(String(a.quality));
-                    if (bounded(q.height, 1, 8192) && bounded(q.fps, .01, 240) && bounded(q.kbps, 1, 100000)) quality = { height: q.height, fps: q.fps, kbps: q.kbps };
-                } catch { throw new RecordingError('画质格式无效'); }
-            }
+            const quality = uploadedRecordingQuality(a.quality);
             const begin = performance.now();
             const result = await store.save({ contestKey, device: device._id, teamUid: teamUid ?? 0, kind, stream: s, startAt, endAt, bytes, mime, ...extra, ...(quality ? { quality } : {}) }, file.filepath, extension);
             if (clip) await store.clips.updateOne({ _id: clip._id, state: { $in: ['requested', 'missing'] } }, { $set: { state: 'uploading' } });
@@ -295,7 +292,7 @@ export function applyRecording(ctx: Context, hooks: Hooks) {
             const filter = { contestKey: key, teamUid: { $in: teamUids } };
             const [clips, segments, gaps] = await Promise.all([
                 store.clips.find(filter, { projection: { _id: 0, contestKey: 0 } }).sort({ submittedAt: -1 }).toArray(),
-                store.segments.find({ ...filter, kind: { $ne: 'test' } }, { projection: { kind: 1, teamUid: 1, startAt: 1, endAt: 1, bytes: 1, stream: 1 } }).sort({ startAt: 1 }).toArray(),
+                store.segments.find({ ...filter, kind: { $ne: 'test' } }, { projection: { kind: 1, teamUid: 1, startAt: 1, endAt: 1, bytes: 1, stream: 1, quality: 1 } }).sort({ startAt: 1 }).toArray(),
                 store.gaps.find(filter, { projection: { _id: 0, contestKey: 0 } }).toArray(),
             ]);
             const disconnected = offlineDocs.filter((d: any) => teamUids.includes(d.offlineTeam));

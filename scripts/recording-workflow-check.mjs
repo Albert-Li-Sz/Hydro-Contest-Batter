@@ -20,7 +20,13 @@ async function recoverArchive(manage, device, context, url) {
     await manage.getByLabel('录制全程留档', { exact: true }).check();
     await manage.getByRole('button', { name: '保存录制设置' }).click();
     await manage.getByText('录制设置已保存', { exact: true }).waitFor();
-    await delay(4500);
+    const probe = await until('first HD archive segment was not uploaded', async () =>
+        (await json()).segments.find((row) => row.kind === 'archive' && row.stream === 'screen' && !before.has(row.id)));
+    assert.ok(['hevc', 'av1', 'h264'].includes(probe.quality?.codec));
+    assert.ok(probe.quality.width > 0 && probe.quality.height > 0 && probe.quality.height <= 720);
+    assert.equal(probe.quality.requestedHeight, 720);
+    assert.ok(probe.endAt - probe.startAt < 4000, 'encoder verification should upload a short first segment');
+    await delay(1600);
     await context.setOffline(true);
     try {
         // End the current real screen recording while disconnected. Its final segment must
@@ -30,15 +36,15 @@ async function recoverArchive(manage, device, context, url) {
             track.stop();
             track.dispatchEvent(new Event('ended'));
         });
-        const stored = await until('archive was not persisted while offline', () => device.evaluate(async () => {
+        const stored = await until('archive was not persisted while offline', () => device.evaluate(async (firstStart) => {
             const {name} = (await indexedDB.databases()).find((db) => db.name?.startsWith('hydro-recording-v1:')) || {};
             if (!name) return null;
             const db = await new Promise((resolve) => { const r = indexedDB.open(name); r.onsuccess = () => resolve(r.result); });
             try {
                 const rows = await new Promise((resolve) => { const r = db.transaction('segments').objectStore('segments').getAll(); r.onsuccess = () => resolve(r.result); });
-                return rows.find((row) => row.kind === 'archive' && row.bytes > 0);
+                return rows.find((row) => row.kind === 'archive' && row.startMs > firstStart && row.bytes > 0);
             } finally { db.close(); }
-        }));
+        }, probe.startAt));
         device.once('dialog', (dialog) => dialog.accept());
         await device.goto('about:blank');
         await context.setOffline(false);
@@ -48,6 +54,7 @@ async function recoverArchive(manage, device, context, url) {
             return segments.find((row) => row.kind === 'archive' && !before.has(row.id) && row.startAt === stored.startMs);
         });
         assert.equal(uploaded.bytes, stored.bytes);
+        assert.equal(uploaded.quality.codec, probe.quality.codec);
         const reply = await context.request.get(new URL(uploaded.url, url).href);
         assert.equal((await reply.body()).length, stored.bytes);
         console.log('Recovered archive after offline capture and page reopen', uploaded.bytes);

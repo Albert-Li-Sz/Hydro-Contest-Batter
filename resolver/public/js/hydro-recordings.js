@@ -11,7 +11,7 @@ const kinds = { clip: '提交片段', archive: '全程留档', reaction: '反应
 const clipStates = { requested: '等待上传', uploading: '上传中', ready: '已就绪', partial: '部分缺失', missing: '缺失' };
 const reasons = { offline: '设备离线', evicted: '超出缓存', failed: '上传失败', closed: '窗口已关闭' };
 const grades = { pass: '达标', marginal: '勉强', unknown: '数据不足', fail: '未达标' };
-const presets = { low: '低', standard: '标准', high: '高', custom: '自定义' };
+const presets = { low: '低', standard: '标准', high: '高', archiveHd: '高清留档', custom: '自定义' };
 const verdicts = ['等待', 'AC', 'WA', 'TLE', 'MLE', 'OLE', 'RE', 'CE', 'SE', '已取消'];
 const recordings = runtime.base + '/recordings';
 const tests = runtime.base + '/tests';
@@ -40,6 +40,13 @@ const time = (s) => new Date(s).getTime();
 const teamName = (state, uid) => state.teams.find((t) => t.uid === Number(uid))?.name || ('UID ' + uid);
 const teamChoices = (state, extra = []) => [...new Set([...state.teams.map((t) => t.uid), ...extra])].map((uid) => [String(uid), teamName(state, uid)]);
 
+const codecLabels = { hevc: 'H.265', av1: 'AV1', h264: 'H.264', vp9: 'VP9', vp8: 'VP8' };
+function segmentDescription(segment) {
+    const q = segment.quality;
+    if (!q) return '';
+    return [codecLabels[q.codec], q.width && q.height ? q.width + ' × ' + q.height : ''].filter(Boolean).join(' · ');
+}
+
 function player(rows, start, end) {
     const root = el('div', { class: 'record-player' });
     const tracks = rows.slice().sort((a, b) => time(a.startAt) - time(b.startAt));
@@ -55,7 +62,8 @@ function player(rows, start, end) {
         screen.src = url.href;
         url.searchParams.set('download', '1');
         download.href = url.href;
-        label.textContent = formatTime(seg.startAt) + ' 至 ' + formatTime(seg.endAt) + '（' + (i + 1) + '/' + tracks.length + '）';
+        const interval = formatTime(seg.startAt) + ' 至 ' + formatTime(seg.endAt) + '（' + (i + 1) + '/' + tracks.length + '）';
+        label.textContent = [interval, segmentDescription(seg)].filter(Boolean).join(' · ');
         const offset = Math.max(0, (continueAt - time(seg.startAt)) / 1000);
         screen.onloadedmetadata = () => { if (offset > 0 && Number.isFinite(offset)) screen.currentTime = offset; if (autoplay) screen.play().catch(() => {}); };
     }
@@ -116,7 +124,7 @@ function showRecordings(panel, state, data, query, reload) {
                 strip.append(el(isGap ? 'span' : 'button', { type: isGap ? null : 'button', class: isGap ? 'record-gap' : 'record-segment', title, 'aria-label': title,
                     style: 'left:' + (a - from) * 100 / range + '%;width:' + (b - a) * 100 / range + '%', onclick: click }));
             };
-            rows.forEach((r, index) => band(time(r.startAt), time(r.endAt), formatTime(r.startAt) + ' · ' + bytes(r.bytes), false, (e) => {
+            rows.forEach((r, index) => band(time(r.startAt), time(r.endAt), [formatTime(r.startAt), bytes(r.bytes), segmentDescription(r)].filter(Boolean).join(' · '), false, (e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
                 const pos = e.detail && rect.width ? Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)) : 0;
                 const at = time(r.startAt) + (time(r.endAt) - time(r.startAt)) * pos;
@@ -197,12 +205,13 @@ function showSettings(panel, state, data) {
         const obj = recording[kind], source = (kind === 'clips' ? 'clip' : kind) + (stream === 'screen' ? 'Screen' : 'Webcam');
         const choices = data.presets[source];
         const root = el('div', { class: 'record-quality' });
-        const preset = select([...(stream === 'webcam' ? [['', '关闭']] : []), ...options(presets)], obj[stream]?.preset || '');
+        const preset = select([...(stream === 'webcam' ? [['', '关闭']] : []), ...Object.keys(choices).map((key) => [key, presets[key] || key]), ['custom', presets.custom]], obj[stream]?.preset || '');
         const inputs = el('div', { class: 'record-toolbar' });
         const fields = () => {
             inputs.replaceChildren(); const q = obj[stream]; if (!q) return;
             if (q.preset === 'custom') inputs.append(numberField('高度 / px', q, 'height', 120, 2160), numberField('帧率 / fps', q, 'fps', 0.1, 60, '0.1'), numberField('码率 / kbps', q, 'kbps', 10, 20000));
             else inputs.append(el('span', { text: q.height + 'p · ' + q.fps + ' fps · ' + q.kbps + ' kbps' }));
+            if (q.preset === 'archiveHd') inputs.append(el('small', { class: 'resolver-muted', text: '依次尝试 H.265、AV1、H.264。首段最多 2 秒，之后每 60 秒分段。' }));
         };
         preset.onchange = () => {
             const value = preset.value;
@@ -242,8 +251,9 @@ function reportView(state, test) {
     const deviceName = (id) => state.devices.find((d) => d.id === id)?.name || id;
     const summary = test.summary;
     const body = el('div');
+    const recommended = summary?.recommended === 'archiveHd' ? '屏幕选高清留档，其他已启用通道选高档' : presets[summary?.recommended];
     if (summary) body.append(el('p', { text: '峰值 ' + num(summary.peakMbps) + ' Mbps · P95 ' + num(summary.p95Mbps) + ' Mbps · 最大积压 ' + bytes(summary.maxBacklog) + ' · 失败率 ' + percent(summary.failureRate) }),
-        el('p', { text: (summary.passed ? '本次测试达标' : '本次测试未达标') + (summary.recommended ? ' · 建议画质 ' + presets[summary.recommended] : '')
+        el('p', { text: (summary.passed ? '本次测试达标' : '本次测试未达标') + (summary.recommended ? ' · 建议画质 ' + recommended : '')
             + (summary.failedDevices?.length ? ' · 待检查设备 ' + summary.failedDevices.map(deviceName).join('、') : '') }));
     if (test.storage) body.append(el('p', { text: '存储实测 · 写入 ' + num(test.storage.writeMBps) + ' MB/s · 读回 ' + num(test.storage.readMBps) + ' MB/s' }));
     if (test.storageError) body.append(el('p', { class: 'manage-error', text: '存储测试失败：' + test.storageError }));
@@ -263,7 +273,7 @@ function reportView(state, test) {
             const d = test.devices[id] || {};
             const rates = Object.entries(d.bitrates || {}).map(([k, v]) => names[k] + ' ' + num(v)).join('、');
             return [deviceName(id), bytes(d.bytes), bytes(d.backlogBytes), String(d.failures ?? '—'), percent(d.dropRate), d.pressure || '—',
-                num(d.throughputMbps), rates || '—', (grades[d.grade] || '等待上报') + (d.recommendation === 'low' ? ' · 建议低档' : '')];
+                num(d.throughputMbps), [rates, codecLabels[d.archiveScreenCodec] && '留档屏幕 ' + codecLabels[d.archiveScreenCodec]].filter(Boolean).join(' · ') || '—', d.recordingError || (grades[d.grade] || '等待上报') + (d.recommendation === 'low' ? ' · 建议低档' : '')];
         }), '没有设备报告'));
     return body;
 }

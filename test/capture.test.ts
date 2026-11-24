@@ -46,7 +46,7 @@ describe('画面采集设置与设备', () => {
         ]);
         expect(() => parseIceServers('http://example.com')).toThrow('stun:');
         expect(() => parseIceServers('turn:10.0.0.1:3478')).toThrow('用户名和密码');
-        expect(captureProfile(defaultCaptureSettings())).toMatchObject({ screen: { width: 1280, height: 720, frameRate: 15 }, webcam: { height: 480, audio: false } });
+        expect(captureProfile(defaultCaptureSettings())).toMatchObject({ screen: { width: 1920, height: 1080, frameRate: 30 }, webcam: { height: 480, audio: false } });
         expect(captureProfile({ ...defaultCaptureSettings(), webcam: false }).webcam).toBeNull();
         expect(normalizeDeviceInput({ seat: ' A-01 ' })).toEqual({ seat: 'A-01', name: 'A-01', teamUid: null });
         expect(normalizeDeviceInput({ name: '讲台机', teamUid: '-12' })).toEqual({ seat: '', name: '讲台机', teamUid: -12 });

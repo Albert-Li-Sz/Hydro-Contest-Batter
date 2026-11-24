@@ -14,7 +14,7 @@ import { isTeamEntry, loadSeats, memberIds, type TeamEntry } from '../teams';
 import {
     CaptureError, type CaptureDevice, type CaptureEnvelope, captureMedias, captureProfile, CaptureRelay, captureSecretMatches, type CaptureSettings,
     type CaptureStream, captureStreams, defaultCaptureSettings, isCaptureOnline, newCaptureSecret, normalizeCaptureSettings, normalizeDeviceInput,
-    participantDeviceId, streamAllowed, boardSealed,
+    participantDeviceId, readCaptureSettings, streamAllowed, boardSealed,
 } from './capture';
 import { startStunServer } from './stun';
 import type { MediaType } from './types';
@@ -61,7 +61,7 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
 
     async function loadSettings(contestKey: string): Promise<CaptureSettings> {
         const doc: CaptureConfigDoc | null = await configs.findOne({ _id: contestKey });
-        try { return normalizeCaptureSettings(doc?.settings || {}); } catch { return defaultCaptureSettings(); }
+        try { return readCaptureSettings(doc?.settings); } catch { return defaultCaptureSettings(); }
     }
 
     /** Each participant's seat (onsite-toolkit), a team without one sitting where its first seated member does. */

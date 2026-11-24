@@ -45,7 +45,7 @@
       <section id="prepare">
         <h2>准备比赛和媒体机</h2>
         <dl class="entries">
-          <div><dt>Hydro 服务器</dt><dd>安装支持录制的插件 v1.21.0，使用 ACM 比赛。比赛所有者或有「编辑比赛」权限的账号负责配置。若侧边栏没有相应入口，请系统管理员确认插件的「启用直播模块」和「启用直播的画面采集」两个开关。<a href="./#install">插件安装与升级</a></dd></div>
+          <div><dt>Hydro 服务器</dt><dd>安装 Hydro 插件 v1.21.1，使用 ACM 比赛。比赛所有者或有「编辑比赛」权限的账号负责配置。若侧边栏没有相应入口，请系统管理员确认插件的「启用直播模块」和「启用直播的画面采集」两个开关。<a href="./#install">插件安装与升级</a></dd></div>
           <div><dt>媒体机</dt><dd>准备一台能访问比赛站点和容器仓库的电脑，为下载片段和编码输出留出磁盘。Linux 可使用 Docker Engine 和 Compose 插件；Windows、macOS 可使用 Docker Desktop 的 Linux 容器。<a href="https://docs.docker.com/compose/install/">Docker Compose 安装说明</a></dd></div>
           <div><dt>选手机</dt><dd>使用可共享整个屏幕的桌面 Chrome 或 Edge，通过 HTTPS 访问比赛。比赛启用摄像头时，还需要相应设备和浏览器授权。赛前在参赛须知写明录制内容、保存期限、联系人和公开范围。</dd></div>
         </dl>
@@ -140,11 +140,22 @@ echo</code></pre>
         <h2>录制第一条提交</h2>
         <ol>
           <li>管理员进入 <strong>画面采集 → 采集设备</strong>，启用本场采集，并将测试机位绑定到参赛队伍或对应座位。</li>
-          <li>进入 <strong>录制设置 → 提交片段</strong>，勾选「录制提交片段」，首次测试选「所有判完的提交」，点击「保存录制设置」。需要整场审阅时，可另开低码率的「录制全程留档」。</li>
+          <li>进入 <strong>录制设置 → 提交片段</strong>，勾选「录制提交片段」，首次测试选「所有判完的提交」，点击「保存录制设置」。需要整场审阅时，可另行启用<a href="#screen-archive">全程屏幕留档</a>。</li>
           <li>在该队的采集窗口点「开始采集」，选择整个屏幕，按本场要求授权摄像头，保持窗口打开。先让它录满提交前的时间窗，默认 20 秒。</li>
           <li>用同一队伍在<strong>正式比赛时间内</strong>提交一份可评测的程序。默认截取到通过判定后 40 秒，其他结果后 10 秒。等后段录完并上传，再进入 <strong>画面采集 → 录像</strong> 查看该提交。</li>
         </ol>
-        <figure class="guide-shot"><a href="./images/media-worker/recording-settings.png"><img width="1172" height="402" src="./images/media-worker/recording-settings.png" alt="录制设置页中的提交片段、录制范围和画质设置" loading="lazy"></a><figcaption>提交片段由比赛单独开启。录制范围决定哪些判题会请求上传。</figcaption></figure>
+        <figure class="guide-shot"><a href="./images/media-worker/recording-settings.png"><img width="1172" height="402" src="./images/media-worker/recording-settings.png" alt="录制设置页中的提交片段、录制范围和画质设置" loading="lazy"></a><figcaption>截图展示提交片段的画质和时间窗，录制范围决定哪些判题会请求上传。全程留档的画质在同一页下方单独设置。</figcaption></figure>
+        <h3 id="screen-archive">配置全程屏幕留档</h3>
+        <ol>
+          <li>打开 <strong>画面采集 → 采集设备</strong> 核对屏幕采集目标。新配置为 <strong>1080p、30 fps</strong>。在 <strong>录制设置 → 全程留档</strong> 勾选「录制全程留档」，核对「留档 · 屏幕」后保存。</li>
+          <li>新配置的「留档 · 屏幕」默认使用<strong>「高清留档」</strong>，目标为 <strong>720p、24 fps、1200 kbps</strong>。机位先用最多 <strong>2 秒</strong>的短段确认编码，成功后保存该段，随后每 <strong>60 秒</strong> 分段，停止录制时保存尾段。保持机位共享约 65 秒，再到「录像」的队伍留档时间轴点开常规段，核对播放器下方的实际编码、分辨率，并试播或下载。测试无需提交代码。</li>
+          <li>「高清留档」按 <strong>H.265（HEVC）→ AV1 → H.264（AVC）</strong> 的顺序尝试编码。三种都无法录制时，机位会提示。用现场选手机实际试录，再用工作人员的浏览器验证回看。新配置的「上传积压时自动降低画质」默认关闭，可按热身赛结果手动开启。</li>
+        </ol>
+        <figure class="guide-shot">
+          <a href="./images/media-worker/archive-hd-settings.jpg"><img width="765" height="275" src="./images/media-worker/archive-hd-settings.jpg" alt="全程留档已启用，高清留档旁显示 720p、24 fps、1200 kbps，以及编码尝试顺序、2 秒首段和 60 秒常规分段。摄像头和自动降质均关闭。" loading="lazy"></a>
+          <figcaption>演示比赛仅启用了屏幕留档。管理员勾选「录制全程留档」后，点击页面下方的「保存录制设置」。</figcaption>
+        </figure>
+        <p>按目标码率估算，一台机位的屏幕留档约 9 MB/分钟，五小时约 2.7 GB。已有比赛保留保存的画质和开关。要使用新编码顺序，可在本场改选「高清留档」。录像仍写入 Hydro 原有存储，现有媒体机继续合成反应视频。</p>
         <p>录像状态会从「等待上传」「上传中」变为「已就绪」。点「查看」可分别播放屏幕和摄像头。若某一路只有部分覆盖，管理页会标为「部分缺失」，合成时缺段可出现背景占位。</p>
         <details>
           <summary>热身赛怎样试录和测带宽？</summary>

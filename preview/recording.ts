@@ -3,9 +3,9 @@ import { readFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import type { CaptureDevice, CaptureSettings } from '../lib/live/capture';
-import { clipPriority, clipWindow, estimateRecording, gradeTest, inScope, missingIntervals, normalizeRecording, presets, readRange } from '../lib/recording';
+import { clipPriority, clipWindow, estimateRecording, gradeTest, inScope, missingIntervals, normalizeRecording, presets, readRange, uploadedRecordingQuality } from '../lib/recording';
 
-interface Sample { id: string; kind: string; stream: string; teamUid: number; startAt: number; endAt: number; bytes: number; mime: string; file: Buffer; testId?: string }
+interface Sample { id: string; kind: string; stream: string; teamUid: number; startAt: number; endAt: number; bytes: number; mime: string; file: Buffer; testId?: string; quality?: ReturnType<typeof uploadedRecordingQuality> }
 export function recordingPreview(base: string, config: () => CaptureSettings, contest: {title: string; beginAt: Date; endAt: Date},
     teams: () => {uid: number; seat: string}[], devices: Map<string, CaptureDevice>, send: (id: string, data: any) => void) {
     const endpoint = base + '/live/capture/recordings';
@@ -63,7 +63,7 @@ export function recordingPreview(base: string, config: () => CaptureSettings, co
         if (msg.type === 'test-report') {
             const t = reports.get(msg.testId);
             if (!t || !t.targets.includes(d._id) || t.endedAt) return true;
-            t.devices[d._id] = { ...msg, grade: gradeTest(msg.dropRate, msg.pressure, msg.throughputMbps, 1) };
+            t.devices[d._id] = { ...msg, grade: msg.recordingError ? 'fail' : gradeTest(msg.dropRate, msg.pressure, msg.throughputMbps, 1) };
             if (t.targets.every((id: string) => t.devices[id]?.done)) {
                 t.endedAt = Date.now();
                 const rates = t.series.map((s: any) => s.mbps).sort((a: number, b: number) => a - b);
@@ -75,6 +75,10 @@ export function recordingPreview(base: string, config: () => CaptureSettings, co
             return true;
         }
         if (msg.type === 'record-status') {
+            if ([msg.backlogBytes, msg.backlogSeconds, msg.failures].every((n) => Number.isFinite(n) && n >= 0)) {
+                d.recordingStatus = { backlogBytes: msg.backlogBytes, backlogSeconds: msg.backlogSeconds, failures: msg.failures,
+                    recordingError: typeof msg.recordingError === 'string' ? msg.recordingError.slice(0, 180) : '', at: Date.now() };
+            }
             if (msg.gap) gaps.push({ ...msg.gap, teamUid: uidOf(d) });
             if (msg.rid && msg.done) {
                 const c = clips.get(msg.rid);
@@ -120,7 +124,7 @@ export function recordingPreview(base: string, config: () => CaptureSettings, co
                 const id = createHash('sha256').update([kind, stream, testId, form.get('sourceKind'), teamUid, startAt].join('/')).digest('hex');
                 if (!segments.has(id)) {
                     if (segments.size >= 100 || [...segments.values()].reduce((n, r) => n + r.bytes, file.length) > 256 * 1024 * 1024) return json({ error: '预览缓存已满' }, 507);
-                    segments.set(id, { id, kind, stream, teamUid, startAt, endAt, bytes: file.length, file, mime: blob.type, testId });
+                    segments.set(id, { id, kind, stream, teamUid, startAt, endAt, bytes: file.length, file, mime: blob.type, testId, quality: uploadedRecordingQuality(form.get('quality')) });
                     if (testId) reports.get(testId)?.series.push({ at: Date.now(), bytes: file.length, mbps: file.length * 8 / 1e6, writeMBps: 0 });
                 }
                 if (rid && !clips.get(rid).streams[stream].segments.includes(id)) clips.get(rid).streams[stream].segments.push(id);
