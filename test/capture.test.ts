@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
     MAX_VIEWER_SESSIONS, type CaptureEnvelope, captureMedias, captureProfile, CaptureRelay, captureSecretMatches, defaultCaptureSettings, isCaptureOnline,
     newCaptureSecret, normalizeCaptureSettings, normalizeDeviceInput, parseIceServers, participantDeviceId, streamAllowed,
@@ -36,6 +36,36 @@ it('在 HTTP 采集页提示改用 HTTPS，并阻止开始采集', async () => {
     expect(sockets).toHaveLength(0);
 });
 
+it('摄像头权限仍在等待时先采集屏幕，关闭摄像头后释放迟到的摄像头轨道', async () => {
+    const script = readFileSync(new URL('../resolver/public/js/hydro-live-capture-device.js', import.meta.url), 'utf8');
+    const elements = new Map<string, any>();
+    const getElementById = (id: string) => {
+        if (!elements.has(id)) elements.set(id, { dataset: {}, textContent: id === 'capture-runtime' ? JSON.stringify({ ws: '/device/ws' }) : '' });
+        return elements.get(id);
+    };
+    const makeStream = () => {
+        const track = Object.assign(new EventTarget(), { getSettings: () => ({}), stop: vi.fn() });
+        return { track, getVideoTracks: () => [track], getTracks: () => [track] };
+    };
+    const screen = makeStream(), camera = makeStream();
+    let release: (value: typeof camera) => void = () => {};
+    const mediaDevices = { getDisplayMedia: async () => screen,
+        getUserMedia: vi.fn(() => new Promise<typeof camera>((resolve) => { release = resolve; })) };
+    // This isolated DOM exercises permission callbacks without opening a live device socket.
+    const page = runInNewContext(script + '\n({ state, capture })', { document: { title: '', body: { dataset: {} }, getElementById },
+        window: { isSecureContext: false }, navigator: { mediaDevices }, location: { protocol: 'http:' }, WebSocket: { OPEN: 1 } });
+    page.state.profile = captureProfile(defaultCaptureSettings());
+    const pending = page.capture();
+    await vi.waitFor(() => expect(page.state.screen).toBe(screen));
+    expect(mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+    page.state.profile.webcam = null;
+    release(camera);
+    await pending;
+    expect(page.state.webcam).toBeNull();
+    expect(camera.track.stop).toHaveBeenCalledOnce();
+    expect(screen.track.stop).toHaveBeenCalledTimes(0);
+});
+
 describe('画面采集设置与设备', () => {
     it('校验画质、STUN/TURN 与设备信息', () => {
         expect(normalizeCaptureSettings({ screenHeight: '1080', screenFps: 30, webcamAudio: true })).toMatchObject({ screenHeight: 1080, screenFps: 30, webcamAudio: true, enabled: false, screenDuringContest: true, webcam: true });
@@ -46,8 +76,9 @@ describe('画面采集设置与设备', () => {
         ]);
         expect(() => parseIceServers('http://example.com')).toThrow('stun:');
         expect(() => parseIceServers('turn:10.0.0.1:3478')).toThrow('用户名和密码');
-        expect(captureProfile(defaultCaptureSettings())).toMatchObject({ screen: { width: 1920, height: 1080, frameRate: 30 }, webcam: { height: 480, audio: false } });
-        expect(captureProfile({ ...defaultCaptureSettings(), webcam: false }).webcam).toBeNull();
+        expect(captureProfile(defaultCaptureSettings())).toMatchObject({ screen: { width: 1920, height: 1080, frameRate: 30 }, webcam: { width: 1920, height: 1080, frameRate: 30, audio: false } });
+        expect(captureProfile(normalizeCaptureSettings({ webcamHeight: 480, webcamFps: 15, webcamAudio: true })).webcam).toMatchObject({ height: 480, frameRate: 15, audio: true });
+        expect(captureProfile({ ...defaultCaptureSettings(), webcam: false })).toMatchObject({ webcam: null, recording: { clips: { webcam: null }, archive: { webcam: null } } });
         expect(normalizeDeviceInput({ seat: ' A-01 ' })).toEqual({ seat: 'A-01', name: 'A-01', teamUid: null });
         expect(normalizeDeviceInput({ name: '讲台机', teamUid: '-12' })).toEqual({ seat: '', name: '讲台机', teamUid: -12 });
         expect(() => normalizeDeviceInput({})).toThrow('请填写');

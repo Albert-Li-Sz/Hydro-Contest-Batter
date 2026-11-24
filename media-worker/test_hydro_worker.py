@@ -1,4 +1,7 @@
+import base64
 import json
+import os
+from contextlib import chdir
 import tempfile
 import threading
 import unittest
@@ -7,14 +10,86 @@ from pathlib import Path
 from unittest.mock import patch
 
 if (Path(__file__).resolve().parent / "hydro_worker.py").exists():
+    import hydro_connection as connection
     import hydro_render as media
     import hydro_worker as worker
 else:
+    from reactions_generator import hydro_connection as connection
     from reactions_generator import hydro_render as media
     from reactions_generator import hydro_worker as worker
 
 
+MACHINE = "a" * 24
+CONTEST = "b" * 24
+API_PATH = f"/d/system/contest/{CONTEST}/reactions-api/workers/{MACHINE}"
+TEST_KEY = "fixture-media-key-123456"
+
+
+def connection_code(base, **changes):
+    data = {"v": 1, "url": base, "id": MACHINE, "token": TEST_KEY, **changes}
+    return (
+        "hydro-reactions:"
+        + base64.urlsafe_b64encode(json.dumps(data).encode()).rstrip(b"=").decode()
+    )
+
+
 class WorkerTests(unittest.TestCase):
+    def test_new_connection_file_and_legacy_environment(self):
+        base = "https://hydro.example" + API_PATH
+        code = connection_code(base)
+        with (
+            tempfile.TemporaryDirectory() as folder,
+            chdir(folder),
+            patch.dict(os.environ, {}, clear=True),
+        ):
+            Path(".env").write_text(
+                "# media desk\nHYDRO_MEDIA_CONNECTION='" + code + "' # current key\n"
+            )
+            conn = connection.load_connection()
+            self.assertEqual((conn.base, conn.token), (base, TEST_KEY))
+            self.assertNotIn(TEST_KEY, repr(conn))
+            self.assertNotIn(code, repr(conn))
+            Path(".env").unlink()
+            with self.assertRaisesRegex(ValueError, "Set HYDRO_MEDIA_CONNECTION"):
+                connection.load_connection()
+            legacy = "https://old.example/reactions-api/legacyKey"
+            with patch.dict(os.environ, {"HYDRO_REACTIONS_API": legacy}):
+                self.assertEqual(connection.load_connection().base, legacy)
+                self.assertFalse(connection.load_connection().token)
+
+    def test_rejects_invalid_connection_without_echo(self):
+        base = "https://hydro.example" + API_PATH
+        for code in [
+            connection_code(base, v=2),
+            connection_code(base, id="0" * 24),
+            connection_code(base + "?debug=1"),
+            connection_code("file:///tmp/" + MACHINE),
+            connection_code(
+                "https://example.org/d/bad/contest/x/reactions-api/workers/" + MACHINE
+            ),
+            connection_code(base.replace("://", "://someone@")),
+            "hydro-reactions:@invalid",
+        ]:
+            with (
+                self.subTest(codeLength=len(code)),
+                self.assertRaises(ValueError) as raised,
+            ):
+                connection.parse_connection(code)
+            self.assertNotIn(code, str(raised.exception))
+            self.assertNotIn(TEST_KEY, str(raised.exception))
+
+    def test_log_redaction(self):
+        base = "https://example.org" + API_PATH
+        code = connection_code(base)
+        message = connection.safe_error(
+            RuntimeError(
+                f"{code} {TEST_KEY} https://store/object?X-Amz-Signature=storage-secret"
+            ),
+            connection.parse_connection(code),
+        )
+        for secret in (code, TEST_KEY, "storage-secret"):
+            self.assertNotIn(secret, message)
+
     def test_timeline(self):
         a = {"startMs": 900, "endMs": 1400}
         b = {"startMs": 1350, "endMs": 1500}
@@ -107,6 +182,8 @@ class WorkerTests(unittest.TestCase):
 
             writes = []
             beats = []
+            observed = []
+            media_path = API_PATH + "/files/segments/testsegment"
 
             class Server(BaseHTTPRequestHandler):
                 def log_message(self, *args):
@@ -119,7 +196,13 @@ class WorkerTests(unittest.TestCase):
                     self.wfile.write(data)
 
                 def do_GET(self):
-                    if self.path == "/segment":
+                    observed.append((self.path, self.headers.get("Authorization")))
+                    if self.path == media_path:
+                        self.send_response(302)
+                        self.send_header("Location", "/storage/temporary")
+                        self.end_headers()
+                        return
+                    if self.path == "/storage/temporary":
                         self.send_blob(200, segment.read_bytes())
                         return
                     data = (
@@ -130,18 +213,20 @@ class WorkerTests(unittest.TestCase):
                             "team": {"displayName": "示例队伍", "organization": {}},
                             "problem": {"letter": "A"},
                             "result": {"verdict": {"shortName": "AC"}},
-                            "reactionVideos": [video("/segment")],
+                            "reactionVideos": [video(media_path)],
                         }
                     )
                     self.send_blob(200, json.dumps(data).encode())
 
                 def do_POST(self):
+                    observed.append((self.path, self.headers.get("Authorization")))
                     beats.append(
                         json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                     )
                     self.send_blob(200, b"{}")
 
                 def do_PUT(self):
+                    observed.append((self.path, self.headers.get("Authorization")))
                     writes.append(self.rfile.read(int(self.headers["Content-Length"])))
                     self.send_blob(503 if len(writes) == 1 else 200, b"{}")
 
@@ -151,7 +236,9 @@ class WorkerTests(unittest.TestCase):
             try:
                 with patch.object(worker.time, "sleep", return_value=None):
                     worker.process_partition(
-                        f"http://127.0.0.1:{server.server_port}/api",
+                        connection_code(
+                            f"http://127.0.0.1:{server.server_port}" + API_PATH
+                        ),
                         folder,
                         0,
                         1,
@@ -162,6 +249,11 @@ class WorkerTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
                 thread.join()
+            self.assertIn(("/storage/temporary", None), observed)
+            for path, auth in observed:
+                self.assertNotIn(TEST_KEY, path)
+                if path.startswith(API_PATH + "/"):
+                    self.assertEqual(auth, "Bearer " + TEST_KEY, path)
             final = next(folder.glob("*/*.mp4"))
             for body in writes:
                 self.assertIn(final.read_bytes(), body)

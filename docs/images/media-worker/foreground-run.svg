@@ -1,21 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" role="img" aria-labelledby="title desc">
-  <title id="title">前台运行的输入、输出与停止方法</title>
-  <desc id="desc">读入接口地址后以前台容器运行。挂载的 out 目录保留在主机，按 Ctrl+C 结束运行。</desc>
+  <title id="title">更换单台媒体机的密钥</title>
+  <desc id="desc">更换密钥后更新本机 .env，用 Compose 重建容器并核对心跳。</desc>
   <defs><marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="m1 1 6 3-6 3" fill="none" stroke="#56505b" stroke-width="1.4" stroke-linejoin="round"/></marker></defs>
   <rect width="640" height="360" fill="#fffcf9"/>
   <rect x="22" y="23" width="595" height="76" rx="12" fill="#f9edf1" stroke="#d9cfd5"/>
   <g transform="translate(43 42) scale(1.4)" stroke="#8b2444" fill="none" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="22" height="18" rx="2"/><path d="m5.5 8 4 4-4 4M12 16h5"/></g>
-  <text x="96" y="57" fill="#8b2444" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="24" font-weight="650" text-anchor="start">Bash 前台</text>
-  <text x="96" y="83" fill="#25202a" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="20" font-weight="450" text-anchor="start">粘贴本场接口地址时，终端隐藏输入</text>
+  <text x="96" y="57" fill="#8b2444" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="24" font-weight="650" text-anchor="start">更换密钥</text>
+  <text x="96" y="83" fill="#25202a" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="20" font-weight="450" text-anchor="start">复制新连接码，更新该机 .env</text>
   <path d="M319 100v35" fill="none" stroke="#56505b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
   <rect x="22" y="143" width="595" height="78" rx="12" fill="white" stroke="#d9cfd5"/>
   <g transform="translate(43 162) scale(1.4)" stroke="#135f61" fill="none" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 10 5v11l-10 5-10-5V7l10-5ZM2 7l10 5 10-5M12 12v11M7 4.5l10 5"/></g>
   <text x="96" y="177" fill="#25202a" font-family="'SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="24" font-weight="650" text-anchor="start">reactions-01</text>
-  <text x="96" y="205" fill="#25202a" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="19" font-weight="450" text-anchor="start">all 领取任务，--hydro-upload 回传成品</text>
+  <text x="96" y="205" fill="#25202a" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="19" font-weight="450" text-anchor="start">docker compose up -d --force-recreate</text>
   <path d="M195 224v42" fill="none" stroke="#56505b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
   <path d="M450 224v42" fill="none" stroke="#56505b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
   <rect x="22" y="274" width="293" height="64" rx="12" fill="#e9f5f3" stroke="#d9cfd5"/>
-  <text x="168" y="314" fill="#135f61" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="22" font-weight="650" text-anchor="middle">./out 保留输出</text>
+  <text x="168" y="314" fill="#135f61" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="22" font-weight="650" text-anchor="middle">核对本机在线</text>
   <rect x="328" y="274" width="289" height="64" rx="12" fill="#f9edf1" stroke="#d9cfd5"/>
-  <text x="472" y="314" fill="#8b2444" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="22" font-weight="650" text-anchor="middle">Ctrl+C 停止服务</text>
+  <text x="472" y="314" fill="#8b2444" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="22" font-weight="650" text-anchor="middle">其他机器继续运行</text>
 </svg>

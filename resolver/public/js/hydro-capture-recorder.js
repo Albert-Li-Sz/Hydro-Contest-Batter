@@ -3,6 +3,8 @@ import { ArchiveEncoderUnavailable, recordingSource, recordSegment } from './hyd
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const keyOf = (kind, stream) => kind + (stream === 'screen' ? 'Screen' : 'Webcam');
+const sourceName = (stream) => stream === 'screen' ? '屏幕' : '摄像头';
+const archiveFailure = (stream, error) => '高清' + sourceName(stream) + '留档已停止：' + error.message;
 const reducedQuality = (quality) => ({ ...quality, preset: 'custom', height: Math.min(quality.height, 480),
     fps: Math.max(0.5, quality.fps / 2), kbps: Math.max(30, Math.round(quality.kbps / 2)) });
 
@@ -124,9 +126,9 @@ export class CaptureRecorder {
                     const add = (low) => {
                         const q = low ? { ...reducedQuality(quality), requestedHeight: quality.height } : quality;
                         const key = kind + ':' + stream + (kind === 'clip' && low ? ':low' : '');
-                        const archiveScreen = kind === 'archive' && stream === 'screen';
-                        const archiveHd = archiveScreen && quality.preset === 'archiveHd';
-                        desired.set(key, { source, quality: q, kind, stream, archiveScreen, archiveHd, reduced: kind === 'clip' && low,
+                        const archiveHd = kind === 'archive' && quality.preset === 'archiveHd';
+                        const fixedOutput = archiveHd || (kind === 'archive' && stream === 'screen');
+                        desired.set(key, { source, quality: q, kind, stream, fixedOutput, archiveHd, reduced: kind === 'clip' && low,
                             signature: JSON.stringify([archiveHd, q, this.begin, this.end]), configured: JSON.stringify(quality) });
                     };
                     add(kind === 'archive' && congested);
@@ -150,7 +152,7 @@ export class CaptureRecorder {
             this.recordLoop(entry, this.db).catch((e) => {
                 if (entry.abort.signal.aborted) return;
                 if (e instanceof ArchiveEncoderUnavailable) {
-                    this.blocked.set(key, { source: entry.source, configured: entry.configured, message: e.message });
+                    this.blocked.set(key, { source: entry.source, configured: entry.configured, message: archiveFailure(entry.stream, e) });
                 } else this.warn(e);
             }).finally(() => {
                 if (this.loops.get(key) === entry) this.loops.delete(key);
@@ -165,7 +167,7 @@ export class CaptureRecorder {
         // A contest may be shortened or extended while the browser is live. sync() rotates
         // the encoder on a schedule change; the finishing segment also sees the new boundary.
         const cutoff = () => this.end + (kind === 'clip' ? 120000 : 0);
-        const source = await recordingSource(entry.source, quality, stream === 'webcam', entry.archiveScreen, entry.archiveHd, () => this.now() < cutoff());
+        const source = await recordingSource(entry.source, quality, stream === 'webcam', entry.fixedOutput, entry.archiveHd, () => this.now() < cutoff());
         if (kind === 'archive') source.onLost = (from, to) => {
             if (db !== this.db) return;
             const row = { id: crypto.randomUUID(), stream, startMs: from, endMs: to };
@@ -306,7 +308,7 @@ export class CaptureRecorder {
                 currentTest.bytes += row.bytes;
                 currentTest.uploadMs += performance.now() - began;
                 currentTest.uploads++;
-                if (row.sourceKind === 'archive' && row.stream === 'screen') currentTest.archiveScreenCodec = row.quality?.codec;
+                if (row.sourceKind === 'archive') currentTest[keyOf('archive', row.stream) + 'Codec'] = row.quality?.codec;
                 const meter = currentTest.rates[keyOf(row.sourceKind, row.stream)] ||= { bytes: 0, ms: 0 };
                 meter.bytes += row.bytes;
                 meter.ms += row.endMs - row.startMs;
@@ -338,7 +340,7 @@ export class CaptureRecorder {
     async runTest(message) {
         if (this.test) return;
         const { testId: id, recording, kind } = message;
-        const test = { id, abort: new AbortController(), bytes: 0, uploads: 0, failures: 0, uploadMs: 0, dropRates: [], rates: {}, pressure: null };
+        const test = { id, abort: new AbortController(), bytes: 0, uploads: 0, failures: 0, uploadMs: 0, dropRates: [], rates: {}, errors: new Set(), pressure: null };
         const db = this.db;
         this.idleUntil = 0;
         this.test = test;
@@ -355,7 +357,8 @@ export class CaptureRecorder {
         }
         const report = (done) => {
             const bitrates = Object.fromEntries(Object.entries(test.rates).map(([key, r]) => [key, r.bytes * 8 / Math.max(1, r.ms)]));
-            this.send({ type: 'test-report', testId: id, archiveScreenCodec: test.archiveScreenCodec, recordingError: test.recordingError, bytes: test.bytes, uploads: test.uploads, failures: test.failures, backlogBytes: this.backlogBytes || 0,
+            this.send({ type: 'test-report', testId: id, archiveScreenCodec: test.archiveScreenCodec, archiveWebcamCodec: test.archiveWebcamCodec,
+                recordingError: [...test.errors].join(' · '), bytes: test.bytes, uploads: test.uploads, failures: test.failures, backlogBytes: this.backlogBytes || 0,
                 pressure: test.pressure, dropRate: test.dropRates.length ? Math.max(...test.dropRates) : null,
                 throughputMbps: test.uploadMs ? test.bytes * 8 / test.uploadMs / 1000 : 0, bitrates, done });
         };
@@ -372,12 +375,15 @@ export class CaptureRecorder {
                 if (!quality) continue;
                 if (!raw) {
                     test.failures++;
-                    this.warn((stream === 'screen' ? '屏幕' : '摄像头') + '未采集，无法测试该路画质');
+                    const reason = sourceName(stream) + '未采集，无法测试该路画质';
+                    test.errors.add(reason);
+                    this.warn(reason);
                     continue;
                 }
                 jobs.push((async () => {
-                    const archiveScreen = sourceKind === 'archive' && stream === 'screen';
-                    const source = await recordingSource(raw, quality, stream === 'webcam', archiveScreen, archiveScreen && quality.preset === 'archiveHd');
+                    const archiveHd = sourceKind === 'archive' && quality.preset === 'archiveHd';
+                    const fixedOutput = archiveHd || (sourceKind === 'archive' && stream === 'screen');
+                    const source = await recordingSource(raw, quality, stream === 'webcam', fixedOutput, archiveHd);
                     try {
                         let nextClip = Date.now();
                         let clipLeft = 0;
@@ -402,8 +408,9 @@ export class CaptureRecorder {
                     } finally { source.close(); }
                 })().catch((error) => {
                     test.failures++;
-                    if (error instanceof ArchiveEncoderUnavailable) test.recordingError = error.message;
-                    this.warn(error);
+                    const reason = error instanceof ArchiveEncoderUnavailable ? archiveFailure(stream, error) : sourceName(stream) + '：' + error.message;
+                    test.errors.add(reason);
+                    this.warn(reason);
                 }));
             }
         }

@@ -27,8 +27,8 @@ Hydro Contest Better 是 Hydro OJ 的 ACM 办赛插件。从热身赛签到、�
 
 | 组件 | 安装位置 | 环境与版本 |
 | --- | --- | --- |
-| Hydro 插件 | 运行 Hydro 主服务的环境 | v1.21.1。Node.js 22+、Hydro 5.x。已有 Hydro 5.0.7 和 5.1.0 的验证记录 |
-| 反应视频媒体机 | 能访问比赛网址、有临时磁盘空间的电脑或服务器 | 插件 v1.21.1 继续使用 `1.21.0` Docker 镜像。默认使用 CPU，可按需配置硬件编码 |
+| Hydro 插件 | 运行 Hydro 主服务的环境 | v1.21.2。Node.js 22+、Hydro 5.x。已有 Hydro 5.0.7 和 5.1.0 的验证记录 |
+| 反应视频媒体机 | 能访问比赛网址、有临时磁盘空间的电脑或服务器 | 通过 Docker Compose 部署 v1.21.2 公共镜像，每台机器在本地 `.env` 保存自己的连接码 |
 | 打印客户端 | 与现场打印机相连的电脑 | 发布页提供 Windows、Linux、macOS 的 amd64 与 arm64 程序 |
 
 需要制作反应视频时再启动媒体机，需要比赛打印时再连接打印客户端。新比赛的提交片段、全程留档和反应视频公开均默认关闭。升级会保留已有比赛的录制开关与画质设置。
@@ -53,9 +53,9 @@ Hydro 使用 MongoDB 保存配置、比赛状态和任务，使用本地目录�
 在运行 Hydro 的系统用户下操作。有多套 Hydro profile 时，先将 `HYDRO_PROFILE` 设为比赛实例使用的值。下面的 Linux 命令下载完整安装包、校验 SHA-256 并解压。
 
 ```bash
-release=https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/download/v1.21.1
-package=hydro-scoreboard-xcpcio-plus-1.21.1.tgz
-mkdir -p hydro-contest-1.21.1 && cd hydro-contest-1.21.1
+release=https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/download/v1.21.2
+package=hydro-scoreboard-xcpcio-plus-1.21.2.tgz
+mkdir -p hydro-contest-1.21.2 && cd hydro-contest-1.21.2
 curl -fLO "$release/$package"
 curl -fLO "$release/$package.sha256"
 sha256sum -c "$package.sha256" && tar -xzf "$package"
@@ -71,27 +71,30 @@ bash package/install.sh install
 
 ### 运行反应视频媒体机
 
-在 Hydro 比赛页面打开 **反应视频 → 媒体机**。首次使用点击 **生成令牌**，已有令牌时直接点击 **复制接口地址**。该地址是本场比赛的访问凭证。
+在比赛的 **反应视频 → 媒体机** 输入机器名称，点击 **创建连接 → 复制 .env 配置**，即可复制完整的一行。每台机器各用一个以 `hydro-reactions:` 开头的连接码，创建或更换密钥时显示一次。
 
-在媒体机的终端运行下面一行，然后粘贴刚复制的完整地址并按回车。示例适用于 Linux 或 macOS 的 Bash。
+在媒体机下载 Compose 配置。下面的命令适用于 Linux 和 macOS。
 
-```bash
-read -r -s -p '粘贴本场媒体机接口地址并按回车：' HYDRO_REACTIONS_API
+```sh
+mkdir -p hydro-reactions/out
+cd hydro-reactions
+curl -fL -o compose.yaml https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.compose.yaml
 ```
 
-在同一个终端拉取镜像并启动后台服务。Docker 会挂载当前目录下的 `out` 保存编码输出。
+在 `compose.yaml` 同目录创建 `.env`，粘贴刚复制的配置行。若选择的是「复制连接码」，将示例等号右边整段替换。
 
-```bash
-image=ghcr.io/albert-li-sz/reactions-generator-hydro:1.21.0
-mkdir -p out
-docker pull "$image"
-docker run -d --name hydro-reactions --restart unless-stopped \
-  -v "$PWD/out:/app/out" \
-  "$image" all "$HYDRO_REACTIONS_API" --hydro-upload
-unset HYDRO_REACTIONS_API
+```dotenv
+HYDRO_MEDIA_CONNECTION=hydro-reactions:此处粘贴完整连接码
 ```
 
-回到 **反应视频 → 媒体机 → 媒体机心跳** 点击 **刷新**。页面显示机器名和「在线」即表示连接成功，心跳每 15 秒更新一次。排查连接时可运行 `docker logs --tail 100 hydro-reactions`。[媒体机安装与出片教程](https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.html)
+```sh
+chmod 600 .env
+docker compose config --quiet
+docker compose pull
+docker compose up -d
+```
+
+在 **反应视频 → 媒体机 → 媒体机心跳** 核对机器上线。更换密钥后，更新这一台的 `.env` 并执行 `docker compose up -d --force-recreate`。其他机器可以继续处理任务。[媒体机安装与出片教程](https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.html)
 
 ## 使用示例
 
@@ -103,11 +106,11 @@ unset HYDRO_REACTIONS_API
 
 ### 从判题生成反应视频
 
-1. 在 **画面采集** 启用设备，绑定测试队伍，在 **录制设置** 开启「提交片段」。选手在采集窗口选择屏幕或摄像头并开始采集。赛前可以先发起 30 秒自检，检查试录、掉帧和上传情况。
+1. 在 **画面采集** 启用设备，绑定测试队伍，在 **录制设置** 开启「提交片段」。选手在采集窗口共享屏幕，并按本场设置授权摄像头。赛前可以先发起 30 秒自检，检查试录、掉帧和上传情况。
 2. 让测试队伍在比赛中提交一道题。判题结束后，在 **画面采集 → 录像** 查看对应提交的片段状态。片段就绪且匹配启用的版式后，在线媒体机会领取任务并回传 MP4。
 3. 在 **反应视频** 预览成品，检查画面、声音及学校信息，再配置公开范围和时机。导播可回放原始片段与成品，大屏可选择「反应视频轮播」。封榜、版式和撤下操作会影响观众可以播放的内容。[录制、留档与公开规则](docs/usage.md#录制与反应视频)
 
-需要整场回看时，可在 **录制设置 → 全程留档** 勾选「录制全程留档」。新配置以 1080p、30 fps 采集屏幕，「高清留档」按 720p、24 fps、1.2 Mbps 的目标画质保存。机位依次尝试 H.265（HEVC）、AV1 和 H.264，选定编码后先保存最多 2 秒的首段，随后每 60 秒分段。已有媒体机和 Hydro 存储可继续使用。[屏幕留档设置与验证](https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.html#screen-archive)
+在 **画面采集 → 录制设置** 勾选「录制全程留档」后，新比赛会同时录制屏幕和摄像头。两路分别以 1080p、30 fps 为采集目标，以 720p、24 fps、1.2 Mbps 为留档目标，各自依次尝试 H.265、AV1、H.264。工作人员可在队伍的两条时间轴分别回放。麦克风默认关闭，已保存的比赛可分别更改两路画质。[双路留档图文教程](https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.html#screen-archive)
 
 [![版式编辑器中的摄像头、屏幕与队伍卡片示例](docs/images/media-worker/layout-editor.png)](https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.html)
 

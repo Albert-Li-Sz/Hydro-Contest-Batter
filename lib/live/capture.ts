@@ -41,14 +41,16 @@ export interface CaptureSettings {
     webcamAudio: boolean;
     screenHeight: 720 | 1080;
     screenFps: 5 | 10 | 15 | 30;
-    webcamHeight: 360 | 480 | 720;
+    webcamHeight: 360 | 480 | 720 | 1080;
+    webcamFps: 5 | 10 | 15 | 30;
     /** STUN/TURN servers; none is enough when the OBS computer and the contestants share a network. */
     iceServers: IceServer[];
     recording: RecordingSettings;
 }
 
 export const defaultCaptureSettings = (): CaptureSettings => ({
-    enabled: false, screenDuringContest: true, webcam: true, prompt: true, webcamAudio: false, screenHeight: 1080, screenFps: 30, webcamHeight: 480, iceServers: [], recording: defaultRecordingSettings(),
+    enabled: false, screenDuringContest: true, webcam: true, prompt: true, webcamAudio: false,
+    screenHeight: 1080, screenFps: 30, webcamHeight: 1080, webcamFps: 30, iceServers: [], recording: defaultRecordingSettings(),
 });
 
 function pick<T>(value: unknown, allowed: readonly T[], label: string, fallback: T): T {
@@ -95,7 +97,8 @@ export function normalizeCaptureSettings(input: unknown, base = defaultCaptureSe
     for (const key of ['enabled', 'screenDuringContest', 'webcam', 'prompt', 'webcamAudio'] as const) if (typeof raw[key] === 'boolean') settings[key] = raw[key] as boolean;
     settings.screenHeight = pick(raw.screenHeight, [720, 1080] as const, '屏幕分辨率', settings.screenHeight);
     settings.screenFps = pick(raw.screenFps, [5, 10, 15, 30] as const, '屏幕帧率', settings.screenFps);
-    settings.webcamHeight = pick(raw.webcamHeight, [360, 480, 720] as const, '摄像头分辨率', settings.webcamHeight);
+    settings.webcamHeight = pick(raw.webcamHeight, [360, 480, 720, 1080] as const, '摄像头分辨率', settings.webcamHeight);
+    settings.webcamFps = pick(raw.webcamFps, [5, 10, 15, 30] as const, '摄像头帧率', settings.webcamFps);
     if (raw.iceServers !== undefined) settings.iceServers = parseIceServers(raw.iceServers);
     try { settings.recording = normalizeRecording(raw.recording, base.recording || defaultRecordingSettings(), settings); }
     catch (error) { throw new CaptureError((error as Error).message); }
@@ -108,17 +111,25 @@ export function readCaptureSettings(saved: unknown): CaptureSettings {
     if (saved == null) return base;
     base.screenHeight = 720;
     base.screenFps = 15;
+    base.webcamHeight = 480;
+    base.webcamFps = 15;
     base.recording.archive.screen = qualityPreset('archiveScreen', 'standard');
+    base.recording.archive.webcam = null;
     base.recording.autoDowngrade = true;
     return normalizeCaptureSettings(saved, base);
+}
+
+export function deviceRecording(settings: CaptureSettings) {
+    const rec = settings.recording;
+    return settings.webcam ? rec : { ...rec, clips: { ...rec.clips, webcam: null }, archive: { ...rec.archive, webcam: null } };
 }
 
 /** What a capture page is told to capture (`webcam: null` for screens only). */
 export function captureProfile(settings: CaptureSettings) {
     return {
         screen: { height: settings.screenHeight, width: Math.round((settings.screenHeight * 16) / 9), frameRate: settings.screenFps },
-        webcam: settings.webcam ? { height: settings.webcamHeight, width: Math.round((settings.webcamHeight * 16) / 9), frameRate: 15, audio: settings.webcamAudio } : null,
-        iceServers: settings.iceServers, recording: settings.recording,
+        webcam: settings.webcam ? { height: settings.webcamHeight, width: Math.round((settings.webcamHeight * 16) / 9), frameRate: settings.webcamFps, audio: settings.webcamAudio } : null,
+        iceServers: settings.iceServers, recording: deviceRecording(settings),
     };
 }
 

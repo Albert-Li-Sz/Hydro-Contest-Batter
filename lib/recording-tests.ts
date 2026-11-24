@@ -84,9 +84,12 @@ export function recordingTests(ctx: Context, store: RecordingStore, send: (devic
         const pressure = ['nominal', 'fair', 'serious', 'critical'].includes(String(raw.pressure)) ? String(raw.pressure) : 'unknown';
         const recordingError = typeof raw.recordingError === 'string' ? raw.recordingError.slice(0, 180) : '';
         const archiveScreenCodec = reportedVideoCodec(raw.archiveScreenCodec);
+        const archiveWebcamCodec = reportedVideoCodec(raw.archiveWebcamCodec);
         const grade = recordingError ? 'fail' : gradeTest(dropRate, pressure, throughputMbps, testedPeak(test.settings, bitrates));
         const value = { bytes: finite(raw.bytes, 1e13, 0), backlogBytes: finite(raw.backlogBytes, 1e12, 0), failures: finite(raw.failures, 1e9, 0), uploads: finite(raw.uploads, 1e9, 0),
-            dropRate, throughputMbps, pressure, bitrates, grade, recordingError, ...(archiveScreenCodec ? { archiveScreenCodec } : {}), done: raw.done === true, at: Date.now(), recommendation: grade === 'fail' ? 'low' : grade === 'unknown' ? null : 'current' };
+            dropRate, throughputMbps, pressure, bitrates, grade, recordingError,
+            ...(archiveScreenCodec ? { archiveScreenCodec } : {}), ...(archiveWebcamCodec ? { archiveWebcamCodec } : {}),
+            done: raw.done === true, at: Date.now(), recommendation: grade === 'fail' ? 'low' : grade === 'unknown' ? null : 'current' };
         await tests.updateOne({ _id: test._id, endedAt: null, [`devices.${device}.done`]: { $ne: true } }, {
             $set: { [`devices.${device}`]: value }, $max: { maxBacklog: value.backlogBytes },
         });
@@ -118,9 +121,9 @@ export function recordingTests(ctx: Context, store: RecordingStore, send: (devic
         const baseline = testedPeak(test.settings, {});
         const active = testQualities(test.settings);
         const recommended = budget && peakMbps > 0 ? candidates.find((preset) => {
-            if (preset === 'archiveHd' && !active[2]) return false;
+            if (preset === 'archiveHd' && !active[2] && !active[3]) return false;
             const sum = sources.reduce((n, source, i) => {
-                const channelPreset = preset === 'archiveHd' && source !== 'archiveScreen' ? 'high' : preset;
+                const channelPreset = preset === 'archiveHd' && source.startsWith('clip') ? 'high' : preset;
                 return n + (active[i] ? qualityPreset(source, channelPreset).kbps : 0);
             }, 0) / 1000;
             return sum / baseline * peakMbps < budget;

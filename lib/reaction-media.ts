@@ -3,12 +3,13 @@ import type { Handler } from 'hydrooj';
 import { ReactionError } from './reactions';
 import { readRange } from './recording';
 
-/** Forward an authorized public request without exposing a reusable S3 capability to the audience. */
+/** Stream authorized media through Hydro so changing access also takes effect on subsequent Range requests. */
 export async function proxyReactionMedia(
     handler: Pick<Handler, 'request' | 'response'>,
     bytes: number,
     signed: () => Promise<string>,
     name?: string,
+    mime = 'video/mp4',
 ) {
     handler.response.addHeader('Cache-Control', 'private, no-store');
     handler.response.addHeader('Accept-Ranges', 'bytes');
@@ -34,7 +35,7 @@ export async function proxyReactionMedia(
     handler.response.status = response.status;
     if (expectedRange) handler.response.addHeader('Content-Range', expectedRange);
     handler.response.addHeader('Content-Length', String(range ? range.end - range.start + 1 : bytes));
-    handler.response.type = 'video/mp4';
+    handler.response.type = mime;
     if (name) handler.response.disposition = `attachment; filename*=UTF-8''${encodeURIComponent(name)}`;
     handler.response.body = Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]);
 }

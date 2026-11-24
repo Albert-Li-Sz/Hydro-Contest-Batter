@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
-import type { CaptureDevice, CaptureSettings } from '../lib/live/capture';
+import { deviceRecording, type CaptureDevice, type CaptureSettings } from '../lib/live/capture';
 import { clipPriority, clipWindow, estimateRecording, gradeTest, inScope, missingIntervals, normalizeRecording, presets, readRange, uploadedRecordingQuality } from '../lib/recording';
 
 interface Sample { id: string; kind: string; stream: string; teamUid: number; startAt: number; endAt: number; bytes: number; mime: string; file: Buffer; testId?: string; quality?: ReturnType<typeof uploadedRecordingQuality> }
@@ -19,12 +19,12 @@ export function recordingPreview(base: string, config: () => CaptureSettings, co
     const uid = teams()[0]?.uid;
     if (uid !== undefined) {
         const start = +contest.beginAt + 300000;
-        for (const kind of ['archive', 'clip']) {
-            const id = 'fixture-' + kind;
-            segments.set(id, { id, kind, stream: 'screen', teamUid: uid, startAt: start, endAt: start + 3000, bytes: sample.length, mime: 'video/mp4', file: sample });
+        for (const kind of ['archive', 'clip']) for (const stream of ['screen', 'webcam']) {
+            const id = 'fixture-' + kind + (stream === 'webcam' ? '-webcam' : '');
+            segments.set(id, { id, kind, stream, teamUid: uid, startAt: start, endAt: start + 3000, bytes: sample.length, mime: 'video/mp4', file: sample });
         }
         clips.set('fixture', { rid: 'fixture', teamUid: uid, pid: 1, status: 1, firstSolve: true, state: 'ready', submittedAt: start,
-            windowStart: start, windowEnd: start + 3000, streams: { screen: { segments: ['fixture-clip'], missing: [] } } });
+            windowStart: start, windowEnd: start + 3000, streams: { screen: { segments: ['fixture-clip'], missing: [] }, webcam: { segments: ['fixture-clip-webcam'], missing: [] } } });
         gaps.push({ teamUid: uid, stream: 'screen', from: start + 3000, to: start + 60000, reason: 'offline' });
     }
     function activeTeams() {
@@ -51,10 +51,11 @@ export function recordingPreview(base: string, config: () => CaptureSettings, co
         const targets = [...devices.values()].filter((d) => d.connection && (!payload.deviceIds?.length || payload.deviceIds.includes(d._id))).map((d) => d._id);
         if (!targets.length) throw new Error('没有可测试的在线设备');
         const id = randomUUID();
-        const test = { _id: id, testId: id, targets, devices: {}, startedAt: Date.now(), endedAt: null, series: [], settings: config().recording,
+        const settings = deviceRecording(config());
+        const test = { _id: id, testId: id, targets, devices: {}, startedAt: Date.now(), endedAt: null, series: [], settings,
             kind: payload.kind, mode: payload.mode || 'normal', durationSeconds: payload.kind === 'venue' ? Number(payload.durationSeconds) : 30, intervalSeconds: payload.intervalSeconds || 180 };
         reports.set(id, test);
-        for (const device of targets) send(device, { type: 'test-start', ...test, peakFactor: config().recording.planning.peakFactor, recording: config().recording });
+        for (const device of targets) send(device, { type: 'test-start', ...test, peakFactor: settings.planning.peakFactor, recording: settings });
         return { testId: id };
     }
     function message(d: CaptureDevice, msg: any) {

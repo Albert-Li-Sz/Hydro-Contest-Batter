@@ -161,8 +161,9 @@ function renderSettings() {
             box('screenDuringContest', '比赛中直播可用屏幕（选手能看到直播时请关闭）')),
         el('div', { class: 'resolver-fields resolver-two', style: 'margin-top:12px' },
             field('屏幕', choice('screenHeight', [[720, '720p'], [1080, '1080p']])),
-            field('帧率', choice('screenFps', [[5, '5 帧'], [10, '10 帧'], [15, '15 帧'], [30, '30 帧']])),
-            field('摄像头', choice('webcamHeight', [[360, '360p'], [480, '480p'], [720, '720p']])),
+            field('屏幕帧率', choice('screenFps', [[5, '5 帧'], [10, '10 帧'], [15, '15 帧'], [30, '30 帧']])),
+            field('摄像头', choice('webcamHeight', [[360, '360p'], [480, '480p'], [720, '720p'], [1080, '1080p']])),
+            field('摄像头帧率', choice('webcamFps', [[5, '5 帧'], [10, '10 帧'], [15, '15 帧'], [30, '30 帧']])),
             field('STUN / TURN（每行一个）', ice, '同一局域网可留空。内置 STUN 需放行插件配置中的 UDP 端口（默认 3478）。')),
         saved,
     );

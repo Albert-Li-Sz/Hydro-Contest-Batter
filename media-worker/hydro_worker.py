@@ -13,16 +13,18 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote
 
 import requests
 
 if __package__:
+    from .hydro_connection import Connection, load_connection, safe_error
     from .hydro_render import render
 else:
+    from hydro_connection import Connection, load_connection, safe_error
     from hydro_render import render
 
-VERSION = "1.21.0"
+VERSION = "1.21.2"
 SAFE_ID = re.compile(r"[a-zA-Z0-9_-]{1,100}")
 
 
@@ -30,21 +32,28 @@ def partition(key, count):
     return int.from_bytes(hashlib.sha256(key.encode()).digest(), "big") % count
 
 
-def request(method, url, *, source=None, attempts=4, **kwargs):
+def request(method, url, *, source=None, attempts=4, secret="", **kwargs):
+    headers = {"Authorization": "Bearer " + secret} if secret else {}
+    kwargs.update(headers=headers, allow_redirects=False)
     for index in range(attempts):
         try:
             if source:
+                headers["Content-Type"] = "video/mp4"
                 with source.open("rb") as content:
                     response = requests.request(
                         method,
                         url,
                         data=content,
-                        headers={"Content-Type": "video/mp4"},
                         timeout=(10, 180),
                         **kwargs,
                     )
             else:
                 response = requests.request(method, url, timeout=(10, 45), **kwargs)
+            if 300 <= response.status_code < 400:
+                response.close()
+                raise requests.RequestException(
+                    "Unexpected redirection from the media API"
+                )
             if (
                 response.status_code < 500
                 and response.status_code != 429
@@ -57,17 +66,6 @@ def request(method, url, *, source=None, attempts=4, **kwargs):
             if index + 1 == attempts:
                 raise
         time.sleep(2**index)
-
-
-def safe_error(exc, base):
-    message = (
-        str(exc)
-        .replace(base, "<contest>")
-        .replace(urlsplit(base).path.rsplit("/", 1)[-1], "<token>")
-    )
-    return re.sub(r"([?&](?:sig|signature|token)=)[^&\s]+", r"\1<redacted>", message)[
-        -1800:
-    ]
 
 
 def process_partition(
@@ -83,7 +81,8 @@ def process_partition(
 ):
     if not (total_workers > 0 and 0 <= worker_id < total_workers and poll > 0):
         raise ValueError("Invalid partition or poll interval")
-    base = base.rstrip("/")
+    connection = base if isinstance(base, Connection) else load_connection(base)
+    base = connection.base
     namespace = hashlib.sha256(base.encode()).hexdigest()[:16]
     folder = Path(out) / namespace
     folder.mkdir(parents=True, exist_ok=True)
@@ -99,22 +98,25 @@ def process_partition(
     stop = threading.Event()
     endpoint = base + "/reactions"
 
+    def api(method, url, **kwargs):
+        return request(method, url, secret=connection.token, **kwargs)
+
     def announce():
-        request("POST", endpoint + "/worker", json=state.copy(), attempts=1)
+        api("POST", endpoint + "/worker", json=state.copy(), attempts=1)
 
     def heartbeats():
         while not stop.wait(15):
             try:
                 announce()
             except requests.RequestException as exc:
-                print(safe_error(exc, base), file=sys.stderr, flush=True)
+                print(safe_error(exc, connection), file=sys.stderr, flush=True)
 
     thread = threading.Thread(target=heartbeats, daemon=True)
     thread.start()
     try:
         while not shutdown.is_set():
             try:
-                catalog = request("GET", endpoint + "/layouts.json").json()
+                catalog = api("GET", endpoint + "/layouts.json").json()
                 layouts = {
                     str(v.get("id", v.get("_id"))): v for v in catalog["layouts"]
                 }
@@ -142,12 +144,12 @@ def process_partition(
                         "layoutId": lid,
                         "generation": generation,
                     }
-                    announce()
                     result = endpoint + f"/results/{rid}/{lid}"
                     output = folder / (key + ".mp4")
                     try:
+                        announce()
                         if not (output.exists() and marker.exists()):
-                            detail = request(
+                            detail = api(
                                 "GET", endpoint + "/fullRuns/" + quote(rid)
                             ).json()
                             layout = job.get("layout") or layouts[lid]
@@ -167,13 +169,14 @@ def process_partition(
                                     work,
                                     work / "out.mp4",
                                     encoder,
+                                    secret=connection.token,
                                     sound=Path("example") / sound_name
                                     if with_sound
                                     else None,
                                 )
                                 os.replace(work / "out.mp4", output)
                             marker.write_text(str(duration))
-                        request(
+                        api(
                             "PUT",
                             result,
                             source=output,
@@ -186,12 +189,12 @@ def process_partition(
                         done.touch()
                     except requests.RequestException as exc:
                         # The encoded file stays available for a retry after an upload/network interruption.
-                        print(safe_error(exc, base), file=sys.stderr, flush=True)
+                        print(safe_error(exc, connection), file=sys.stderr, flush=True)
                         if once:
                             raise
                     except (RuntimeError, ValueError, KeyError, OSError) as exc:
-                        message = safe_error(exc, base)
-                        request(
+                        message = safe_error(exc, connection)
+                        api(
                             "POST",
                             result + "/error",
                             json={"generation": generation, "error": message},
@@ -210,7 +213,7 @@ def process_partition(
             except (requests.RequestException, ValueError) as exc:
                 if once:
                     raise
-                print(safe_error(exc, base), file=sys.stderr, flush=True)
+                print(safe_error(exc, connection), file=sys.stderr, flush=True)
             shutdown.wait(poll)
     finally:
         stop.set()
@@ -227,6 +230,7 @@ def continuous(
     sound=True,
     once=False,
 ):
+    connection = load_connection(base)
     if not 1 <= total_workers <= 128 or (
         worker_id is not None and not 0 <= worker_id < total_workers
     ):
@@ -237,7 +241,7 @@ def continuous(
         futures = [
             pool.submit(
                 process_partition,
-                base,
+                connection,
                 output_directory,
                 i,
                 total_workers,
@@ -252,6 +256,8 @@ def continuous(
         try:
             for future in concurrent.futures.as_completed(futures):
                 future.result()
+        except Exception as exc:
+            raise RuntimeError(safe_error(exc, connection)) from None
         finally:
             shutdown.set()
 
@@ -259,7 +265,11 @@ def continuous(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=["all"])
-    parser.add_argument("url")
+    parser.add_argument(
+        "url",
+        nargs="?",
+        help="Legacy contest URL; defaults to the media connection in .env",
+    )
     parser.add_argument("--hydro-upload", action="store_true", required=True)
     parser.add_argument("--total-workers", type=int, default=1)
     parser.add_argument("--worker-id", type=int)

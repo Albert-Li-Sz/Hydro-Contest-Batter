@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Context, ContestModel, Handler, ObjectId, param, RecordModel, Tdoc, Types } from 'hydrooj';
-import { captureSecretMatches, isCaptureOnline, type CaptureDevice, type CaptureSettings } from './live/capture';
+import { captureSecretMatches, deviceRecording, isCaptureOnline, type CaptureDevice, type CaptureSettings } from './live/capture';
 import type { CaptureHelpers } from './live/capture-routes';
 import { clipPriority, clipWindow, estimateRecording, missingIntervals, inScope, normalizeRecording, presets, uploadedRecordingQuality, RecordingError, type Measured, type SourceName, type StreamName } from './recording';
 import { inspectSegment, RecordingStore, serveRecordingMedia, type Clip, type Segment } from './recording-store';
@@ -134,10 +134,6 @@ export function applyRecording(ctx: Context, hooks: Hooks) {
                 await hooks.devices.updateOne({ _id: doc._id, contestKey }, { $set: { recordingStatus: { backlogBytes, backlogSeconds, failures, recordingError, at: Date.now() } } });
             }
         }
-    }
-    function deviceRecording(settings: CaptureSettings) {
-        const rec = settings.recording;
-        return settings.webcam ? rec : { ...rec, clips: { ...rec.clips, webcam: null }, archive: { ...rec.archive, webcam: null } };
     }
     class RecordingHandler extends Handler {
         async onerror(err: Parameters<Handler['onerror']>[0] | RecordingError) {

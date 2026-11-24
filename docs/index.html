@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Hydro Contest Better v1.21.1 操作手册，涵盖安装升级、ACM 比赛配置、赛事中控、CCPC 赛制、增强榜、成绩导出、答疑台、滚榜、大屏、气球配送、机位监控、比赛录制、反应视频、直播、打印和赛后清理。">
+  <meta name="description" content="Hydro Contest Better v1.21.2 操作手册，涵盖安装升级、ACM 比赛配置、赛事中控、CCPC 赛制、增强榜、成绩导出、答疑台、滚榜、大屏、气球配送、机位监控、比赛录制、反应视频、直播、打印和赛后清理。">
   <meta name="theme-color" content="#811c39">
   <title>Hydro Contest Better 操作手册</title>
   <link rel="stylesheet" href="./manual.css">
@@ -15,7 +15,7 @@
       <a class="brand" href="./">Hydro Contest Better</a>
       <nav aria-label="项目链接">
         <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better">源码</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.21.1">下载 v1.21.1</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.21.2">下载 v1.21.2</a>
       </nav>
     </div>
   </header>
@@ -43,7 +43,7 @@
     </aside>
     <main id="manual">
       <header class="intro">
-        <p class="version">适用于插件 v1.21.1 · Hydro 5.x</p>
+        <p class="version">适用于插件 v1.21.2 · Hydro 5.x</p>
         <h1>Hydro 比赛操作手册</h1>
         <p class="lead">从安装插件、配置 ACM 比赛，到现场投屏、气球配送、打印、直播和赛后滚榜。</p>
         <p>界面截图使用演示比赛数据。点击配图可查看原图。</p>
@@ -66,19 +66,19 @@
       <section id="install" aria-labelledby="install-heading">
         <h2 id="install-heading">安装与升级</h2>
         <p>使用运行 Hydro 的系统账号执行命令。需要 Hydro 5.x、Node.js 22 或以上。用 PM2 管理 Hydro 时，默认进程名为 <code>hydrooj</code>。</p>
-        <p>从发布页下载 <code>hydro-scoreboard-xcpcio-plus-1.21.1.tgz</code> 和同名 <code>.sha256</code> 文件，放在同一个目录。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.21.1">v1.21.1 下载</a></p>
+        <p>从发布页下载 <code>hydro-scoreboard-xcpcio-plus-1.21.2.tgz</code> 和同名 <code>.sha256</code> 文件，放在同一个目录。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.21.2">v1.21.2 下载</a></p>
 
         <h3>校验并解压</h3>
-        <pre><code>sha256sum -c hydro-scoreboard-xcpcio-plus-1.21.1.tgz.sha256
-mkdir xcpcio-v1.21.1
-tar -xzf hydro-scoreboard-xcpcio-plus-1.21.1.tgz -C xcpcio-v1.21.1</code></pre>
+        <pre><code>sha256sum -c hydro-scoreboard-xcpcio-plus-1.21.2.tgz.sha256
+mkdir xcpcio-v1.21.2
+tar -xzf hydro-scoreboard-xcpcio-plus-1.21.2.tgz -C xcpcio-v1.21.2</code></pre>
 
         <figure class="guide-shot">
           <a href="./images/manual/install-archive.svg"><img src="./images/manual/install-archive.svg" width="840" height="262" loading="lazy" alt="终端示例中的 SHA-256 校验显示 OK，解压后可找到 package/install.sh"></a>
           <figcaption>校验结果显示 OK 后再解压。进入新目录，确认 package 下有 install.sh。</figcaption>
         </figure>
         <h3>首次安装</h3>
-        <pre><code>bash xcpcio-v1.21.1/package/install.sh install</code></pre>
+        <pre><code>bash xcpcio-v1.21.2/package/install.sh install</code></pre>
         <p>脚本将插件复制到 <code>$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus</code>，执行 <code>hydrooj addon add</code>，然后重启 Hydro。</p>
         <figure class="guide-shot">
           <a href="./images/manual/install-choice.svg"><img src="./images/manual/install-choice.svg" width="840" height="298" loading="lazy" alt="首次安装选 install，已有安装从新包执行 upgrade，两种方式都要验证比赛入口"></a>
@@ -88,7 +88,7 @@ tar -xzf hydro-scoreboard-xcpcio-plus-1.21.1.tgz -C xcpcio-v1.21.1</code></pre>
           <summary>手动安装到新目录</summary>
           <pre><code>addon_dir="$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 mkdir -p "$addon_dir"
-tar -xzf hydro-scoreboard-xcpcio-plus-1.21.1.tgz -C "$addon_dir" --strip-components=1
+tar -xzf hydro-scoreboard-xcpcio-plus-1.21.2.tgz -C "$addon_dir" --strip-components=1
 hydrooj addon add "$addon_dir"
 pm2 restart hydrooj</code></pre>
           <figure class="guide-shot">
@@ -98,7 +98,7 @@ pm2 restart hydrooj</code></pre>
         </details>
 
         <h3>已有安装时升级</h3>
-        <pre><code>bash xcpcio-v1.21.1/package/install.sh upgrade
+        <pre><code>bash xcpcio-v1.21.2/package/install.sh upgrade
 pm2 status hydrooj</code></pre>
         <p>在浏览器打开 Hydro 首页和一场 ACM 比赛，确认榜单、滚榜和大屏入口可用。自定义目录用 <code>--dir</code> 指向原安装位置，非默认 PM2 进程用 <code>--service</code>。容器部署用 <code>--no-restart</code>，然后通过容器管理方式重启 Hydro。</p>
         <figure class="guide-shot">
@@ -236,8 +236,8 @@ pm2 status hydrooj</code></pre>
         </figure>
         <p>字幕页的 <strong>Title</strong> 点「+」先新建一条空字幕，再点编辑选择 SVG 模板（内置 ICPC 下三分之一条模板，也可在「媒体文件」上传）并填写数据，保存后即可显示；未选模板时点显示会提示原因。<strong>Picture</strong> 和滚动条中的图片可填写完整网址、以 <code>/</code> 开头的站内路径，或直接填写「媒体文件」里的文件名，保存后自动换成文件地址。</p>
         <h3>录制与反应视频</h3>
-        <p>在「画面采集 → 录制设置」勾选本场需要的提交片段或全程留档。新配置按 1080p、30 fps 采集屏幕，「高清留档」以 720p、24 fps、1.2 Mbps 为目标。机位依次尝试 H.265、AV1、H.264，三种均不可用时会提示。选定编码后先保存最多 2 秒的首段，随后每 60 秒分段，停止录制时保存尾段。在「录像」时间轴点开一段，可核对实际编码、分辨率并回放。赛前请向选手告知保存期限与公开范围。<a href="./media-worker.html#screen-archive">全程屏幕留档设置与验证</a></p>
-        <p>在媒体机拉取公共 Docker 镜像，用本场令牌接入。管理员可按版式合成视频，在导播台回放，或经审核后公开分享和大屏轮播。<a href="./media-worker.html">安装媒体机与制作反应视频（图文教程）</a></p>
+        <p>在「画面采集 → 录制设置」勾选本场需要的提交片段或全程留档。新配置同时采集屏幕和摄像头，采集目标均为 1080p、30 fps。每路「高清留档」分别以 720p、24 fps、1.2 Mbps 为目标。机位依次尝试 H.265、AV1、H.264，三种均不可用时会提示。选定编码后先保存最多 2 秒的首段，随后每 60 秒分段，停止录制时保存尾段。在「录像」分别点开屏幕和摄像头时间轴，可核对各路实际编码、分辨率并回放。赛前请向选手告知保存期限与公开范围。<a href="./media-worker.html#screen-archive">双路留档设置与验证</a></p>
+        <p>在「反应视频 → 媒体机」为每台机器创建连接，把连接码写入该机的 <code>.env</code>，通过 Docker Compose 拉取镜像并启动。管理员可按版式合成视频，在导播台回放，或经审核后公开分享和大屏轮播。<a href="./media-worker.html">安装媒体机与制作反应视频（图文教程）</a></p>
         <figure class="guide-shot">
           <a href="./images/media-worker/layout-editor.png"><img src="./images/media-worker/layout-editor.png" width="1168" height="625" loading="lazy" alt="反应视频版式编辑器显示图层、画布预览和画面布局"></a>
           <figcaption>生成反应视频前，在版式编辑器核对屏幕、摄像头和信息卡片的位置。</figcaption>
@@ -504,8 +504,8 @@ pm2 status hydrooj</code></pre>
       </section>
       <footer class="manual-footer">
         <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/usage.md">完整使用文档</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.21.1/docs/verification.md">验证记录</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.21.1/NOTICE">来源与许可</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.21.2/docs/verification.md">验证记录</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.21.2/NOTICE">来源与许可</a>
         <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/issues">报告问题</a>
       </footer>
     </main>

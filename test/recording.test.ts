@@ -16,35 +16,42 @@ describe('recording settings and match planning', () => {
         expect(normalizeCaptureSettings({ prompt: false }, s).recording.archive.enabled).toBe(true);
         expect(() => normalizeCaptureSettings({ recording: { clips: { enabled: true, screen: { preset: 'high' } } } }, s)).toThrow('不能超过');
     });
-    it('defaults new contests to 1080p30 capture and opt-in 60-second HD screen archives', () => {
+    it('defaults new contests to 1080p30 capture and independent opt-in 60-second HD archives for both streams', () => {
         const settings = readCaptureSettings(undefined);
+        const hd = { preset: 'archiveHd', height: 720, fps: 24, kbps: 1200 };
         expect(settings).toMatchObject({
-            enabled: false, screenHeight: 1080, screenFps: 30, recording: { autoDowngrade: false, clips: { enabled: false },
-                archive: { enabled: false, webcam: null, segmentSeconds: 60, screen: { preset: 'archiveHd', height: 720, fps: 24, kbps: 1200 } } },
+            enabled: false, screenHeight: 1080, screenFps: 30, webcamHeight: 1080, webcamFps: 30, webcamAudio: false,
+            recording: { autoDowngrade: false, clips: { enabled: false }, archive: { enabled: false, webcam: hd, segmentSeconds: 60, screen: hd } },
         });
         expect(readCaptureSettings(settings)).toEqual(settings);
         const active = normalizeCaptureSettings({ enabled: true, recording: { archive: { enabled: true } } }, settings);
         const totals = estimateRecording(active.recording, { teams: 1, seconds: 60 });
         expect(totals.sources.archiveScreen).toBe(9_000_000);
-        expect(totals.storageBytes).toBe(9_450_000);
+        expect(totals.sources.archiveWebcam).toBe(9_000_000);
+        expect(totals.storageBytes).toBe(18_900_000);
+        expect(totals.averageMbps).toBe(2.4);
+        expect(estimateRecording(active.recording, { teams: 1, seconds: 60 }, {}, false).storageBytes).toBe(9_450_000);
     });
     it('preserves saved capture, archive and congestion choices, including historical partial documents', () => {
         const old = readCaptureSettings({ enabled: true, screenFps: 5, recording: { archive: { enabled: true, screen: { preset: 'standard' } } } });
-        expect(old).toMatchObject({ screenHeight: 720, screenFps: 5, recording: { autoDowngrade: true, archive: { screen: { fps: 1, kbps: 100 } } } });
+        expect(old).toMatchObject({ screenHeight: 720, screenFps: 5, webcamHeight: 480, webcamFps: 15,
+            recording: { autoDowngrade: true, archive: { screen: { fps: 1, kbps: 100 }, webcam: null } } });
         const custom = { preset: 'custom', height: 480, fps: 12, kbps: 750 };
-        const saved = readCaptureSettings({ screenHeight: 720, screenFps: 15, recording: { autoDowngrade: false, archive: { screen: custom } } });
+        const saved = readCaptureSettings({ screenHeight: 720, screenFps: 15, recording: { autoDowngrade: false, archive: { screen: custom, webcam: custom } } });
         expect(normalizeCaptureSettings({ prompt: false }, saved)).toMatchObject({
-            screenHeight: 720, screenFps: 15, recording: { autoDowngrade: false, archive: { screen: custom } },
+            screenHeight: 720, screenFps: 15, recording: { autoDowngrade: false, archive: { screen: custom, webcam: custom } },
         });
+        const oldScreenOnly = { ...defaultCaptureSettings(), webcamHeight: 480, recording: { archive: { screen: { preset: 'archiveHd' }, webcam: null } } };
+        expect(readCaptureSettings(oldScreenOnly).recording.archive.webcam).toBeNull();
     });
-    it('advertises and accepts the extra archive preset only on the screen archive', () => {
-        expect(Object.entries(presets).filter(([, choices]) => choices.archiveHd).map(([source]) => source)).toEqual(['archiveScreen']);
-        for (const [kind, stream] of [['clips', 'screen'], ['clips', 'webcam'], ['archive', 'webcam']]) {
-            expect(() => normalizeCaptureSettings({ recording: { [kind]: { [stream]: { preset: 'archiveHd' } } } })).toThrow('不支持');
+    it('advertises the HD archive preset for both archives and preserves independent clip profiles', () => {
+        expect(Object.entries(presets).filter(([, choices]) => choices.archiveHd).map(([source]) => source)).toEqual(['archiveScreen', 'archiveWebcam']);
+        for (const stream of ['screen', 'webcam']) {
+            expect(() => normalizeCaptureSettings({ recording: { clips: { [stream]: { preset: 'archiveHd' } } } })).toThrow('不支持');
         }
     });
     it('projects aggregate bandwidth and storage from actual rates, enabled streams and live submission counts', () => {
-        const s = normalizeRecording({ clips: { enabled: true }, archive: { enabled: true, screen: { preset: 'standard' } }, planning: { uplinkMbps: 5 } }, defaultRecordingSettings(), defaultCaptureSettings());
+        const s = normalizeRecording({ clips: { enabled: true }, archive: { enabled: true, screen: { preset: 'standard' }, webcam: null }, planning: { uplinkMbps: 5 } }, defaultRecordingSettings(), defaultCaptureSettings());
         const q = estimateRecording(s, { teams: 2, seconds: 3600 }, { clipScreen: 500 });
         expect(q.sources.clipScreen).toBe(500 * 125 * 2 * (10 * 60 + 30 * 30));
         expect(q.sources.archiveScreen).toBe(100 * 125 * 2 * 3600);

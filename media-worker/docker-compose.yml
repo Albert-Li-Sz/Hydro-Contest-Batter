@@ -1,11 +1,15 @@
 services:
   reactions:
     build: .
-    image: reactions-generator-hydro:1.21.0
+    image: reactions-generator-hydro:1.21.2
     restart: unless-stopped
+    secrets:
+      - hydro_media_env
     volumes:
       - ./out:/app/out
     command:
       - all
-      - ${HYDRO_REACTIONS_API:?Set HYDRO_REACTIONS_API to the contest media worker URL}
       - --hydro-upload
+secrets:
+  hydro_media_env:
+    file: ./.env

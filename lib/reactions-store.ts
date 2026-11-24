@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { type Context, type Tdoc } from 'hydrooj';
@@ -50,6 +49,7 @@ interface VideoDoc {
     codec?: string;
     error?: string;
     worker?: string;
+    workerOwner?: string;
     leaseAt?: number;
     createdAt: number;
     readyAt?: number;
@@ -64,6 +64,8 @@ interface WorkerDoc {
     version: string;
     partition: string;
     lastSeen: number;
+    connectionId?: string | null;
+    connectionRevision?: number;
     ip: string;
     current: { runId: string; layoutId: string; generation: number } | null;
     queue: number;
@@ -74,6 +76,15 @@ interface AssetDoc {
     path: string;
     mime: string;
     bytes: number;
+}
+interface ConnectionDoc {
+    _id: string;
+    contestKey: string;
+    name: string;
+    tokenHash: string;
+    revision: number;
+    issuedAt: Date;
+    issuedBy: number;
 }
 interface ConfigDoc {
     _id: string;
@@ -88,6 +99,7 @@ declare module 'hydrooj' {
         'xcpcio.reactions.config': ConfigDoc;
         'xcpcio.reactions.videos': VideoDoc;
         'xcpcio.reactions.workers': WorkerDoc;
+        'xcpcio.reactions.connections': ConnectionDoc;
         'xcpcio.reactions.assets': AssetDoc;
     }
 }
@@ -100,12 +112,12 @@ export const contestKey = (tdoc: Tdoc) => `${tdoc.domainId}/${tdoc.docId}`;
 export const reactionBase = (tdoc: Tdoc) => `/d/${encodeURIComponent(tdoc.domainId)}/contest/${tdoc.docId}/reactions`;
 export const videoKey = (contest: string, rid: string, layout: string) => `${contest}/${rid}/${layout}`;
 export const videoId = (video: Pick<VideoDoc, 'rid' | 'layoutId'>) => `${video.rid}~${video.layoutId}`;
-export const newToken = () => randomBytes(32).toString('hex');
 export function createReactionStore(ctx: Context, deps: ReactionDependencies) {
     const layouts = ctx.db.collection('xcpcio.reactions.layouts'),
         videos = ctx.db.collection('xcpcio.reactions.videos');
     const configs = ctx.db.collection('xcpcio.reactions.config'),
         workers = ctx.db.collection('xcpcio.reactions.workers');
+    const connections = ctx.db.collection('xcpcio.reactions.connections');
     const assets = ctx.db.collection('xcpcio.reactions.assets');
     const clips = ctx.db.collection('xcpcio.recording.clips' as never);
     const segments = ctx.db.collection('xcpcio.recording.segments' as never);
@@ -484,13 +496,14 @@ export function createReactionStore(ctx: Context, deps: ReactionDependencies) {
     async function remove(key: string) {
         const [files, images] = await Promise.all([videos.find({ contestKey: key }).toArray(), assets.find({ contestKey: key }).toArray()]);
         for (const file of [...files, ...images]) if (file.path) await ctx.storage.del(file.path);
-        await Promise.all([videos, assets, workers, layouts].map((c) => c.deleteMany({ contestKey: key })));
+        await Promise.all([videos, assets, workers, layouts, connections].map((c) => c.deleteMany({ contestKey: key })));
         await configs.deleteOne({ _id: key });
     }
     return {
         layouts,
         videos,
         workers,
+        connections,
         configs,
         assets,
         invalidate,

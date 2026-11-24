@@ -34,8 +34,11 @@ def build(output, checkout):
         source = root / "src"
         with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
             tar.extractall(source, filter="data")
+        (source / ".dockerignore").write_text(
+            ".env\n.env.*\nout/\n.git/\n.venv/\n__pycache__/\n"
+        )
         pkg = source / "reactions_generator"
-        for name in ["hydro_render.py", "hydro_worker.py"]:
+        for name in ["hydro_connection.py", "hydro_render.py", "hydro_worker.py"]:
             shutil.copy2(HERE / name, pkg)
         shutil.copy2(HERE / "test_hydro_worker.py", source / "tests")
         shutil.copy2(HERE / "docker-compose.yml", source / "docker-compose.yml")
@@ -50,6 +53,22 @@ def build(output, checkout):
         signature = "    poll_interval: float = 2.0,\n) -> None:"
         entry = "    if total_workers <= 0 or ("
         assert original.count(signature) == original.count(entry) == 1
+        required_url = "def continuous_build_submission(\n    url: str,"
+        assert original.count(required_url) == 1
+        original = original.replace(
+            "import ffmpeg",
+            "from typing import Annotated\n\nimport ffmpeg\nimport typer",
+        ).replace(
+            required_url,
+            "def continuous_build_submission(\n    url: Annotated[str | None, typer.Argument()] = None,",
+        )
+        cli = pkg / "cli.py"
+        cli.write_text(
+            cli.read_text().replace(
+                "typer.Typer(no_args_is_help=True)",
+                "typer.Typer(no_args_is_help=True, pretty_exceptions_show_locals=False)",
+            )
+        )
         worker.write_text(
             original.replace(
                 signature,
@@ -57,6 +76,7 @@ def build(output, checkout):
             ).replace(
                 entry,
                 "    if hydro_upload:\n        from reactions_generator.hydro_worker import continuous\n\n        continuous(url, output_directory, total_workers, worker_id, hardware, poll_interval, sound)\n        return\n"
+                + '    if not url:\n        raise ValueError("Supply a contest URL, or use --hydro-upload with .env")\n'
                 + entry,
             )
         )

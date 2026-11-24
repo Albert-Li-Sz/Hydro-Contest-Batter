@@ -7,13 +7,14 @@ import { defaultLayouts, defaultReactionPublic, layoutWarnings, normalizeLayout,
 import { resolverCodeBase } from '../lib/resolver-data';
 import { toScriptJson } from '../lib/settings';
 import { readRange } from '../lib/recording';
+import { issueWorkerCode, workerName, workerOrigin } from '../lib/reactions-connection';
 
 export function createReactionsPreview(env: Environment, version: string) {
     const base = '/contest/demo/reactions',
         title = '春季程序设计竞赛';
     const layouts = defaultLayouts();
     let config = { ...defaultReactionPublic, enabled: true };
-    let token = '';
+    const connections = new Map<string, { id: string; name: string; revision: number; issuedAt: Date }>();
     const at = Date.now();
     const url = base + '/sample.mp4';
     const videos = [
@@ -104,8 +105,8 @@ export function createReactionsPreview(env: Environment, version: string) {
                     ...list,
                     clips,
                     workers: [],
-                    token,
-                    tokenAt: null,
+                    connections: [...connections.values()],
+                    legacyEnabled: false,
                     ccpc: false,
                     stats: {
                         done: videos.filter((v) => v.state === 'ready').length,
@@ -130,7 +131,29 @@ export function createReactionsPreview(env: Environment, version: string) {
                 }
                 const b = JSON.parse(raw);
                 if (b.action === 'public') config = publicSettings(b.settings, config);
-                if (b.action === 'token') token = randomBytes(16).toString('hex');
+                if (b.action === 'createConnection' || b.action === 'rotateConnection') {
+                    const create = b.action === 'createConnection',
+                        id = create ? randomBytes(12).toString('hex') : String(b.id);
+                    const old = connections.get(id);
+                    if (!create && (!old || old.revision !== b.revision)) {
+                        json({ error: '连接已经变更' }, 409);
+                        return true;
+                    }
+                    const revision = create ? 1 : old!.revision + 1,
+                        name = create ? workerName(b.name) : old!.name;
+                    const origin = workerOrigin(b.origin, null, request.headers.host || target.host, 'http');
+                    const { code } = issueWorkerCode(origin, base, id);
+                    connections.set(id, { id, name, revision, issuedAt: new Date() });
+                    json({ id, code, revision });
+                    return true;
+                }
+                if (b.action === 'revokeConnection') {
+                    if (connections.get(b.id)?.revision !== b.revision) {
+                        json({ error: '连接已经变更' }, 409);
+                        return true;
+                    }
+                    connections.delete(b.id);
+                }
                 if (b.action === 'layout') {
                     const id = b.layout.id || randomBytes(8).toString('hex'),
                         idx = layouts.findIndex((v) => v.id === id);

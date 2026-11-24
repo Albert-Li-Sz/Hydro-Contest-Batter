@@ -31,7 +31,7 @@ export const presets: Record<SourceName, SourcePresets> = {
     clipScreen: { low: [720, 5, 500], standard: [720, 10, 1000], high: [1080, 15, 2500] },
     clipWebcam: { low: [360, 15, 300], standard: [480, 15, 500], high: [720, 30, 1200] },
     archiveScreen: { low: [480, 0.5, 50], standard: [480, 1, 100], high: [720, 2, 250], archiveHd: [720, 24, 1200] },
-    archiveWebcam: { low: [240, 1, 30], standard: [360, 2, 60], high: [480, 5, 150] },
+    archiveWebcam: { low: [240, 1, 30], standard: [360, 2, 60], high: [480, 5, 150], archiveHd: [720, 24, 1200] },
 };
 export interface RecordingSettings {
     clips: { enabled: boolean; scope: 'all' | 'accepted' | 'first'; beforeSeconds: number; afterAcceptedSeconds: number; afterOtherSeconds: number; screen: Quality; webcam: Quality | null };
@@ -48,7 +48,7 @@ export function qualityPreset(source: SourceName, preset: Preset): Quality {
 }
 export const defaultRecordingSettings = (): RecordingSettings => ({
     clips: { enabled: false, scope: 'all', beforeSeconds: 20, afterAcceptedSeconds: 40, afterOtherSeconds: 10, screen: qualityPreset('clipScreen', 'standard'), webcam: qualityPreset('clipWebcam', 'standard') },
-    archive: { enabled: false, screen: qualityPreset('archiveScreen', 'archiveHd'), webcam: null, segmentSeconds: 60 },
+    archive: { enabled: false, screen: qualityPreset('archiveScreen', 'archiveHd'), webcam: qualityPreset('archiveWebcam', 'archiveHd'), segmentSeconds: 60 },
     autoDowngrade: false, planning: { uplinkMbps: null, submissionsPerTeam: 40, acceptedPerTeam: 10, peakFactor: 3 },
 });
 const object = (raw: unknown): Record<string, any> => raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, any> : {};
@@ -59,7 +59,7 @@ function numeric(raw: unknown, min: number, max: number, name: string) {
 }
 const bool = (x: unknown, base: boolean) => typeof x === 'boolean' ? x : base;
 
-export function normalizeRecording(input: unknown, base: RecordingSettings, capture: { screenHeight: number; webcamHeight: number }) {
+export function normalizeRecording(input: unknown, base: RecordingSettings, capture: { screenHeight: number; webcamHeight: number; webcam?: boolean }) {
     const raw = object(input), clips = object(raw.clips), archive = object(raw.archive), plan = object(raw.planning);
     function quality(x: unknown, old: Quality | null, source: SourceName, enabled: boolean, allowNull: boolean): Quality | null {
         const q = x === undefined ? old : x;
@@ -84,12 +84,12 @@ export function normalizeRecording(input: unknown, base: RecordingSettings, capt
             afterAcceptedSeconds: numeric(clips.afterAcceptedSeconds ?? base.clips.afterAcceptedSeconds, 0, 120, '通过后时长'),
             afterOtherSeconds: numeric(clips.afterOtherSeconds ?? base.clips.afterOtherSeconds, 0, 120, '判题后时长'),
             screen: quality(clips.screen, base.clips.screen, 'clipScreen', clipOn, false)!,
-            webcam: quality(clips.webcam, base.clips.webcam, 'clipWebcam', clipOn, true),
+            webcam: quality(clips.webcam, base.clips.webcam, 'clipWebcam', clipOn && capture.webcam !== false, true),
         },
         archive: {
             enabled: archiveOn, segmentSeconds: 60,
             screen: quality(archive.screen, base.archive.screen, 'archiveScreen', archiveOn, false)!,
-            webcam: quality(archive.webcam, base.archive.webcam, 'archiveWebcam', archiveOn, true),
+            webcam: quality(archive.webcam, base.archive.webcam, 'archiveWebcam', archiveOn && capture.webcam !== false, true),
         },
         autoDowngrade: bool(raw.autoDowngrade, base.autoDowngrade),
         planning: {

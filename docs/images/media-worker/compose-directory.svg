@@ -11,7 +11,7 @@
   <text x="375" y="114" fill="#25202a" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="22" font-weight="450" text-anchor="start">服务与镜像配置</text>
   <g transform="translate(87 148) scale(1.25)" stroke="#8b2444" fill="none" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="8" r="4.5"/><path d="m10 11 10 10 2-2-2-2 1.5-1.5-2-2L18 15l-5-5"/></g>
   <text x="133" y="171" fill="#25202a" font-family="'SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="24" font-weight="650" text-anchor="start">.env</text>
-  <text x="375" y="171" fill="#25202a" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="22" font-weight="450" text-anchor="start">本场接口地址</text>
+  <text x="375" y="171" fill="#25202a" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="22" font-weight="450" text-anchor="start">本机专用连接码</text>
   <g transform="translate(87 203) scale(1.25)" stroke="#8b2444" fill="none" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7V5c0-1 .7-2 2-2h5l3 3h8a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7Zm0 1h20"/></g>
   <text x="133" y="226" fill="#25202a" font-family="'SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="24" font-weight="650" text-anchor="start">out/</text>
   <text x="375" y="226" fill="#25202a" font-family="'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="22" font-weight="450" text-anchor="start">本机输出目录</text>

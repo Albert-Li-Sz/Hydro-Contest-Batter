@@ -1,13 +1,14 @@
 services:
   reactions:
-    image: ${HYDRO_MEDIA_IMAGE:-ghcr.io/albert-li-sz/reactions-generator-hydro:1.21.0}
+    image: ${HYDRO_MEDIA_IMAGE:-ghcr.io/albert-li-sz/reactions-generator-hydro:1.21.2}
     hostname: ${HYDRO_MEDIA_NODE:-reactions-01}
     restart: unless-stopped
+    secrets:
+      - hydro_media_env
     volumes:
       - ./out:/app/out
     command:
       - all
-      - ${HYDRO_REACTIONS_API:?Set HYDRO_REACTIONS_API in the local .env file}
       - --hydro-upload
       - --total-workers
       - "${HYDRO_WORKER_TOTAL:-1}"
@@ -15,3 +16,6 @@ services:
       - "${HYDRO_WORKER_ID:-0}"
       - --hardware
       - ${HYDRO_HARDWARE:-cpu}
+secrets:
+  hydro_media_env:
+    file: ./.env

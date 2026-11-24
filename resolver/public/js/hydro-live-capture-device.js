@@ -95,67 +95,81 @@ function reportStatus() {
     });
 }
 
-/** Screen and webcam: tried at once (works when the browser is started with the flags on the management page), else on a click. */
-async function capture(fromClick = false) {
-    if (!state.profile) return;
-    const { screen, webcam } = state.profile;
-    const problems = [];
-    if (!screenSupported) problems.push('当前浏览器不支持屏幕共享');
-    else if (!state.screen) {
-        // While the browser's picker is open, say what to choose (it waits for the contestant).
-        setStatus('请选择“整个屏幕”并点击“分享”');
-        try {
-            const stream = await mediaDevices.getDisplayMedia({
-                // Chrome opens its picker on 整个屏幕 and leaves out this window and tab switching.
-                video: { width: { ideal: screen.width }, height: { ideal: screen.height }, frameRate: { ideal: screen.frameRate, max: screen.frameRate }, displaySurface: 'monitor' },
-                audio: false, monitorTypeSurfaces: 'include', selfBrowserSurface: 'exclude', surfaceSwitching: 'exclude', systemAudio: 'exclude',
-            });
-            const surface = stream.getVideoTracks()[0]?.getSettings().displaySurface;
-            if (surface && surface !== 'monitor') {
-                for (const track of stream.getTracks()) track.stop();
-                throw Object.assign(new Error('请选择“整个屏幕”，不要只共享窗口或标签页'), { name: 'WrongSurface' });
-            }
-            state.screen = stream;
-            render();
-            reportStatus();
-            state.screen.getVideoTracks()[0].addEventListener('ended', () => {
-                state.screen = null;
-                for (const session of [...state.sessions.values()]) if (session.stream === 'screen') session.end('选手机停止了屏幕共享');
-                render();
-                reportStatus();
-                setStatus('屏幕共享已停止', 'warn');
-            });
-        } catch (error) {
-            problems.push(error.name === 'WrongSurface' ? error.message
-                : error.name === 'NotAllowedError' && fromClick ? '没有共享屏幕。请再次点击按钮，在弹出的窗口中选择“整个屏幕”并点击“分享”'
-                    : fromClick ? `屏幕：${error.message || error.name}` : '请点击下方按钮，在弹出的窗口中选择“整个屏幕”并点击“分享”');
+function useStream(kind, stream) {
+    state[kind] = stream;
+    stream.getVideoTracks()[0].addEventListener('ended', () => {
+        if (state[kind] !== stream) return;
+        for (const track of stream.getTracks()) track.stop();
+        state[kind] = null;
+        const reason = kind === 'screen' ? '屏幕共享已停止' : '摄像头采集已停止';
+        for (const session of [...state.sessions.values()]) if (session.stream === kind) session.end(reason);
+        render();
+        reportStatus();
+        setStatus(reason, 'warn');
+    });
+    render();
+    reportStatus();
+}
+
+async function captureScreen(fromClick) {
+    if (!screenSupported) return '当前浏览器不支持屏幕共享';
+    if (state.screen) return;
+    const { screen } = state.profile;
+    setStatus('请选择“整个屏幕”并点击“分享”');
+    try {
+        const stream = await mediaDevices.getDisplayMedia({
+            video: { width: { ideal: screen.width }, height: { ideal: screen.height }, frameRate: { ideal: screen.frameRate, max: screen.frameRate }, displaySurface: 'monitor' },
+            audio: false, monitorTypeSurfaces: 'include', selfBrowserSurface: 'exclude', surfaceSwitching: 'exclude', systemAudio: 'exclude',
+        });
+        const surface = stream.getVideoTracks()[0]?.getSettings().displaySurface;
+        if (!state.profile || state.stopped || (surface && surface !== 'monitor')) {
+            for (const track of stream.getTracks()) track.stop();
+            if (surface && surface !== 'monitor') return '请选择“整个屏幕”，不要只共享窗口或标签页';
+            return;
         }
+        useStream('screen', stream);
+    } catch (error) {
+        if (!fromClick) return '请点击下方按钮，在弹出的窗口中选择“整个屏幕”并点击“分享”';
+        return error.name === 'NotAllowedError' ? '没有共享屏幕。请再次点击按钮，在弹出的窗口中选择“整个屏幕”并点击“分享”' : '屏幕：' + (error.message || error.name);
     }
-    if (!webcam) { /* screens only */ } else if (!webcamSupported) problems.push('当前浏览器不支持摄像头');
-    else if (!state.webcam) {
+}
+
+async function captureWebcam() {
+    // A manager can disable the webcam or microphone while its browser permission prompt is open.
+    while (state.profile?.webcam && !state.stopped && !state.webcam) {
+        if (!webcamSupported) return '当前浏览器不支持摄像头';
+        const { webcam } = state.profile;
         try {
-            state.webcam = await mediaDevices.getUserMedia({
+            const stream = await mediaDevices.getUserMedia({
                 video: { width: { ideal: webcam.width }, height: { ideal: webcam.height }, frameRate: { ideal: webcam.frameRate } },
                 audio: webcam.audio,
             });
-            const stream = state.webcam;
-            stream.getVideoTracks()[0]?.addEventListener('ended', () => {
-                if (state.webcam !== stream) return;
+            if (!state.profile?.webcam || state.stopped || state.profile.webcam.audio !== webcam.audio) {
                 for (const track of stream.getTracks()) track.stop();
-                state.webcam = null;
-                for (const session of [...state.sessions.values()]) if (session.stream === 'webcam') session.end('摄像头采集已停止');
-                render();
-                reportStatus();
-            });
+                continue;
+            }
+            useStream('webcam', stream);
         } catch (error) {
-            problems.push(error.name === 'NotFoundError' ? '没有找到摄像头' : `摄像头：${error.message || error.name}`);
+            return error.name === 'NotFoundError' ? '没有找到摄像头' : '摄像头：' + (error.message || error.name);
         }
     }
+}
+
+const pendingCapture = new Map();
+function acquire(kind, request) {
+    if (!pendingCapture.has(kind)) pendingCapture.set(kind, request().finally(() => pendingCapture.delete(kind)));
+    return pendingCapture.get(kind);
+}
+
+// Let each permitted source start recording as soon as its picker returns.
+async function capture(fromClick = false) {
+    if (!state.profile) return;
+    const results = await Promise.all([acquire('screen', () => captureScreen(fromClick)), acquire('webcam', captureWebcam)]);
+    if (!state.profile || state.stopped) return;
+    const problems = results.filter(Boolean);
     render();
     reportStatus();
-    if (problems.length) setStatus(problems.join('；'), 'warn');
-    else setStatus('');
-    // Keep the screen awake while capturing.
+    setStatus(problems.join('；'), problems.length ? 'warn' : '');
     navigator.wakeLock?.request('screen').catch(() => {});
 }
 
@@ -267,7 +281,15 @@ function connect() {
         render();
         const reason = String(event.reason || '').replace(/^\w*Error:\s*/, '');
         // 4004: the link was regenerated, the device deleted or capture turned off; 4009: opened elsewhere.
-        if ([4000, 4004, 4005, 4009].includes(event.code)) recorder.reset();
+        if ([4000, 4004, 4005, 4009].includes(event.code)) {
+            recorder.reset();
+            state.profile = null;
+            for (const kind of ['screen', 'webcam']) {
+                for (const track of state[kind]?.getTracks() || []) track.stop();
+                state[kind] = null;
+            }
+            render();
+        }
         if (event.code === 4004 || event.code === 4009) {
             state.stopped = true;
             setStatus(reason || '采集链接已失效，请向管理员获取新的链接', 'bad');

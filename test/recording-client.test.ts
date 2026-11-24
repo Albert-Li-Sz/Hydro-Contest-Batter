@@ -41,7 +41,7 @@ describe('采集页的录制缓存和上传顺序', () => {
     });
 });
 
-describe('归档屏幕的画布与编码策略', () => {
+describe('归档双路的画布与编码策略', () => {
     it('将 4K 画面按比例缩小到 720p，并保留竖屏、小源以及偶数边长', () => {
         expect(outputSize(3840, 2160, 720)).toEqual({ width: 1280, height: 720 });
         expect(outputSize(1080, 1920, 720)).toEqual({ width: 404, height: 720 });
@@ -136,25 +136,31 @@ describe('归档屏幕的画布与编码策略', () => {
         vi.useFakeTimers();
         try {
             const track = { getVideoTracks: () => [{ readyState: 'live' }] };
-            const recorder = new CaptureRecorder({ uploadUrl: '', sources: () => ({screen: track}), send() {}, show() {} });
-            const quality = { preset: 'archiveHd', height: 720, fps: 24, kbps: 1500 };
-            recorder.settings = { archive: { enabled: true, screen: quality }, autoDowngrade: true };
+            const recorder = new CaptureRecorder({ uploadUrl: '', sources: () => ({screen: track, webcam: track}), send() {}, show() {} });
+            const quality = { preset: 'archiveHd', height: 720, fps: 24, kbps: 1200 };
+            recorder.settings = { archive: { enabled: true, screen: quality, webcam: quality }, autoDowngrade: true };
             recorder.db = {};
             recorder.teamUid = 1;
             recorder.backlogSeconds = 80;
-            recorder.recordLoop = vi.fn(async () => { throw new ArchiveEncoderUnavailable('编码器启动失败'); });
+            const recordLoop = vi.fn(async (entry: { stream: string; archiveHd: boolean; fixedOutput: boolean; quality: { preset: string } }) => {
+                if (entry.stream === 'webcam') throw new ArchiveEncoderUnavailable('编码器启动失败');
+                return new Promise(() => {});
+            });
+            recorder.recordLoop = recordLoop;
             recorder.sync();
             await vi.advanceTimersByTimeAsync(0);
-            expect(recorder.recordLoop.mock.calls[0][0]).toMatchObject({ archiveHd: true, quality: { preset: 'custom' } });
+            expect(recordLoop.mock.calls.map(([entry]) => [entry.stream, entry.archiveHd, entry.fixedOutput, entry.quality.preset]))
+                .toEqual([['screen', true, true, 'custom'], ['webcam', true, true, 'custom']]);
             recorder.sync();
-            expect(recorder.recordLoop).toHaveBeenCalledTimes(1);
-            expect(recorder.recordingError()).toContain('编码器启动失败');
+            expect(recorder.recordLoop).toHaveBeenCalledTimes(2);
+            expect([...recorder.loops.keys()]).toEqual(['archive:screen']);
+            expect(recorder.recordingError()).toContain('高清摄像头留档已停止：编码器启动失败');
             recorder.settings.archive.enabled = false;
             recorder.sync();
             expect(recorder.recordingError()).toBe('');
             recorder.settings.archive.enabled = true;
             recorder.sync();
-            expect(recorder.recordLoop).toHaveBeenCalledTimes(2);
+            expect(recorder.recordLoop).toHaveBeenCalledTimes(4);
         } finally { vi.useRealTimers(); }
     });
 });

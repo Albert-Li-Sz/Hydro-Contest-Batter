@@ -45,23 +45,50 @@ def ffmpeg(*args):
     )
 
 
-def download(base, url, dest, limit=20 * 1024 * 1024):
-    # An uploaded layout is data. Its values may only identify assets served by this Hydro instance.
+def download(base, url, dest, limit=20 * 1024 * 1024, secret=""):
+    # Layouts can refer to public logos elsewhere on this origin. Only worker-owned
+    # file routes receive the Bearer; a storage redirect never inherits this header.
+    origin = urlsplit(base)
     resolved = urljoin(base + "/", url)
-    if urlsplit(resolved)[:2] != urlsplit(base)[:2] or urlsplit(
-        resolved
-    ).scheme not in ("https", "http"):
+    target = urlsplit(resolved)
+    if target[:2] != origin[:2] or target.scheme not in ("https", "http"):
         raise ValueError("Media URL must belong to the contest server")
-    with requests.get(resolved, stream=True, timeout=(10, 90)) as response:
-        response.raise_for_status()
-        size = 0
-        with dest.open("wb") as output:
-            for block in response.iter_content(256 * 1024):
-                size += len(block)
-                if size > limit:
-                    raise ValueError("Media exceeds its size limit")
-                output.write(block)
-    return dest
+    prefix = origin.path.rstrip("/") + "/"
+    tail = target.path.removeprefix(prefix) if target.path.startswith(prefix) else ""
+    protected = re.fullmatch(
+        r"(?:files/(?:assets|segments)/[A-Za-z0-9_-]+|clips/[a-fA-F0-9]{24}/(?:screen|webcam))",
+        tail,
+    )
+    headers = {"Authorization": "Bearer " + secret} if secret and protected else {}
+    for _ in range(6):
+        with requests.get(
+            resolved,
+            headers=headers,
+            allow_redirects=False,
+            stream=True,
+            timeout=(10, 90),
+        ) as response:
+            if response.is_redirect:
+                resolved = urljoin(resolved, response.headers["Location"])
+                target = urlsplit(resolved)
+                if (
+                    target.scheme not in ("https", "http")
+                    or not target.hostname
+                    or target.username is not None
+                ):
+                    raise ValueError("Invalid storage redirect")
+                headers = {}
+                continue
+            response.raise_for_status()
+            size = 0
+            with dest.open("wb") as output:
+                for block in response.iter_content(256 * 1024):
+                    size += len(block)
+                    if size > limit:
+                        raise ValueError("Media exceeds its size limit")
+                    output.write(block)
+            return dest
+    raise ValueError("Too many storage redirects")
 
 
 def timeline(segments, start, end):
@@ -274,7 +301,9 @@ def graphic(folder, idx, item, layout, detail, logo, font, judged=True):
     return out
 
 
-def render(base, task, detail, work, output, encoder="cpu", font=FONT, sound=None):
+def render(
+    base, task, detail, work, output, encoder="cpu", font=FONT, sound=None, secret=""
+):
     layout = task["layout"]
     width, height = (int(layout["canvas"][k]) for k in ("width", "height"))
     if not all(16 <= n <= 3840 and n % 2 == 0 for n in (width, height)):
@@ -332,7 +361,7 @@ def render(base, task, detail, work, output, encoder="cpu", font=FONT, sound=Non
     assets = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         jobs = {
-            url: pool.submit(download, base, url, work / f"input-{i}")
+            url: pool.submit(download, base, url, work / f"input-{i}", secret=secret)
             for i, url in enumerate(sorted(urls))
         }
         for url, job in jobs.items():

@@ -95,11 +95,11 @@ function showRecordings(panel, state, data, query, reload) {
             && (!verdict.value || c.status === +verdict.value) && (!phase.value || c.state === phase.value));
         list.replaceChildren(table(['提交时间', '队伍', '题目', '结果', '录像状态', '回看'], items.map((c) => [
             formatTime(c.submittedAt), teamName(state, c.teamUid), String(c.pid), (c.firstSolve ? '一血 · ' : '') + (verdicts[c.status] || c.status), clipStates[c.state] || c.state,
-            button('查看', () => openDialog({ title: '提交片段 · ' + teamName(state, c.teamUid), confirm: '完成', body: [
+            el('button', { type: 'button', class: 'button', text: '查看', 'data-rid': c.rid, onclick: () => openDialog({ title: '提交片段 · ' + teamName(state, c.teamUid), confirm: '完成', body: [
                 el('p', { text: formatTime(c.windowStart) + ' 至 ' + formatTime(c.windowEnd) + (c.reason ? ' · ' + (reasons[c.reason] || c.reason) : '') }),
                 ...Object.entries(c.streams || {}).map(([stream, track]) => group(streams[stream], player(track.segments.map((id) => byId.get(id)).filter(Boolean), time(c.windowStart), time(c.windowEnd)),
                     ...(track.missing || []).map((g) => el('p', { class: 'resolver-muted', text: '缺段 ' + formatTime(g.from) + ' 至 ' + formatTime(g.to) })))),
-            ] })),
+            ] }) }),
         ]), '没有符合条件的提交片段'));
     };
     team.onchange = () => reload({ teamPage: 1, teamUid: team.value });
@@ -110,8 +110,10 @@ function showRecordings(panel, state, data, query, reload) {
     const timeline = el('div', { class: 'record-timeline' });
     const archiveTeams = [...new Set([...archive, ...gaps].map((s) => s.teamUid))];
     for (const uid of archiveTeams) {
+        const tracks = Object.fromEntries(Object.keys(streams).map((stream) => [stream,
+            archive.filter((s) => s.teamUid === uid && s.stream === stream).sort((a, b) => time(a.startAt) - time(b.startAt))]));
         for (const stream of Object.keys(streams)) {
-            const rows = archive.filter((s) => s.teamUid === uid && s.stream === stream).sort((a, b) => time(a.startAt) - time(b.startAt));
+            const rows = tracks[stream];
             const holes = gaps.filter((s) => s.teamUid === uid && s.stream === stream);
             if (!rows.length && !holes.length) continue;
             const starts = [...rows.map((r) => time(r.startAt)), ...holes.map((g) => time(g.from))];
@@ -124,11 +126,15 @@ function showRecordings(panel, state, data, query, reload) {
                 strip.append(el(isGap ? 'span' : 'button', { type: isGap ? null : 'button', class: isGap ? 'record-gap' : 'record-segment', title, 'aria-label': title,
                     style: 'left:' + (a - from) * 100 / range + '%;width:' + (b - a) * 100 / range + '%', onclick: click }));
             };
-            rows.forEach((r, index) => band(time(r.startAt), time(r.endAt), [formatTime(r.startAt), bytes(r.bytes), segmentDescription(r)].filter(Boolean).join(' · '), false, (e) => {
+            rows.forEach((r) => band(time(r.startAt), time(r.endAt), [formatTime(r.startAt), bytes(r.bytes), segmentDescription(r)].filter(Boolean).join(' · '), false, (e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
                 const pos = e.detail && rect.width ? Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)) : 0;
-                const at = time(r.startAt) + (time(r.endAt) - time(r.startAt)) * pos;
-                openDialog({ title: '留档 · ' + teamName(state, uid) + ' · ' + streams[stream], confirm: '完成', body: [player(rows.slice(index), at)] });
+                const at = Math.min(time(r.endAt) - 1, time(r.startAt) + (time(r.endAt) - time(r.startAt)) * pos);
+                const panels = Object.entries(tracks).filter(([, entries]) => entries.length).map(([name, entries]) => {
+                    const index = entries.findIndex((s) => time(s.startAt) <= at && time(s.endAt) > at);
+                    return group(streams[name], index < 0 ? el('p', { text: '此时没有该路录像' }) : player(entries.slice(index), at));
+                });
+                openDialog({ title: '留档 · ' + teamName(state, uid), confirm: '完成', body: panels });
             }));
             holes.forEach((g) => band(time(g.from), time(g.to), formatTime(g.from) + ' 至 ' + formatTime(g.to) + ' · ' + (reasons[g.reason] || '缺段'), true));
             timeline.append(el('div', {}, el('strong', { text: teamName(state, uid) + ' · ' + streams[stream] }), strip));
@@ -211,6 +217,10 @@ function showSettings(panel, state, data) {
             inputs.replaceChildren(); const q = obj[stream]; if (!q) return;
             if (q.preset === 'custom') inputs.append(numberField('高度 / px', q, 'height', 120, 2160), numberField('帧率 / fps', q, 'fps', 0.1, 60, '0.1'), numberField('码率 / kbps', q, 'kbps', 10, 20000));
             else inputs.append(el('span', { text: q.height + 'p · ' + q.fps + ' fps · ' + q.kbps + ' kbps' }));
+            if (stream === 'webcam' && !state.settings.webcam) {
+                inputs.append(el('small', { class: 'resolver-muted', text: '当前未采集摄像头。可在采集设备的采集设置中开启。' }));
+                return;
+            }
             if (q.preset === 'archiveHd') inputs.append(el('small', { class: 'resolver-muted', text: '依次尝试 H.265、AV1、H.264。首段最多 2 秒，之后每 60 秒分段。' }));
         };
         preset.onchange = () => {
@@ -251,7 +261,7 @@ function reportView(state, test) {
     const deviceName = (id) => state.devices.find((d) => d.id === id)?.name || id;
     const summary = test.summary;
     const body = el('div');
-    const recommended = summary?.recommended === 'archiveHd' ? '屏幕选高清留档，其他已启用通道选高档' : presets[summary?.recommended];
+    const recommended = summary?.recommended === 'archiveHd' ? '已启用的留档通道选高清留档，提交片段选高档' : presets[summary?.recommended];
     if (summary) body.append(el('p', { text: '峰值 ' + num(summary.peakMbps) + ' Mbps · P95 ' + num(summary.p95Mbps) + ' Mbps · 最大积压 ' + bytes(summary.maxBacklog) + ' · 失败率 ' + percent(summary.failureRate) }),
         el('p', { text: (summary.passed ? '本次测试达标' : '本次测试未达标') + (summary.recommended ? ' · 建议画质 ' + recommended : '')
             + (summary.failedDevices?.length ? ' · 待检查设备 ' + summary.failedDevices.map(deviceName).join('、') : '') }));
@@ -273,7 +283,8 @@ function reportView(state, test) {
             const d = test.devices[id] || {};
             const rates = Object.entries(d.bitrates || {}).map(([k, v]) => names[k] + ' ' + num(v)).join('、');
             return [deviceName(id), bytes(d.bytes), bytes(d.backlogBytes), String(d.failures ?? '—'), percent(d.dropRate), d.pressure || '—',
-                num(d.throughputMbps), [rates, codecLabels[d.archiveScreenCodec] && '留档屏幕 ' + codecLabels[d.archiveScreenCodec]].filter(Boolean).join(' · ') || '—', d.recordingError || (grades[d.grade] || '等待上报') + (d.recommendation === 'low' ? ' · 建议低档' : '')];
+                num(d.throughputMbps), [rates, codecLabels[d.archiveScreenCodec] && '留档屏幕 ' + codecLabels[d.archiveScreenCodec],
+                    codecLabels[d.archiveWebcamCodec] && '留档摄像头 ' + codecLabels[d.archiveWebcamCodec]].filter(Boolean).join(' · ') || '—', d.recordingError || (grades[d.grade] || '等待上报') + (d.recommendation === 'low' ? ' · 建议低档' : '')];
         }), '没有设备报告'));
     return body;
 }

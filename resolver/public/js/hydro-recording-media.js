@@ -3,9 +3,7 @@ const HEVC = ['video/mp4;codecs=hvc1', 'video/mp4;codecs=hev1', 'video/mp4;codec
 const ARCHIVE_MIME = [...HEVC, 'video/mp4;codecs=av01', 'video/mp4;codecs=av01.0.05M.08', 'video/webm;codecs=av1',
     'video/mp4;codecs=avc1', 'video/mp4;codecs=avc1.42E01F', 'video/webm;codecs=h264'];
 export const selectMime = (supported, archiveHd = false) => (archiveHd ? ARCHIVE_MIME : MIME).find(supported);
-export class ArchiveEncoderUnavailable extends Error {
-    constructor(reason) { super('高清屏幕留档已停止：' + reason); }
-}
+export class ArchiveEncoderUnavailable extends Error {}
 
 export function outputSize(width, height, limit) {
     if (!(width >= 2 && height >= 2 && limit >= 2)) return null;
@@ -92,7 +90,7 @@ async function canvasSource(track, quality, clean, manual, allowFrame) {
     return { track: out, ...size };
 }
 
-export async function recordingSource(source, quality, withAudio, archiveScreen = false, archiveHd = false, allowFrame = () => true) {
+export async function recordingSource(source, quality, withAudio, fixedOutput = false, archiveHd = false, allowFrame = () => true) {
     if (archiveHd && !selectMime((m) => MediaRecorder.isTypeSupported(m), true)) throw new ArchiveEncoderUnavailable('此浏览器无法使用 H.265、AV1 或 H.264 编码');
     const original = source.getVideoTracks()[0];
     if (!original || original.readyState === 'ended') throw new Error('采集轨道已结束');
@@ -102,7 +100,7 @@ export async function recordingSource(source, quality, withAudio, archiveScreen 
     try {
         const canDraw = typeof HTMLCanvasElement.prototype.captureStream === 'function';
         let output;
-        if (archiveScreen && canDraw) {
+        if (fixedOutput && canDraw) {
             const resources = [];
             try { output = await canvasSource(videoTrack, quality, resources, true, allowFrame); clean.push(...resources); }
             catch { for (const f of resources.reverse()) f(); }
@@ -110,15 +108,16 @@ export async function recordingSource(source, quality, withAudio, archiveScreen 
         if (!output) {
             const settings = original.getSettings();
             const ratio = settings.aspectRatio || (settings.width && settings.height ? settings.width / settings.height : 16 / 9);
-            const limits = { width: { max: Math.round(quality.height * ratio) }, height: { max: quality.height }, frameRate: { max: quality.fps } };
+            const height = Math.min(quality.height, settings.height || quality.height);
+            const limits = { width: { max: Math.round(height * ratio) }, height: { max: height }, frameRate: { max: quality.fps } };
             let constrained = true;
             try { await videoTrack.applyConstraints(limits); } catch { constrained = false; }
             const actual = videoTrack.getSettings();
-            if (!archiveScreen && canDraw && (!constrained || !actual.height || actual.height > quality.height || !actual.frameRate || actual.frameRate > quality.fps + 0.1)) {
+            if (!fixedOutput && canDraw && (!constrained || !actual.height || actual.height > quality.height || !actual.frameRate || actual.frameRate > quality.fps + 0.1)) {
                 output = await canvasSource(videoTrack, quality, clean, false, allowFrame);
             } else {
-                if (archiveHd && (!actual.width || !actual.height || actual.height > quality.height || !actual.frameRate || actual.frameRate > quality.fps + 0.1)) {
-                    throw new ArchiveEncoderUnavailable('无法按所选尺寸和帧率采集屏幕');
+                if (archiveHd && (!actual.width || !actual.height || actual.height > height || !actual.frameRate || actual.frameRate > quality.fps + 0.1)) {
+                    throw new ArchiveEncoderUnavailable('无法按所选尺寸和帧率采集视频');
                 }
                 output = { track: videoTrack, width: actual.width, height: actual.height };
             }

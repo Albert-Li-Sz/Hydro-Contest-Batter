@@ -49,6 +49,7 @@ function render() {
     document.getElementById('rx-tabs').replaceChildren(
         ...tabs.map(([id, label]) => {
             const b = button(label, () => {
+                if (tab === 'workers' && id !== tab) justIssued = null;
                 tab = id;
                 page = 1;
                 notify();
@@ -164,49 +165,131 @@ function render() {
             }),
         );
 }
+let justIssued = null;
 function workers() {
-    const url = location.origin + runtime.base + '-api/' + data.token;
-    root.append(
-        el('h2', { text: '媒体机接入' }),
-        el(
-            'div',
-            { class: 'rx-actions' },
-            button(data.token ? '更换令牌' : '生成令牌', async () => {
-                if (data.token && !confirm('更换令牌会使现有媒体机链接立即失效。继续更换？')) return;
-                await save('token', {});
-            }),
-            data.token
-                ? button('复制接口地址', async () => {
-                      if (!(await copyText(url))) throw new Error('请从下方命令复制地址');
-                      notify('接口地址已复制');
-                  })
-                : null,
-        ),
-    );
-    if (data.token)
-        root.append(
-            el('p', { text: '在媒体机上运行以下命令。Docker 将拉取公共镜像并连接本场比赛。' }),
-            el('pre', {
-                class: 'rx-code',
-                text:
-                    'docker run --rm -v "$PWD/out:/app/out" ghcr.io/albert-li-sz/reactions-generator-hydro:1.21.0 all "' +
-                    url +
-                    '" --hydro-upload',
-            }),
-            el('h3', { text: '本机运行' }),
-            el('pre', { class: 'rx-code', text: 'poetry install\npoetry run main all "' + url + '" --hydro-upload' }),
-        );
-    root.append(el('h2', { text: '媒体机心跳' }), button('刷新', load));
-    for (const w of data.workers)
+    const name = el('input', { type: 'text', maxlength: 80, placeholder: '例如：赛场媒体机 A', 'aria-label': '媒体机名称' });
+    async function issue(kind, params) {
+        const result = await action(kind, { ...params, origin: location.origin });
+        justIssued = { id: result.id, revision: result.revision, code: result.code };
+        await load();
+        notify('连接码已生成，请复制到这台媒体机');
+    }
+    const create = button('创建连接', async () => {
+        const value = name.value.trim();
+        if (!value) {
+            name.focus();
+            throw new Error('请填写媒体机名称');
+        }
+        create.disabled = true;
+        try {
+            await issue('createConnection', { name: value });
+        } finally {
+            create.disabled = false;
+        }
+    });
+    root.append(el('h2', { text: '媒体机连接' }), el('div', { class: 'rx-tools' }, field('媒体机名称', name), create));
+    for (const c of data.connections || []) {
         root.append(
             el(
                 'div',
                 { class: 'rx-row' },
-                el('strong', { text: w.name + ' · ' + w.version }),
-                el('span', { text: '分区 ' + w.partition + ' · ' + (Date.now() - w.lastSeen < 60000 ? '在线' : '离线') }),
+                el('strong', { text: c.name }),
+                el('span', { text: '签发于 ' + formatTime(c.issuedAt) }),
+                el(
+                    'div',
+                    { class: 'rx-actions' },
+                    button('更换密钥', async () => {
+                        if (confirm('更换「' + c.name + '」的密钥后，需要在这台媒体机更新连接码。继续？'))
+                            await issue('rotateConnection', { id: c.id, revision: c.revision });
+                    }),
+                    button('撤销连接', async () => {
+                        if (confirm('撤销「' + c.name + '」的连接后，这台媒体机将失去本场访问权。继续？')) {
+                            if (justIssued?.id === c.id) justIssued = null;
+                            await save('revokeConnection', { id: c.id, revision: c.revision });
+                        }
+                    }),
+                ),
+            ),
+        );
+    }
+    if (justIssued && data.connections?.some((c) => c.id === justIssued.id && c.revision === justIssued.revision)) {
+        const code = justIssued.code,
+            box = el('textarea', { readonly: true, rows: 3, spellcheck: false, 'aria-label': '新签发的媒体机连接码', style: 'width:100%' });
+        box.value = code;
+        const copy = async (text) => {
+            if (!(await copyText(text))) {
+                box.focus();
+                box.select();
+                throw new Error('请手动复制已选中的连接码');
+            }
+            notify('已复制');
+        };
+        root.append(
+            el('h3', { text: '新签发的连接码' }),
+            el('p', { text: '离开此页后，如需重新取得连接码，请更换该连接的密钥。' }),
+            box,
+            el(
+                'div',
+                { class: 'rx-actions' },
+                button('复制连接码', () => copy(code)),
+                button('复制 .env 配置', () => copy('HYDRO_MEDIA_CONNECTION=' + code)),
+                button('收起连接码', () => {
+                    justIssued = null;
+                    render();
+                }),
+            ),
+        );
+    } else {
+        justIssued = null;
+    }
+    if (data.legacyEnabled)
+        root.append(
+            el(
+                'div',
+                { class: 'rx-actions' },
+                el('span', { text: '旧版媒体机链接仍可使用。' }),
+                button('撤销旧版链接', async () => {
+                    if (confirm('撤销后，使用旧版接口地址的媒体机将断开。继续？')) await save('revokeLegacy', {});
+                }),
+            ),
+        );
+    root.append(
+        el('h3', { text: '在媒体机上启动' }),
+        el(
+            'p',
+            {},
+            el('a', {
+                href: 'https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.compose.yaml',
+                target: '_blank',
+                rel: 'noopener',
+                text: '下载 Compose 配置',
+            }),
+            '并保存为 compose.yaml。将上面复制的 .env 配置写入同目录的 .env 文件，然后运行：',
+        ),
+        el('pre', { class: 'rx-code', text: 'docker compose up -d' }),
+        el('h2', { text: '媒体机心跳' }),
+        button('刷新', load),
+    );
+    const connections = new Map((data.connections || []).map((c) => [c.id, c]));
+    for (const w of data.workers) {
+        const registered = connections.get(w.connectionId);
+        const valid = w.connectionId ? registered && w.connectionRevision === registered.revision : data.legacyEnabled;
+        root.append(
+            el(
+                'div',
+                { class: 'rx-row' },
+                el('strong', { text: [registered?.name, w.name, w.version].filter(Boolean).join(' · ') }),
+                el('span', {
+                    text:
+                        '分区 ' +
+                        w.partition +
+                        ' · ' +
+                        (!valid ? (registered ? '密钥已更换' : '连接已撤销') : Date.now() - w.lastSeen < 60000 ? '在线' : '离线'),
+                }),
                 el('span', { text: formatTime(w.lastSeen) + ' · 队列 ' + w.queue }),
             ),
         );
+    }
     if (!data.workers.length) root.append(el('p', { text: '尚未收到媒体机心跳' }));
 }
 function publication() {
@@ -271,5 +354,5 @@ function publication() {
 }
 load().catch((e) => notify(e.message, true));
 setInterval(() => {
-    if (tab === 'queue' || tab === 'workers') load().catch((e) => notify(e.message, true));
+    if (tab === 'queue' || (tab === 'workers' && !root.contains(document.activeElement))) load().catch((e) => notify(e.message, true));
 }, 15000);
