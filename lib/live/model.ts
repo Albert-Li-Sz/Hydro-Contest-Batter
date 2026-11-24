@@ -98,7 +98,9 @@ function medalChain(settings: BoardSettings, eligible: number, group?: string): 
         // Medals go to official teams that solved something, as on the board (cappedMedals).
         if (count > 0) awards.push({ id: `${key}-medal`, citation, chainLimit: total, minScore: 1, tiebreakMode } as const);
     }
-    return awards.length ? [{ awards, excludedGroups: ['unofficial'], ...group ? { groups: [group] } : {} }] : [];
+    const podium = rules.podiumEnabled ? { hydroPodium: { basis: rules.podiumBasis, tie: rules.podiumTie, names: rules.podiumNames } } : {};
+    return awards.length || rules.podiumEnabled
+        ? [{ awards, excludedGroups: ['unofficial'], hydroMedalRanking: rules.medalRanking, ...podium, ...group ? { groups: [group] } : {} }] : [];
 }
 
 const logoKey = (name: string) => name.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -150,7 +152,7 @@ export function buildContestInfo(source: LiveSource): ContestInfo {
             hashTag: null, medias: source.medias?.[team.team_id] ?? {}, isHidden: false, isOutOfContest: unofficial,
             organizationId, color: null, reactionVideoTemplate: null, sourceTemplate: null,
             // Team contests: members for title templates ({team.customFields.members}) and the console.
-            customFields: (team.members?.length ? { members: team.members.join(' · ') } : {}) as Record<string, string>,
+            customFields: { ...team.members?.length ? { members: team.members.join(' · ') } : {}, ...team.school_key ? { hydroSchool: team.school_key } : {} } as Record<string, string>,
         };
     });
     // As on the board (lib/board.ts): official teams with an accepted run among the data shown.
@@ -165,7 +167,7 @@ export function buildContestInfo(source: LiveSource): ContestInfo {
         freezeTimeMs: contest.lockAt ? contest.lockAt.getTime() - contest.beginAt.getTime() : null,
         problems, teams, groups, organizations: [...organizations.values()],
         languages: [], emulationSpeed: 1,
-        penaltyRoundingMode: source.settings.tieBreak === 'icpc' ? 'each_submission_down_to_minute' : 'sum_in_seconds',
+        penaltyRoundingMode: source.settings.tieBreak === 'icpc' || source.settings.tieBreak === 'ccpc' ? 'each_submission_down_to_minute' : 'sum_in_seconds',
         // The main board's medals, then each sub-board's own (as the board shows a sub-board).
         awardsSettings: [...medalChain(source.settings, eligible(teams)),
             ...groups.flatMap((group) => medalChain(source.settings, eligible(teams.filter((team) => team.groups.includes(group.id))), group.id))],
@@ -173,7 +175,8 @@ export function buildContestInfo(source: LiveSource): ContestInfo {
         queueSettings: { ...defaultQueueSettings },
         showTeamsWithoutSubmissions: true,
         problemColorPolicy: { type: 'always' },
-        customFields: {}, persons: [], accounts: [], mainScoreboardGroupId: null,
+        // The ranking rule's name: CCPC times by the minute as ICPC, but equal teams share the rank.
+        customFields: { hydroTieBreak: source.settings.tieBreak ?? 'hydro' }, persons: [], accounts: [], mainScoreboardGroupId: null,
     };
 }
 

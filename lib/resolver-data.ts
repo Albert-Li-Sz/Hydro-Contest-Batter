@@ -45,7 +45,8 @@ function resolverAwardConfig(awards: BoardAwards, eligible = 0) {
     const counts = medalCounts(awards, eligible);
     return { goldCount: counts.gold, silverCount: counts.silver, bronzeCount: counts.bronze,
         goldCitation: awards.goldCitation, silverCitation: awards.silverCitation, bronzeCitation: awards.bronzeCitation,
-        medalSameScore: awards.medalSameScore, podiumEnabled: awards.podiumEnabled, firstSolve: awards.firstSolve };
+        medalSameScore: awards.medalSameScore, podiumEnabled: awards.podiumEnabled, firstSolve: awards.firstSolve,
+        podiumBasis: awards.podiumBasis ?? 'team', podiumTie: awards.podiumTie ?? 'lastAccept', podiumNames: awards.podiumNames, medalRanking: awards.medalRanking ?? 'team' };
 }
 
 export function defaultResolverConfig(settings: BoardAwards, ended: boolean): ResolverConfig {
@@ -118,7 +119,7 @@ export function prepareResolver(
         const unrank = team.group.includes('unofficial') || (config.mode === 'official' && !members.has(team.team_id));
         return {
             id: team.team_id, name: team.name, displayName: config.showSchool && school ? `${team.name}（${school}）` : team.name,
-            organizationName: school, unrank,
+            organizationName: school, unrank, ...team.school_key ? { schoolKey: team.school_key } : {},
             ...team.members?.length ? { members: team.members } : {},
             logo: logoId && /^[a-f\d]{12}$/.test(logoId) ? `${resolverAssetBase}/logos/${logoId}.webp` : `${resolverAssetBase}/assets/img/icpc-logo.png`,
         };

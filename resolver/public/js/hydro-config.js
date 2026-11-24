@@ -92,10 +92,10 @@ function updateAwards(board, config) {
     }
     document.getElementById('resolver-award-policy').textContent = [
         ratio && `按有效队伍比例设奖（有效队伍 ${board.eligible ?? '—'} 支：正式且至少通过一题，名额向上取整）`,
-        rules.tieBreak === 'icpc' ? '同分规则：ICPC 区域赛（罚时按分钟，再比最后一题通过时间）' : '同分规则：Hydro（罚时精确到秒）',
-        rules.medalSameScore ? '并列同奖' : '按名额授奖',
+        { icpc: '同分规则：ICPC 区域赛（罚时按分钟，再比最后一题通过时间）', ccpc: '同分规则：CCPC（罚时按分钟，同题数同用时并列）' }[rules.tieBreak] || '同分规则：Hydro（罚时精确到秒）',
+        rules.medalRanking === 'school' ? '奖牌按学校名次' : rules.medalSameScore ? '并列同奖' : '按名额授奖',
         rules.firstSolve && (rules.unofficialFirstSolve ? '一血奖含打星选手' : '一血奖仅限正式选手'),
-        rules.podiumEnabled && '前三名奖项',
+        rules.podiumEnabled && `${(rules.podiumNames || ['冠军', '亚军', '季军']).join('、')}${rules.podiumBasis === 'school' ? '按学校名次' : ''}${rules.podiumTie === 'shared' ? '，并列共享' : '，并列看最晚通过时间'}`,
     ].filter(Boolean).join(' · ');
 }
 

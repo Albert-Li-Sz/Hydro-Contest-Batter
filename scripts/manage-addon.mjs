@@ -85,6 +85,7 @@ function checkPackage(directory) {
         `public/hydro-xcpcio/${pkg.version}/${manifest.css}`,
         `public/hydro-xcpcio/${pkg.version}/award-policy.mjs`,
         `public/hydro-xcpcio/${pkg.version}/standings.js`,
+        `public/hydro-xcpcio/${pkg.version}/trophies.js`,
         `public/hydro-resolver/${pkg.version}/js/play.js`,
         'public/hydro-resolver/logos/index.json',
         'public/hydro-live/admin/index.html', 'public/hydro-live/overlay/index.html',

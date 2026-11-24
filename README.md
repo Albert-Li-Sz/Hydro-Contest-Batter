@@ -26,11 +26,11 @@ Hydro OJ 的 ACM 比赛榜单、滚榜、大屏与直播插件，集成 XCPCIO �
 
 需要 Node.js 22+ 和 Hydro 5.x（已对 5.0.7 与 5.1.0 检查）。请使用运行 Hydro 的系统用户，在主服务所在环境执行。
 
-下载完整安装包 `hydro-scoreboard-xcpcio-plus-1.19.1.tgz`，解压到固定目录，注册 addon 后重启。安装包包含预构建页面、字体和完整校徽。
+下载完整安装包 `hydro-scoreboard-xcpcio-plus-1.20.0.tgz`，解压到固定目录，注册 addon 后重启。安装包包含预构建页面、字体和完整校徽。
 
 ```bash
 mkdir -p "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
-tar -xzf hydro-scoreboard-xcpcio-plus-1.19.1.tgz \
+tar -xzf hydro-scoreboard-xcpcio-plus-1.20.0.tgz \
   -C "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus" --strip-components=1
 hydrooj addon add "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 pm2 restart hydrooj
@@ -44,7 +44,7 @@ pm2 restart hydrooj
 
 ```bash
 mkdir -p xcpcio-update
-tar -xzf hydro-scoreboard-xcpcio-plus-1.19.1.tgz -C xcpcio-update
+tar -xzf hydro-scoreboard-xcpcio-plus-1.20.0.tgz -C xcpcio-update
 bash xcpcio-update/package/install.sh install
 
 # 升级时下载并解压新包，运行新包中的脚本
@@ -60,7 +60,8 @@ bash "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus/install.sh" uninstall
 
 ## 使用
 
-- **增强榜**：从比赛成绩表进入；比赛右侧菜单的“榜单与奖项”统一配置分榜、各榜奖项（固定名额或按比例）、同分规则（Hydro 或 ICPC 区域赛）、公开访问和身份显示，榜单、滚榜、大屏和直播共用。比赛结束后可在榜单页解除封榜。
+- **赛事中控**：比赛右侧菜单的“赛事中控”集中比赛当天的设置：赛制（Hydro、ICPC 区域赛、CCPC）、奖牌与奖杯、封榜与公开、分榜、气球、打印和画面采集，以及解除封榜和重测复核。详见 [赛事中控](docs/usage.md#赛事中控)。
+- **增强榜**：从比赛成绩表进入；比赛右侧菜单的“榜单与奖项”统一配置分榜、各榜奖项（固定名额或按比例）、同分规则（Hydro、ICPC 区域赛或 CCPC）、学校名次与奖杯、CCPC 新榜单模式、公开访问和身份显示，榜单、滚榜、大屏、直播和成绩导出共用。比赛结束后封榜继续，直到在榜单页或赛事中控解除封榜。
 - **滚榜**：比赛所有者及有“编辑比赛”权限的管理员，从比赛右侧菜单的“滚榜”进入。可只滚所选榜单，或将所选分榜设为正式参赛、其余设为非正式参赛；比赛结束前自动标记为彩排。每位管理员的会话互相独立。
 - **大屏**：同样的管理员从比赛右侧菜单的“大屏”进入，在侧边栏选择画面，设置分榜和样式、填写公告或倒计时目标，复制链接到大屏电脑打开即可，无需登录 Hydro。点击画面、右上角“全屏”按钮或按 F 进入全屏，Esc 退出；无人值守的大屏可用 Chrome / Edge 的 `--kiosk` 参数打开。
 
@@ -83,7 +84,7 @@ bash "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus/install.sh" uninstall
 - **机位监控**：同样的管理员从比赛右侧菜单的“机位监控”进入，详见 [机位监控](docs/usage.md#机位监控)。
 - **评测监控**：同样的管理员从比赛右侧菜单的“评测监控”进入，页面每 3 秒刷新。
 - **赛况总览**：同样的管理员从比赛右侧菜单的“赛况总览”进入，按 F 或点击页面全屏，适合在接待处或领导视察时投屏。
-- **成绩与导出**：在比赛菜单保存成绩快照、按分榜比较名次和奖项变化，导出成绩与获奖名单 CSV，或下载 Hydro 的全部比赛代码。详见 [成绩与导出](docs/usage.md#成绩与导出)。
+- **成绩与导出**：在比赛菜单保存成绩快照、按分榜比较名次和奖项变化，导出成绩与获奖名单 CSV（含学校名次与奖杯），或下载 Hydro 的全部比赛代码。重测后可在“重测复核”批量恢复原结果，并重建基于旧结果的滚榜会话。详见 [成绩与导出](docs/usage.md#成绩与导出)。
 - **答疑台**：在比赛菜单认领并回复提问，从“设置”生成各题答疑员链接。详见 [答疑台](docs/usage.md#答疑台)。
 - **直播**：同样的管理员从比赛右侧菜单的“直播”进入，复制“直播画面”链接添加为 OBS 浏览器源（1920×1080），再打开“导播台”切换画面内容。导播台需要 Hydro 登录，多名导播可同时操作；直播画面链接免登录，可随时作废重建。
 

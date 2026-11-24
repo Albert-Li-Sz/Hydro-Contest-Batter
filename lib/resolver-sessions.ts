@@ -175,6 +175,14 @@ export class ResolverSessions {
         return { status: 409, playback: this.playback(current), error: '进度已在另一个页面更新，已暂停并同步' };
     }
 
+    /** Every session of a contest, whoever created it (重测复核 lists those built from earlier results). */
+    async ofContest(domainId: string, contestId: string) {
+        const rows = await this.sessions.find({ domainId, contestId, ready: true }, {
+            projection: { _id: 1, ownerId: 1, createdAt: 1, config: 1, overview: 1, index: 1 },
+        }).sort({ createdAt: -1 }).toArray();
+        return rows.map((row) => ({ id: row._id, ownerId: row.ownerId, createdAt: row.createdAt, config: row.config, overview: row.overview, index: row.index }));
+    }
+
     /** A session of this contest, whichever administrator created it (read-only audience view). */
     async find(domainId: string, contestId: string, id: string) {
         const session = await this.sessions.findOne({ domainId, contestId, _id: id });

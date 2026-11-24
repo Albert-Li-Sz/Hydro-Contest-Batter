@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
-    ContestModel, type Context, DocumentModel, Handler, NotFoundError, ObjectId, param, PERM, PRIV,
-    StorageService, type Tdoc, Types, ValidationError,
+    ContestModel, type Context, DocumentModel, ForbiddenError, getAlphabeticId, Handler, NotFoundError, ObjectId, param, PERM, PRIV,
+    RecordModel, StorageService, type Tdoc, Types, UserModel, ValidationError,
 } from 'hydrooj';
 import type { BoardData } from './board';
 import type { RejudgeItem, RejudgeJob } from './manage/rejudge';
@@ -9,12 +9,19 @@ import { resolverCodeBase } from './resolver-data';
 import { resultsPage, optionDate, snapshotOption, type ResultOption } from './results-page';
 import { ResultsStore, resultKey, type SnapshotReason } from './results-store';
 import { awardsCsv, boardOptions, resultBoard, restoreRejudge, settled, standingsCsv, type ResultsData } from './results';
+import { filterChanges, impactOf, lastChange, reviewChanges, staleSessions, verdictName, type ReviewChange, type ReviewFilter, type ReviewItem } from './rejudge-review';
+import { toScriptJson } from './settings';
 import { profileValues } from './roster';
 import type { BoardSettings } from './settings';
 import pkg from '../package.json';
 
 interface HistoryJob extends Omit<RejudgeJob, '_id'> { _id: ObjectId }
-interface HistoryItem extends Omit<RejudgeItem, 'job' | 'rid'> { _id: ObjectId; job: ObjectId; rid: ObjectId }
+interface HistoryItem extends Omit<RejudgeItem, 'job' | 'rid'> {
+    _id: ObjectId; job: ObjectId; rid: ObjectId;
+    /** 重测复核: the jury restored the original result, or took that back. */
+    restored?: { at: Date; by: number } | null;
+    reapplied?: { at: Date; by: number } | null;
+}
 declare module 'hydrooj' {
     interface Collections {
         'xcpcio.manage.rejudge.jobs': HistoryJob;
@@ -32,10 +39,17 @@ const endKey = (tdoc: ContestEnd) => resultKey(scopeFor(tdoc), `end-${tdoc.endAt
 const unlockKey = (tdoc: Tdoc) => resultKey(scopeFor(tdoc), `unlock-${tdoc.lockAt?.getTime() ?? 0}`);
 const warning = (error: unknown) => console.warn('[xcpcio] 成绩快照保存失败', error);
 
+/** What 重测复核 needs of the resolver (lib/resolver-routes.ts). */
+export interface ResolverSessionsApi {
+    ofContest: (tdoc: Tdoc) => Promise<{ id: string; ownerId: number; createdAt: Date; config: { boardId: string; rehearsal: boolean }; overview: { title: string } }[]>;
+    rebuild: (tdoc: Tdoc, ids: string[], ownerId: number, privateInfo: boolean) => Promise<{ from: string; id: string; url: string }[]>;
+}
+
 export function applyResults(ctx: Context, dependencies: {
     loadData: (tdoc: Tdoc, realtime: boolean, identity: boolean, staffResults: boolean) => Promise<BoardData>;
     loadSettings: (tdoc: Tdoc) => Promise<BoardSettings>;
     statusOf: (status: number) => string;
+    resolver?: ResolverSessionsApi;
 }) {
     const store = new ResultsStore(ctx.db);
     const jobs = ctx.db.collection('xcpcio.manage.rejudge.jobs');
@@ -240,8 +254,183 @@ export function applyResults(ctx: Context, dependencies: {
         }
     }
 
+    // ---------------------------------------------------------------- 重测复核
+
+    /** The contest's rejudged records, with what each team's result now is, and the teams' journals by record. */
+    async function readReview(tdoc: Tdoc) {
+        const { domainId, contestId } = scopeFor(tdoc);
+        const [history, rows, entries] = await Promise.all([
+            rejudgeHistory(tdoc),
+            items.find({ domainId, contest: contestId }).toArray(),
+            ContestModel.getMultiStatus(domainId, { docId: tdoc.docId }).project({ uid: 1, journal: 1 }).toArray(),
+        ]);
+        const journal = new Map<string, { uid: number; status: number; score: number | null; pid: number }>();
+        for (const entry of entries as { uid: number; journal?: { rid: ObjectId; status: number; score?: number; pid: number }[] }[]) {
+            for (const record of entry.journal || []) journal.set(String(record.rid), { uid: entry.uid, status: record.status, score: record.score ?? null, pid: record.pid });
+        }
+        const jobAt = new Map(history.map((job) => [String(job._id), new Date(job.createdAt).getTime()]));
+        const time = (value?: Date | null) => (value ? new Date(value).getTime() : null);
+        const reviewItems: (ReviewItem & { id: ObjectId })[] = rows.map((row) => ({
+            id: row._id, rid: String(row.rid), job: String(row.job), jobAt: jobAt.get(String(row.job)) ?? row._id.getTimestamp().getTime(),
+            pid: row.pid, before: row.before, beforeScore: row.beforeScore, after: row.after, afterScore: row.afterScore, judgedAt: time(row.judgedAt),
+            restored: row.restored ? { at: time(row.restored.at)!, by: row.restored.by } : null,
+            reapplied: row.reapplied ? { at: time(row.reapplied.at)!, by: row.reapplied.by } : null,
+        }));
+        // Records of this contest only (a domain-wide job also lists records of other contests).
+        const known = reviewItems.filter((item) => journal.has(item.rid));
+        const { changes, pending } = reviewChanges(known, new Map([...journal].map(([rid, entry]) => [rid, entry.status])));
+        return { history, items: known, journal, changes, pending };
+    }
+
+    abstract class ReviewBase extends Handler {
+        tdoc!: Tdoc;
+
+        @param('tid', Types.ObjectId)
+        async prepare(_domainId: string, tid: ObjectId) {
+            this.response.addHeader('Cache-Control', 'no-store');
+            this.checkPriv(PRIV.PRIV_USER_PROFILE);
+            const tdoc = await ContestModel.get(this.domain._id, tid);
+            if (!tdoc || tdoc.rule !== 'acm') throw new NotFoundError('重测复核仅支持 ACM 比赛');
+            if (!this.user.own(tdoc)) this.checkPerm(PERM.PERM_EDIT_CONTEST);
+            this.tdoc = tdoc;
+        }
+
+        canRestore() {
+            return this.user.hasPerm(PERM.PERM_REJUDGE);
+        }
+
+        async review(filter: ReviewFilter = {}) {
+            const tdoc = this.tdoc;
+            const [review, current, sessions] = await Promise.all([readReview(tdoc), load(tdoc), dependencies.resolver?.ofContest(tdoc) ?? []]);
+            const impact = impactOf(current, review.changes, dependencies.statusOf);
+            const teamOf = (rid: string) => String(review.journal.get(rid)?.uid ?? '');
+            const affects = (change: ReviewChange) => !!impact.get(teamOf(change.rid))?.changed;
+            const changedAt = lastChange(review.changes);
+            const stale = new Set(staleSessions(sessions, changedAt).map((session) => session.id));
+            const owners = await UserModel.getList(tdoc.domainId, [...new Set(sessions.map((session) => session.ownerId))]);
+            const jobs = new Map<string, { total: number; pending: number; changed: number }>();
+            for (const item of review.items) {
+                const stat = jobs.get(item.job) || { total: 0, pending: 0, changed: 0 };
+                stat.total++;
+                if (item.after === null) stat.pending++;
+                else if (item.after !== item.before) stat.changed++;
+                jobs.set(item.job, stat);
+            }
+            return {
+                pending: review.pending, changedAt,
+                problems: tdoc.pids.map((pid, index) => ({ pid, label: getAlphabeticId(index) })),
+                jobs: review.history.filter((job) => jobs.has(String(job._id))).map((job) => ({
+                    id: String(job._id), createdAt: job.createdAt, finishedAt: job.finishedAt, ...jobs.get(String(job._id))!,
+                })),
+                total: review.changes.length,
+                changes: filterChanges(review.changes, filter, affects).map((change) => {
+                    const team = teamOf(change.rid);
+                    const index = tdoc.pids.indexOf(change.pid);
+                    return {
+                        ...change, team, teamName: impact.get(team)?.name || team, label: index >= 0 ? getAlphabeticId(index) : `#${change.pid}`,
+                        time: Math.floor((new ObjectId(change.rid).getTimestamp().getTime() - tdoc.beginAt.getTime()) / 1000),
+                        originalName: verdictName(change.original), rejudgedName: verdictName(change.rejudged), currentName: verdictName(change.current),
+                        impact: impact.get(team) || null,
+                    };
+                }),
+                sessions: sessions.map((session) => ({
+                    id: session.id, createdAt: session.createdAt, board: session.config.boardId, rehearsal: session.config.rehearsal,
+                    owner: owners[session.ownerId]?.uname || String(session.ownerId), own: session.ownerId === this.user._id, stale: stale.has(session.id),
+                })),
+            };
+        }
+
+        /** Puts the original (or, taking a restore back, the rejudged) result on the records and the teams' journals. */
+        async apply(rids: string[], restore: boolean) {
+            if (!this.canRestore()) throw new ForbiddenError('需要重测权限');
+            const tdoc = this.tdoc;
+            const review = await readReview(tdoc);
+            const byRid = new Map(review.changes.map((change) => [change.rid, change]));
+            const chosen = [...new Set(rids)].map((rid) => byRid.get(rid)).filter((change): change is ReviewChange => !!change)
+                .filter((change) => (restore ? change.state !== 'restored' : change.state === 'restored'));
+            if (!chosen.length) return { updated: 0 };
+            // The results before the jury's change stay available on the results page.
+            await capture(tdoc, resultKey(scopeFor(tdoc), `manual-${randomUUID()}`), 'manual', { label: restore ? '恢复重测前结果之前' : '撤销恢复之前', operator: this.user._id });
+            const latest = new Map<string, ObjectId>();
+            for (const item of [...review.items].sort((a, b) => a.jobAt - b.jobAt)) latest.set(item.rid, item.id);
+            const now = new Date();
+            for (const change of chosen) {
+                const status = restore ? change.original : change.rejudged;
+                const score = (restore ? change.originalScore : change.rejudgedScore) ?? 0;
+                const rid = new ObjectId(change.rid);
+                const rdoc = await RecordModel.get(tdoc.domainId, rid);
+                const owner = review.journal.get(change.rid);
+                if (!rdoc || !owner) continue;
+                await RecordModel.update(tdoc.domainId, rid, { status, score });
+                await ContestModel.updateStatus(tdoc.domainId, tdoc.docId, owner.uid, rid, owner.pid, { status, score, lang: rdoc.lang, subtasks: rdoc.subtasks });
+                await items.updateOne({ _id: latest.get(change.rid) }, restore
+                    ? { $set: { restored: { at: now, by: this.user._id }, reapplied: null } }
+                    : { $set: { restored: null, reapplied: { at: now, by: this.user._id } } });
+            }
+            (ctx.broadcast as any)('xcpcio/ccs-touch', `${tdoc.domainId}/${tdoc.docId}`);
+            return { updated: chosen.length };
+        }
+
+        payloadOf(input: string) {
+            try { return JSON.parse(input) as Record<string, unknown>; } catch { throw new ValidationError('payload'); }
+        }
+
+    }
+
+    class ReviewHandler extends ReviewBase {
+        async get() {
+            const base = `${baseFor(this.tdoc)}/rejudge-review`;
+            this.response.template = 'xcpcio_rejudge_review.html';
+            this.response.body = {
+                tdoc: this.tdoc, codeBase: resolverCodeBase(pkg.version),
+                runtimeJson: toScriptJson({ base, dataUrl: `${base}/data`, domainId: this.tdoc.domainId, contestUrl: baseFor(this.tdoc), resultsUrl: `${baseFor(this.tdoc)}/results`,
+                    rejudgeUrl: `/manage/xcpcio-rejudge`, canRestore: this.canRestore() }),
+            };
+        }
+
+        @param('payload', Types.String)
+        async postRestore(_domainId: string, input: string) {
+            await this.limitRate('xcpcio_rejudge_review', 60, 20);
+            const payload = this.payloadOf(input);
+            this.response.body = await this.apply(Array.isArray(payload.rids) ? payload.rids.map(String).slice(0, 2000) : [], payload.restore !== false);
+        }
+
+        @param('payload', Types.String)
+        async postRebuild(_domainId: string, input: string) {
+            if (!dependencies.resolver) throw new NotFoundError('滚榜不可用');
+            await this.limitRate('xcpcio_rejudge_review', 60, 20);
+            const payload = this.payloadOf(input);
+            const ids = Array.isArray(payload.ids) ? payload.ids.map(String).slice(0, 20) : [];
+            this.response.body = { created: await dependencies.resolver.rebuild(this.tdoc, ids, this.user._id, this.user.hasPerm(PERM.PERM_VIEW_USER_PRIVATE_INFO)) };
+        }
+    }
+
+    class ReviewDataHandler extends ReviewBase {
+        @param('pids', Types.CommaSeperatedArray, true)
+        @param('kinds', Types.CommaSeperatedArray, true)
+        @param('states', Types.CommaSeperatedArray, true)
+        @param('affecting', (value: unknown) => Types.Boolean[0](value), true)
+        async get(_domainId: string, pids: string[] = [], kinds: string[] = [], states: string[] = [], affecting = false) {
+            this.response.type = 'application/json';
+            this.response.body = await this.review({
+                pids: pids.map(Number).filter(Number.isSafeInteger),
+                kinds: kinds.filter((kind): kind is ReviewChange['kind'] => ['lostAccept', 'gainedAccept', 'other'].includes(kind)),
+                states: states.filter((state): state is ReviewChange['state'] => ['kept', 'restored', 'moved'].includes(state)),
+                affecting,
+            });
+        }
+    }
+
+    ctx.Route('contest_xcpcio_rejudge_review', '/contest/:tid/rejudge-review', ReviewHandler);
+    ctx.Route('contest_xcpcio_rejudge_review_data', '/contest/:tid/rejudge-review/data', ReviewDataHandler);
     ctx.Route('contest_xcpcio_results', '/contest/:tid/results', ResultsHandler);
     ctx.Route('contest_xcpcio_results_export', '/contest/:tid/results/export/:format', ResultsExportHandler);
-    ctx.i18n.load('zh', { contest_xcpcio_results: '成绩与导出' });
-    return { beforeRejudge };
+    ctx.i18n.load('zh', { contest_xcpcio_results: '成绩与导出', contest_xcpcio_rejudge_review: '重测复核' });
+    /** For 赛事中控: how many rejudged results the jury may want to look at, and the sessions built before them. */
+    async function reviewSummary(tdoc: Tdoc) {
+        const review = await readReview(tdoc);
+        const sessions = await dependencies.resolver?.ofContest(tdoc) ?? [];
+        return { changes: review.changes.length, pending: review.pending, stale: staleSessions(sessions, lastChange(review.changes)).length };
+    }
+    return { beforeRejudge, reviewSummary };
 }

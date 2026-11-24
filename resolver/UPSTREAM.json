@@ -104,7 +104,7 @@
       "source": "public/js/medals.js",
       "destination": "resolver/public/js/medals.js",
       "sha256": "f26b721870dc3b4704b17d695c057bf4c26362c5a621111d5149d33adc29cd65",
-      "modifiedSha256": "ec085be055e317d7fb16d227ff465a45417a228962657a2f654c6ba209f16882"
+      "modifiedSha256": "ebe1ac1273adfe0f6fbf6b0dcbf9fc47110e5c62a968b91748e7137fb847d243"
     },
     {
       "source": "public/js/play.js",
@@ -158,7 +158,7 @@
       "source": "public/js/standings.js",
       "destination": "resolver/public/js/standings.js",
       "sha256": "79ca8bc5a177bf33832cac73652abcea8845f748cd360bbfecedc006d331706c",
-      "modifiedSha256": "76db01491d7c5c9b658cf2bc5c690cb04a449fa90fa0e1b906ccd6b0136e62f1"
+      "modifiedSha256": "c1720ed9b2c4ac8a8e8fe45f32ec12063c7ba7aaa362616eb16240bf75047cfc"
     },
     {
       "source": "public/licenses/noto-sans-sc.txt",
@@ -176,7 +176,7 @@
       "source": "server/lib/engine.js",
       "destination": "resolver/server/lib/engine.js",
       "sha256": "b74872b78f03b96d06a0c40e94464f26d19326c6200808d9bb007e94bb39b0e1",
-      "modifiedSha256": "4d61f2f737408ac5be783e028a23fd1d32aa7e5223f431df8a6fda41133c181b"
+      "modifiedSha256": "83eedf8a1d06d1397b827d0bc17c08031961fe0242fb8ce92eb386c18f42e6b7"
     },
     {
       "source": "server/lib/limits.js",

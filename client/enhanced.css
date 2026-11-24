@@ -245,6 +245,8 @@
 }
 #xcpcio-plus #app table.standings th:nth-last-child(-n+2) { width: var(--xp-stat-width) !important; }
 #xcpcio-plus #app table.standings th.xp-col-problem.xp-problem-plain { background: var(--xp-subtle) !important; color: var(--xp-text) !important; }
+#xcpcio-plus #app table.standings th.xp-col-problem.xp-problem-hidden > * { visibility: hidden; pointer-events: none; }
+#xcpcio-plus #app table.standings th.xp-col-problem.xp-problem-hidden { pointer-events: none; }
 #xcpcio-plus #app .xp-col-problem > [cursor-pointer] > div:first-child { color: inherit; font-size: 14px; font-weight: 600; }
 #xcpcio-plus #app .xp-col-problem > [cursor-pointer] > div:last-child { color: inherit; opacity: .78; font-size: 11px; }
 #xcpcio-plus #app tr.xp-team-row { --xp-row-bg: var(--xp-bg); }
@@ -358,6 +360,12 @@
 .xp-page .xp-medals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; max-width: 480px; margin: 10px 0; }
 .xp-page .xp-field { display: grid; gap: 6px; max-width: 560px; margin: 0 0 12px; color: var(--xp-text); font-size: 14px; }
 .xp-page .xp-field .select { width: 100%; }
+.xp-page .xp-settings-stack { display: flex; flex-direction: column; }
+.xp-page .xp-inline-fields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0 12px; }
+.xp-page .xp-inline-fields .xp-field { max-width: 180px; }
+.xp-page .xp-inline-fields > .xp-muted { padding-bottom: 20px; }
+.xp-page .xp-award-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 0 16px; max-width: 640px; margin-top: 4px; }
+.xp-page .xp-award-choices .xp-field[hidden] { display: none; }
 .xp-page .xp-medal-unit { color: var(--xp-muted); font-size: 12px; }
 .xp-medals label > span { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; color: var(--xp-muted); font-size: 13px; }
 .xp-settings .xp-medals .textbox { font-size: 20px; font-variant-numeric: tabular-nums; height: 44px; }

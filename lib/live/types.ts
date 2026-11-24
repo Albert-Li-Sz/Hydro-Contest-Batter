@@ -79,6 +79,10 @@ export interface AwardChain {
     awards: RankBasedAward[];
     groups?: string[];
     excludedGroups?: string[];
+    /** HydroXCPCIO: medals by school rank instead of team rank (resolver/public/js/trophies.js). */
+    hydroMedalRanking?: 'team' | 'school';
+    /** HydroXCPCIO: trophies (冠军、亚军、季军…) of this board. */
+    hydroPodium?: { basis: 'team' | 'school'; tie: 'lastAccept' | 'shared'; names: string[] };
 }
 
 export interface QueueSettings {

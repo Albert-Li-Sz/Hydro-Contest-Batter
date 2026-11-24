@@ -779,6 +779,8 @@ export function normalizeContest(input) {
       photo: normalizeLogo(t.photo),
       // Hydro: members of a team (team contests), shown on the award page.
       ...(teamMembers(t.members).length ? { members: teamMembers(t.members) } : {}),
+      // Hydro: which school the team counts for in school ranks and trophies (resolver/public/js/trophies.js).
+      ...(typeof t.schoolKey === 'string' && t.schoolKey ? { schoolKey: t.schoolKey.slice(0, 64) } : {}),
       ...(groupIdsOf(t).length ? { groupIds: groupIdsOf(t) } : {}),
       ...(floorLocation(t.location) ? { location: floorLocation(t.location) } : {}),
     };
@@ -882,7 +884,7 @@ export function normalizeContest(input) {
     missingSubmissionTimes: Math.max(missingSubmissionTimes, Number(input.missingSubmissionTimes) || 0),
     scoringMode: input.scoringMode === 'hydro' ? 'hydro' : 'icpc',
     // HydroXCPCIO: a Hydro contest may break ties by the ICPC regional rule (standings.js).
-    ...(input.scoringMode === 'hydro' && input.tieBreak === 'icpc' ? { tieBreak: 'icpc' } : {}),
+    ...(input.scoringMode === 'hydro' && (input.tieBreak === 'icpc' || input.tieBreak === 'ccpc') ? { tieBreak: input.tieBreak } : {}),
     firstSolveEnabled: input.firstSolveEnabled !== false,
     unofficialFirstSolve: input.unofficialFirstSolve === true,
     name: input.name ?? input.formalName ?? 'Contest',

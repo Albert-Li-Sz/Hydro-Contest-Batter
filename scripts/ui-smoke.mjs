@@ -23,7 +23,7 @@ const themed = [
     `${contest}/live`, `${contest}/live/capture`, `${contest}/monitor`, `${contest}/presence`, `${contest}/overview`, `${contest}/balloons`,
     '/manage/xcpcio-users', '/manage/xcpcio-users#seats', '/manage/xcpcio-judges', '/manage/xcpcio-rejudge', '/manage/xcpcio-printers',
     `${contest}/clarification-desk`,
-    `${contest}/results`,
+    `${contest}/results`, `${contest}/control`, `${contest}/rejudge-review`,
 ];
 const plain = [`${contest}/live-capture/me?as=1`, `${contest}/problems?as=1`, `${contest}/presence?phase=before`,
     ...['controls', 'capture', 'scoreboard', 'ticker', 'teamSpotlight', 'contestInfo'].map((page) => `${contest}/live/admin/${page}`), `${contest}/live/admin`];
@@ -429,6 +429,33 @@ async function interactions(browser, base) {
             await page.waitForTimeout(2000);
             await page.close();
         }
+        // 重测复核: restore one rejudged submission; the sessions built before it are flagged.
+        where = 'rejudge review';
+        const review = await open(context, base, `${contest}/rejudge-review`, where);
+        await review.getByLabel('选择提交 s-13').check();
+        await review.getByRole('button', { name: '恢复原结果（1）' }).click();
+        await review.getByRole('button', { name: '恢复', exact: true }).click();
+        await review.getByRole('status').filter({ hasText: '已更新 1 条提交' }).waitFor();
+        check(where, (await review.locator('tbody tr', { hasText: 's-13' }).innerText()).includes('已恢复原结果'), 'the restore did not show');
+        check(where, (await review.getByText('基于旧结果').count()) === 2, 'sessions built before the restore are not flagged');
+        await checkLayout(review, where);
+        // 赛事中控 last: the CCPC 赛制 changes the shared board settings, and the board hides labels before the freeze.
+        where = 'control';
+        const control = await open(context, base, `${contest}/control?phase=sealed`, where);
+        await control.getByRole('radio', { name: 'CCPC' }).click();
+        await control.getByRole('button', { name: '改用', exact: true }).click();
+        await control.getByRole('status').filter({ hasText: '已改用 CCPC 赛制' }).waitFor();
+        check(where, await control.getByLabel('同分规则').inputValue() === 'ccpc', 'the 赛制 did not change the ranking rule');
+        check(where, await control.getByLabel('封榜前隐藏题号').isChecked(), 'the CCPC board is off');
+        await control.getByLabel('过题达到').fill('5');
+        await control.getByLabel('过题达到').press('Tab');
+        await control.getByRole('status').filter({ hasText: '已保存' }).waitFor();
+        const hidden = await (await context.request.get(`${base}${contest}/xcpcio-public?json=true&running=1`)).json();
+        check(where, JSON.stringify(hidden.contest.problem_id) === JSON.stringify(['A', 'C', '']) && hidden.hiddenFrom === 2, 'the board shows hidden labels');
+        await control.getByRole('button', { name: '解除封榜' }).click();
+        await control.getByRole('button', { name: '解除封榜', exact: true }).last().click();
+        await control.getByRole('status').filter({ hasText: '已解除封榜' }).waitFor();
+        await checkLayout(control, where);
     } catch (error) { fail('interactions', error.message.split('\n')[0]); } finally { await context.close(); }
 }
 

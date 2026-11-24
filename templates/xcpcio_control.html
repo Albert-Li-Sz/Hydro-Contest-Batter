@@ -1,0 +1,16 @@
+{% set page_name = 'contest_xcpcio_control' %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<link rel="stylesheet" href="{{ codeBase }}/hydro-config.css">
+<link rel="stylesheet" href="{{ codeBase }}/hydro-manage.css">
+<div class="row resolver-config xcpcio-manage xcpcio-control" id="hydro-resolver-config"><div class="medium-12 columns">
+  <section class="section visible">
+    <div class="section__header resolver-heading">
+      <div><h1 class="section__title">赛事中控</h1><p class="resolver-muted">{{ tdoc.title }}</p></div>
+    </div>
+    <div class="section__body" id="manage-root"><p class="resolver-muted">加载中…</p></div>
+  </section>
+</div></div>
+<script type="application/json" id="manage-runtime">{{ runtimeJson | safe }}</script>
+<script type="module" src="{{ codeBase }}/js/hydro-control.js"></script>
+{% endblock %}

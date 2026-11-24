@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { BoardSettings, Medals } from './settings';
 import { awardsFor, medalCounts } from './settings';
-import { AWARD_EXEMPT_TAG } from './award-policy.mjs';
+import { AWARD_EXEMPT_TAG, SCHOOL_TAG } from './award-policy.mjs';
 
 export interface BoardTeam {
     team_id: string;
@@ -10,6 +10,8 @@ export interface BoardTeam {
     group: string[];
     /** Members of a Hydro team (team contests only); XCPCIO shows them with the team. */
     members?: string[];
+    /** Which school the team counts for in school ranks (`s1`, `s2`…), also when the school name is private. */
+    school_key?: string;
     [key: string]: unknown;
 }
 
@@ -34,6 +36,8 @@ export interface BoardData {
     };
     teams: BoardTeam[];
     submissions: BoardSubmission[];
+    /** CCPC 新榜单模式 before the freeze (lib/ccpc-board.ts): the first column that is a position, not a problem. */
+    hiddenFrom?: number;
 }
 
 /** Sent for problems without a Hydro balloon colour; the board draws those headers plain (see board-ui.js). */
@@ -98,8 +102,9 @@ export function enhanceBoard(data: BoardData, settings: BoardSettings, { identit
     const teams = data.teams.map((team) => ({
         ...team,
         tag: [
-            ...(Array.isArray(team.tag) ? team.tag.filter((tag) => typeof tag === 'string' && tag !== AWARD_EXEMPT_TAG) : []),
+            ...(Array.isArray(team.tag) ? team.tag.filter((tag) => typeof tag === 'string' && tag !== AWARD_EXEMPT_TAG && !tag.startsWith(SCHOOL_TAG)) : []),
             ...(team.group.includes('unofficial') ? [AWARD_EXEMPT_TAG] : []),
+            `${SCHOOL_TAG}${team.school_key ?? (team.organization?.trim() ? schoolGroup(team.organization).slice('school-'.length) : `#${team.team_id}`)}`,
         ],
         organization: identity ? schoolName(team.organization) : '',
         group: [...new Set([
@@ -112,14 +117,16 @@ export function enhanceBoard(data: BoardData, settings: BoardSettings, { identit
     const solved = new Set(data.submissions.filter((submission) => submission.status === 'CORRECT'
         && submission.timestamp >= 0 && submission.timestamp < duration
         && submission.problem_id >= 0 && submission.problem_id < data.contest.problem_quantity).map((submission) => submission.team_id));
-    const medal: Record<string, Medals & { hydroAwards: ReturnType<typeof awardsFor> }> = {};
+    // CCPC 新榜单模式 (lib/ccpc-board.ts): columns from here on are positions in each team's row, not problems.
+    const { hiddenFrom } = data;
+    const medal: Record<string, Medals & { hydroAwards: ReturnType<typeof awardsFor> & { hiddenFrom?: number } }> = {};
     const allGroups = ['all', ...Object.keys(groups)];
     for (const id of allGroups) {
         const members = teams.filter((team) => id === 'all' || team.group.includes(id));
         const awards = awardsFor(settings, id);
         // Eligible: official teams on this board that solved something (also the base of 按比例设奖).
         const eligible = members.filter((team) => solved.has(team.team_id) && !team.group.includes('unofficial')).length;
-        medal[id] = { ...cappedMedals(medalCounts(awards, eligible), eligible), hydroAwards: awards };
+        medal[id] = { ...cappedMedals(medalCounts(awards, eligible), eligible), hydroAwards: hiddenFrom === undefined ? awards : { ...awards, hiddenFrom } };
     }
     return {
         ...data,
@@ -129,7 +136,7 @@ export function enhanceBoard(data: BoardData, settings: BoardSettings, { identit
             submission_timestamp_unit: 'millisecond',
             // Hydro's ACM rule sums and orders penalty by the second; the ICPC rule by the minute (award-policy.mjs
             // breaks the remaining ties). The board displays minutes either way.
-            calculation_of_penalty: settings.tieBreak === 'icpc' ? 'in_minutes' : 'in_seconds',
+            calculation_of_penalty: settings.tieBreak === 'icpc' || settings.tieBreak === 'ccpc' ? 'in_minutes' : 'in_seconds',
         } },
         teams,
     };

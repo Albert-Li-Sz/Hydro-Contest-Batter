@@ -10,7 +10,7 @@ import {
     ContestModel, Context, getAlphabeticId, Handler, NotFoundError, ObjectId, param, PERM, ProblemModel, Tdoc, Types, UserModel,
 } from 'hydrooj';
 import {
-    BalloonError, balloonKey, defaultReceiptConfig, dueBalloons, firstBalloons, normalizeBalloonSettings, pickTarget, problemColors,
+    BalloonError, balloonKey, balloonLook, defaultReceiptConfig, dueBalloons, firstBalloons, firstNumbers, normalizeBalloonSettings, pickTarget, problemColors,
     reconcile, ticketLines, ticketReady, ticketTargets, testTicketLines, zoneOf,
     type BalloonSettings, type ReceiptConfig, type ReceiptPrinter, type StoredBalloon, type TicketStatus,
 } from './balloons';
@@ -31,6 +31,8 @@ interface SettingsDoc {
     revision: number;
     /** The last ticket number handed out. */
     seq: number;
+    /** Secret seed of the teams' own colours (lib/balloons.ts teamPalette); never shown. */
+    seed?: string;
     syncedAt?: Date;
     updatedAt?: Date;
 }
@@ -79,6 +81,8 @@ export interface BalloonScreenData {
     pending: { teamId: string; problemId: string; submissionId: string }[];
     /** `#rrggbb` per problem (index), '' when none is set. */
     colors: string[];
+    /** The balloons' colours are not the problems' (teams' own colours, one first-solve balloon): the screen would tell. */
+    withheld?: boolean;
 }
 
 const TICKET_CLAIM_MS = 2 * 60_000;
@@ -132,8 +136,20 @@ export function applyBalloons(ctx: Context, dependencies: {
     });
 
     async function loadDoc(key: string): Promise<SettingsDoc> {
-        await settingsColl.updateOne({ _id: key }, { $setOnInsert: { settings: {}, token: newToken(), tokenAt: new Date(), revision: 1, seq: 0 } }, { upsert: true });
-        return settingsColl.findOne({ _id: key });
+        await settingsColl.updateOne({ _id: key }, { $setOnInsert: { settings: {}, token: newToken(), tokenAt: new Date(), revision: 1, seq: 0, seed: newToken() } }, { upsert: true });
+        return (await withSeed(await settingsColl.findOne({ _id: key })))!;
+    }
+    /** Documents from before 1.20 have no seed: give them one, once (a concurrent first use keeps the winner's). */
+    async function withSeed(doc: SettingsDoc | null): Promise<SettingsDoc | null> {
+        if (!doc || doc.seed) return doc;
+        await settingsColl.updateOne({ _id: doc._id, seed: { $exists: false } }, { $set: { seed: newToken() } });
+        return settingsColl.findOne({ _id: doc._id });
+    }
+    /** Colour and first-solve mark of every balloon in `stored`, as staff hand them out. */
+    function looks(tdoc: Tdoc, settings: BalloonSettings, doc: SettingsDoc, stored: { key: string; uid: number; pid: number; submittedAt: number; seq: number }[], first: Set<string>) {
+        const context = { settings, pids: tdoc.pids, colors: problemColors(settings, tdoc.pids, tdoc.balloon as Record<string, unknown> | undefined),
+            seed: doc.seed || doc._id, first, numbers: firstNumbers(stored, first) };
+        return new Map(stored.map((balloon) => [balloon.key, balloonLook(balloon, context)]));
     }
     const bump = (key: string) => settingsColl.updateOne({ _id: key }, { $inc: { revision: 1 } });
     const resetToken = async (key: string) => {
@@ -299,19 +315,20 @@ export function applyBalloons(ctx: Context, dependencies: {
 
     /** What a ticket needs to print: the contest, its teams, problems, colours and every active balloon. */
     async function ticketContext(key: string) {
-        const doc = await settingsColl.findOne({ _id: key }) as SettingsDoc | null;
+        const doc = await withSeed(await settingsColl.findOne({ _id: key }) as SettingsDoc | null);
         const [domainId, tid] = key.split('/');
         const tdoc = await ContestModel.get(domainId, new ObjectId(tid));
         if (!doc || !tdoc) return null;
         const settings = settingsOf(doc, tdoc);
         const teams = await contestTeams(tdoc);
         const pdict = await ProblemModel.getList(domainId, tdoc.pids, true, false, ['docId', 'title'] as never) as Record<number, { title?: string }>;
-        const active: BalloonDoc[] = await balloons.find({ contest: key, state: 'active' }).project({ key: 1, uid: 1, pid: 1, submittedAt: 1, state: 1 }).toArray();
+        const active: BalloonDoc[] = await balloons.find({ contest: key, state: 'active' }).project({ key: 1, uid: 1, pid: 1, submittedAt: 1, state: 1, seq: 1 }).toArray();
         const board = await dependencies.loadSettings(tdoc);
         const unofficialFirst = awardsFor(board, 'all').unofficialFirstSolve;
         const first = firstBalloons(active.map((balloon) => ({ ...balloon, submittedAt: new Date(balloon.submittedAt).getTime() })),
             (uid) => unofficialFirst || !teams.get(uid)?.unofficial);
-        return { tdoc, settings, teams, pdict, active, first, colors: problemColors(settings, tdoc.pids, tdoc.balloon as Record<string, unknown> | undefined) };
+        const look = looks(tdoc, settings, doc, active.map((balloon) => ({ ...balloon, submittedAt: new Date(balloon.submittedAt).getTime() })), first);
+        return { tdoc, settings, teams, pdict, active, first, look };
     }
 
     function ticketFor(balloon: BalloonDoc, context: NonNullable<Awaited<ReturnType<typeof ticketContext>>>, target: ReceiptPrinter, now: number) {
@@ -323,7 +340,7 @@ export function applyBalloons(ctx: Context, dependencies: {
             .filter((value) => value >= 0).sort((a, b) => a - b).map((value) => getAlphabeticId(value));
         const lines = ticketLines({
             contest: tdoc.title, seq: balloon.seq, seat: team?.seat || '', label, problemTitle: context.pdict[balloon.pid]?.title || '',
-            color: context.colors[index], first: context.first.has(balloon.key), team: team?.name || `UID ${balloon.uid}`, school: team?.school || '',
+            color: context.look.get(balloon.key)?.color ?? null, first: context.first.has(balloon.key), firstLabel: context.look.get(balloon.key)?.firstLabel || '', team: team?.name || `UID ${balloon.uid}`, school: team?.school || '',
             members: team?.members || [], unofficial: !!team?.unofficial, submittedAt: new Date(balloon.submittedAt).getTime(), beginAt: tdoc.beginAt.getTime(),
             solved, printedAt: now, copy: (balloon.ticket.prints || 0) + 1,
         }, context.settings.tickets);
@@ -386,6 +403,20 @@ export function applyBalloons(ctx: Context, dependencies: {
         },
     };
 
+    /** Saves a contest's balloon settings (the balloon page and 赛事中控), changes merged into the saved ones. */
+    async function saveSettings(tdoc: Tdoc, input: unknown) {
+        const key = contestKey(tdoc);
+        const doc = await loadDoc(key);
+        const before = settingsOf(doc, tdoc);
+        const settings = normalizeBalloonSettings(input, tdoc.pids, before);
+        await settingsColl.updateOne({ _id: key }, { $set: { settings, updatedAt: new Date() }, $inc: { revision: 1 }, $unset: { syncedAt: '' } });
+        // Tickets switched off: those still waiting are not printed later by surprise.
+        if (before.tickets.enabled && !settings.tickets.enabled) await balloons.updateMany({ contest: key, 'ticket.status': 'pending' }, { $set: { 'ticket.status': 'none' } });
+        enabled.at = 0;
+        if (settings.enabled) await sync(key);
+        return settings;
+    }
+
     // ---------------------------------------------------------------- Pages
 
     async function view(tdoc: Tdoc, doc: SettingsDoc, manager: boolean) {
@@ -399,6 +430,7 @@ export function applyBalloons(ctx: Context, dependencies: {
         const printers: ReceiptPrinter[] = manager ? await receiptPrinters(now) : [];
         const unofficialFirst = awardsFor(board, 'all').unofficialFirstSolve;
         const first = firstBalloons(stored.map(toStored), (uid) => unofficialFirst || !teams.get(uid)?.unofficial);
+        const look = looks(tdoc, settings, doc, stored.map(toStored), first);
         const serverNames = new Map(printers.map((printer) => [printer.server, printer.serverName]));
         const colors = problemColors(settings, tdoc.pids, tdoc.balloon as Record<string, unknown> | undefined);
         return {
@@ -408,6 +440,7 @@ export function applyBalloons(ctx: Context, dependencies: {
                 locked: ContestModel.isLocked(tdoc), ended: ContestModel.isDone(tdoc),
             },
             enabled: settings.enabled, tickets: settings.tickets.enabled, afterFreeze: settings.afterFreeze,
+            firstStyle: settings.first.style, teamColors: settings.teamColors,
             problems: tdoc.pids.map((pid, index) => ({
                 pid, label: getAlphabeticId(index), title: pdict[pid]?.title || '', color: colors[index],
             })),
@@ -415,6 +448,8 @@ export function applyBalloons(ctx: Context, dependencies: {
             balloons: stored.map((balloon) => ({
                 id: String(balloon._id), uid: balloon.uid, pid: balloon.pid, seq: balloon.seq, at: balloon.submittedAt, state: balloon.state, held: balloon.held,
                 first: first.has(balloon.key), delivered: balloon.delivered,
+                // The colour handed out, when it is not the problem's (one first-solve balloon, the team's own colours).
+                ...settings.teamColors || settings.first.style !== 'problem' ? { color: look.get(balloon.key)?.color ?? null, firstLabel: look.get(balloon.key)?.firstLabel || '' } : {},
                 ticket: { status: balloon.ticket.status, printer: balloon.ticket.printer || '', server: serverNames.get(balloon.ticket.server || '') || '',
                     error: balloon.ticket.error || '', prints: balloon.ticket.prints || 0 },
             })),
@@ -526,16 +561,7 @@ export function applyBalloons(ctx: Context, dependencies: {
 
         @param('payload', Types.String)
         async postSettings(_domainId: string, input: string) {
-            const key = contestKey(this.tdoc);
-            const doc = await loadDoc(key);
-            const before = settingsOf(doc, this.tdoc);
-            const settings = normalizeBalloonSettings(this.payload(input).settings, this.tdoc.pids, before);
-            await settingsColl.updateOne({ _id: key }, { $set: { settings, updatedAt: new Date() }, $inc: { revision: 1 }, $unset: { syncedAt: '' } });
-            // Tickets switched off: those still waiting are not printed later by surprise.
-            if (before.tickets.enabled && !settings.tickets.enabled) await balloons.updateMany({ contest: key, 'ticket.status': 'pending' }, { $set: { 'ticket.status': 'none' } });
-            enabled.at = 0;
-            await sync(key);
-            this.response.body = { settings };
+            this.response.body = { settings: await saveSettings(this.tdoc, this.payload(input).settings) };
         }
 
         @param('payload', Types.String)
@@ -579,7 +605,7 @@ export function applyBalloons(ctx: Context, dependencies: {
         async prepare(_domainId: string, tid: ObjectId, token: string) {
             this.response.addHeader('Cache-Control', 'no-store');
             const tdoc = await ContestModel.get(this.domain._id, tid);
-            const doc = tdoc?.rule === 'acm' ? await settingsColl.findOne({ _id: contestKey(tdoc) }) as SettingsDoc | null : null;
+            const doc = tdoc?.rule === 'acm' ? await withSeed(await settingsColl.findOne({ _id: contestKey(tdoc) }) as SettingsDoc | null) : null;
             const given = Buffer.from(String(token));
             if (!tdoc || !doc?.token || given.length !== Buffer.byteLength(doc.token) || !timingSafeEqual(given, Buffer.from(doc.token))) {
                 throw new NotFoundError('气球配送链接无效或已作废');
@@ -638,12 +664,18 @@ export function applyBalloons(ctx: Context, dependencies: {
 
     return {
         receipts,
+        /** Balloon settings for 赛事中控. */
+        control: {
+            get: async (tdoc: Tdoc) => settingsOf(await loadDoc(contestKey(tdoc)), tdoc),
+            save: saveSettings,
+        },
         /** The 气球配送图 screen shows these when the contest uses 气球配送 (else Hydro's balloon records). */
         async screen(tdoc: Tdoc): Promise<BalloonScreenData | null> {
             const key = contestKey(tdoc);
             const doc = await settingsColl.findOne({ _id: key }) as SettingsDoc | null;
             const settings = settingsOf(doc, tdoc);
             if (!settings.enabled) return null;
+            if (settings.teamColors || settings.first.style !== 'problem') return { pending: [], colors: [], withheld: true };
             await sync(key).catch(() => false);
             const index = new Map(tdoc.pids.map((pid, position) => [pid, String(position)]));
             const waiting = await balloons.find({ contest: key, state: 'active', held: false, delivered: null }).project({ uid: 1, pid: 1, rid: 1 }).toArray() as BalloonDoc[];

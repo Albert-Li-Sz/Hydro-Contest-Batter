@@ -57,15 +57,18 @@ function lookups() {
 }
 
 function pill(problem, balloon, onclick) {
-    const color = problem?.color?.hex || '';
+    // The colour handed out: the balloon's own when it is not the problem's (teams' own colours, one first-solve balloon).
+    const look = balloon && 'color' in balloon ? balloon.color : problem?.color;
+    const color = look?.hex || '';
     const state = balloon ? stateOf(balloon) : 'pending';
+    const firstText = balloon?.firstLabel || '一血';
     const node = el(onclick ? 'button' : 'span', {
         class: `balloon-pill balloon-pill--${state}${balloon?.first ? ' balloon-pill--first' : ''}`, type: onclick ? 'button' : undefined,
-        title: [`${problem?.label || '?'} 题`, problem?.color?.name || '未设颜色', balloon ? statusLabels[state] : '', balloon?.first ? '一血' : '',
+        title: [`${problem?.label || '?'} 题`, look?.name || '未设颜色', balloon ? statusLabels[state] : '', balloon?.first ? firstText : '',
             balloon?.delivered ? `${balloon.delivered.by} ${wall(balloon.delivered.at)} 送达` : ''].filter(Boolean).join(' · '),
         onclick,
-    }, el('b', { text: problem?.label || '?' }), problem?.color?.name ? el('span', { text: problem.color.name }) : null,
-    balloon?.first ? el('i', { text: '★', 'aria-label': '一血' }) : null);
+    }, el('b', { text: problem?.label || '?' }), look?.name ? el('span', { text: look.name }) : null,
+    balloon?.first ? el('i', { text: firstText.startsWith('一血 ') ? `★${firstText.slice(3)}` : '★', 'aria-label': firstText }) : null);
     if (color) { node.style.setProperty('--balloon', color); node.style.setProperty('--balloon-ink', ink(color)); }
     return node;
 }
@@ -299,6 +302,22 @@ function renderSettings() {
         new Option('继续发放（现场可从气球看出封榜后的通过）', 'continue', false, draft.afterFreeze === 'continue'),
         new Option('暂缓，解除封榜后再发', 'hold', false, draft.afterFreeze === 'hold'));
     afterFreeze.addEventListener('change', () => { draft.afterFreeze = afterFreeze.value; markDirty(); });
+    // CCPC 新榜单模式: a first-solve balloon that does not tell the problem, and colours of each team's own.
+    draft.first = { style: 'problem', color: { name: '金', hex: '#d4af37' }, labels: 'number', ...draft.first };
+    const firstStyle = el('select', { class: 'select' },
+        new Option('题目颜色，标记一血', 'problem', false, draft.first.style === 'problem'),
+        new Option('统一的一血气球', 'uniform', false, draft.first.style === 'uniform'),
+        new Option('统一的一血气球，按全场顺序编号', 'sequence', false, draft.first.style === 'sequence'));
+    firstStyle.addEventListener('change', () => { draft.first.style = firstStyle.value; markDirty(); renderSettings(); });
+    const firstPicker = el('input', { type: 'color', value: draft.first.color.hex, 'aria-label': '一血气球颜色' });
+    const firstName = el('input', { class: 'textbox', list: 'balloon-color-names', maxlength: 12, value: draft.first.color.name, 'aria-label': '一血气球颜色名称' });
+    const updateFirst = () => { draft.first.color = { hex: firstPicker.value, name: firstName.value.trim() }; markDirty(); };
+    firstPicker.addEventListener('input', updateFirst); firstName.addEventListener('input', updateFirst);
+    const firstLabels = el('select', { class: 'select' },
+        new Option('1、2、3…', 'number', false, draft.first.labels === 'number'), new Option('A、B、C…', 'letter', false, draft.first.labels === 'letter'));
+    firstLabels.addEventListener('change', () => { draft.first.labels = firstLabels.value; markDirty(); });
+    const teamColors = el('input', { type: 'checkbox', checked: !!draft.teamColors, 'aria-label': '每队使用各自的颜色对应' });
+    teamColors.addEventListener('change', () => { draft.teamColors = teamColors.checked; markDirty(); });
     const desk = el('input', { class: 'textbox', readonly: true, value: new URL(data.deskUrl, location.href).href, 'aria-label': '配送员链接' });
     const basics = el('section', { class: 'manage-group' },
         el('h3', { text: '基本' }),
@@ -309,7 +328,11 @@ function renderSettings() {
                     openDialog({ title: '关闭气球配送', confirm: '关闭', body: [el('p', { text: '关闭后不再生成新气球、不再打印小票，配送员链接暂停使用；已有的气球和送达记录保留，重新开启后继续。' })],
                         submit: async () => { await post('enable', { enabled: false }); await refresh(true); } });
                 } }))),
-            el('label', {}, '封榜之后的通过', afterFreeze)),
+            el('label', {}, '封榜之后的通过', afterFreeze),
+            el('label', {}, '一血气球', firstStyle),
+            el('label', { hidden: draft.first.style === 'problem' }, '一血气球颜色', el('div', { class: 'balloon-inline' }, firstPicker, firstName)),
+            el('label', { hidden: draft.first.style !== 'sequence' }, '一血编号', firstLabels),
+            el('label', { class: 'checkbox' }, teamColors, el('span', { text: '每队使用各自的颜色对应' }))),
         el('label', {}, '配送员链接（免登录，可查看并标记气球；请只发给志愿者）'),
         el('div', { class: 'manage-toolbar' }, desk,
             el('button', { class: 'button', type: 'button', text: '复制', onclick: async (event) => { event.target.textContent = await copyText(desk.value) ? '已复制' : '请手动复制'; } }),

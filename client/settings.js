@@ -60,7 +60,26 @@ if (root) {
     applyBasis(defaultMedalInputs, medalBasis.value);
     medalBasis.addEventListener('change', () => applyBasis(defaultMedalInputs, medalBasis.value));
     const tieBreak = document.getElementById('xp-tie-break');
-    tieBreak.value = settings.tieBreak === 'icpc' ? 'icpc' : 'hydro';
+    tieBreak.value = ['icpc', 'ccpc'].includes(settings.tieBreak) ? settings.tieBreak : 'hydro';
+    // CCPC 新榜单模式: the threshold shows only while the mode is on.
+    const ccpcBoard = document.getElementById('xp-ccpc-board');
+    const ccpcReveal = document.getElementById('xp-ccpc-reveal');
+    const revealValue = document.getElementById('xp-ccpc-reveal-value');
+    const revealBasis = document.getElementById('xp-ccpc-reveal-basis');
+    const ignoreAfterAccept = document.getElementById('xp-ignore-after-accept');
+    const boardMode = settings.ccpcBoard || { enabled: false, revealBasis: 'count', reveal: 50 };
+    ccpcBoard.checked = !!boardMode.enabled;
+    revealBasis.value = boardMode.revealBasis === 'percent' ? 'percent' : 'count';
+    revealValue.value = boardMode.reveal;
+    ignoreAfterAccept.checked = !!settings.ignoreAfterAccept;
+    const syncReveal = () => {
+        ccpcReveal.hidden = !ccpcBoard.checked;
+        for (const input of [revealValue, revealBasis]) input.disabled = !ccpcBoard.checked;
+        revealValue.max = revealBasis.value === 'percent' ? '100' : '100000';
+    };
+    ccpcBoard.addEventListener('change', syncReveal);
+    revealBasis.addEventListener('change', syncReveal);
+    syncReveal();
     document.getElementById('xp-schools').checked = settings.schoolBoards;
     document.getElementById('xp-participation').checked = settings.participationBoards;
     const publicAccess = document.getElementById('xp-public-access');
@@ -191,11 +210,35 @@ if (root) {
         }
         parent.append(grid);
         const checks = make('div', undefined, 'xp-checks');
-        for (const [key, text] of [['medalSameScore', '并列同奖'], ['firstSolve', '一血奖'], ['podiumEnabled', '前三名奖项'], ['unofficialFirstSolve', '允许打星选手获一血奖']]) {
+        for (const [key, text] of [['medalSameScore', '并列同奖'], ['firstSolve', '一血奖'], ['podiumEnabled', '奖杯'], ['unofficialFirstSolve', '允许打星选手获一血奖']]) {
             const label = make('label', undefined, 'checkbox'); const input = make('input'); input.type = 'checkbox'; input.checked = initial[key];
             input.setAttribute('aria-label', text); label.append(input, make('span', text)); checks.append(label); fields[key] = input;
         }
         parent.append(checks);
+        // How medals and trophies are ranked; the trophy choices show with the trophies.
+        const choices = make('div', undefined, 'xp-award-choices');
+        const trophyFields = [];
+        for (const [key, caption, options, trophy] of [
+            ['medalRanking', '奖牌依据', [['team', '队伍名次'], ['school', '学校名次']], false],
+            ['podiumBasis', '奖杯依据', [['team', '队伍名次'], ['school', '学校名次']], true],
+            ['podiumTie', '奖杯并列', [['lastAccept', '最晚通过早者得'], ['shared', '共享']], true],
+        ]) {
+            const wrapper = make('label', caption, 'xp-field');
+            const select = make('select');
+            for (const [value, text] of options) { const option = make('option', text); option.value = value; select.append(option); }
+            select.value = initial[key] || options[0][0];
+            select.setAttribute('aria-label', caption);
+            wrapper.append(select); choices.append(wrapper); fields[key] = select;
+            if (trophy) trophyFields.push(wrapper);
+        }
+        const namesWrapper = make('label', '奖杯名称', 'xp-field');
+        const names = make('input', undefined, 'textbox'); names.type = 'text'; names.maxLength = 400; names.required = true;
+        names.value = (initial.podiumNames || ['冠军', '亚军', '季军']).join('、'); names.setAttribute('aria-label', '奖杯名称');
+        names.dataset.list = '1';
+        namesWrapper.append(names); choices.append(namesWrapper); fields.podiumNames = names; trophyFields.push(namesWrapper);
+        parent.append(choices);
+        const syncTrophies = () => { for (const wrapper of trophyFields) wrapper.hidden = !fields.podiumEnabled.checked; };
+        fields.podiumEnabled.addEventListener('change', syncTrophies); syncTrophies();
         if (basis) {
             const counts = Object.fromEntries(medals.map((key) => [key, fields[key]]));
             for (const input of Object.values(counts)) {
@@ -206,11 +249,14 @@ if (root) {
         }
         return {
             read: () => ({ ...(includeCounts ? { medals: Object.fromEntries(medals.map((key) => [key, Number(fields[key].value)])), medalBasis: basis.value } : {}),
-                ...Object.fromEntries(Object.entries(fields).filter(([key]) => !medals.includes(key)).map(([key, input]) => [key, input.type === 'checkbox' ? input.checked : input.value.trim()])) }),
+                ...Object.fromEntries(Object.entries(fields).filter(([key]) => !medals.includes(key)).map(([key, input]) => [key,
+                    input.type === 'checkbox' ? input.checked : input.dataset.list ? input.value.split(/[、,，;；\s]+/).filter(Boolean) : input.value.trim()])) }),
             set: (values) => {
                 for (const [key, input] of Object.entries(fields)) {
                     const value = medals.includes(key) ? values.medals[key] : values[key];
-                    if (input.type === 'checkbox') input.checked = value; else input.value = value;
+                    if (value === undefined) continue;
+                    if (input.type === 'checkbox') input.checked = value; else input.value = Array.isArray(value) ? value.join('、') : value;
+                    input.dispatchEvent(new Event('change'));
                 }
                 if (basis && values.medalBasis) { basis.value = values.medalBasis; basis.dispatchEvent(new Event('change')); }
             },
@@ -527,6 +573,8 @@ if (root) {
             medals: Object.fromEntries(medals.map((key) => [key, Number(root.querySelector(`[data-medal="${key}"]`).value)])),
             medalBasis: medalBasis.value,
             tieBreak: tieBreak.value,
+            ccpcBoard: { enabled: ccpcBoard.checked, revealBasis: revealBasis.value, reveal: Number(revealValue.value) || 1 },
+            ignoreAfterAccept: ignoreAfterAccept.checked,
             schoolBoards: document.getElementById('xp-schools').checked,
             participationBoards: document.getElementById('xp-participation').checked,
             ...defaultAwardEditor.read(),

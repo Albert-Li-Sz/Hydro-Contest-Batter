@@ -75,3 +75,10 @@
 - `server/lib/engine.js` 的 `normalizeContest()` 与 `publicContest()` 保留 `tieBreak`。
 - `public/js/render/presentation-view.js` 的判题队列先画全部行底色，再按动画位置绘制所有可见提交并裁剪到列表区域，修复移动中的提交被下一行底色遮挡、移出列表时盖住表头，以及动画期间末行空缺；离开队列的提交画在其他行下方并逐渐淡出，在场的提交带所在条纹的底色，经过时不再与其他行的文字重叠。`public/js/render/presentation-state.js` 的 `JudgeQueueState` 为离开的提交标记 `leaving` 与起始位置。
 - `public/js/render/pres-misc.js` 的 7×3 判题网格把新提交放入下一个空格，修复评测较慢时两条提交叠在同一格。
+
+## CCPC 规则、学校名次与奖杯
+
+- `public/js/standings.js` 增加 CCPC 同分规则（`tieBreak: 'ccpc'`）：罚时按分钟计，与 ICPC 相同；题数和总用时都相同则并列，并列队伍按最晚一次通过时间（秒）先后排列。`scoreTeam()` 输出 `lastSolutionSeconds`。
+- 新增 `public/js/trophies.js`：学校名次（CCPC 基本规则 4.2）和奖杯（按队伍或学校名次；并列时最晚通过早者得或共享），榜单、滚榜、Live、CCS 与成绩导出共用。
+- `public/js/medals.js` 的奖杯改用 `trophies.js`，支持 `podiumBasis`、`podiumTie`、`podiumNames`；奖牌可按学校名次授予（`medalRanking: 'school'`）。
+- `server/lib/engine.js` 的 `normalizeContest()` 保留 `tieBreak: 'ccpc'` 与队伍的 `schoolKey`。

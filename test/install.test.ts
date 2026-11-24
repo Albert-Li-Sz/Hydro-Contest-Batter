@@ -31,7 +31,7 @@ function makePackage(folder: string, version = '0.8.1') {
     write(path.join(folder, 'public/hydro-xcpcio/manifest.json'), JSON.stringify({ base: version, js: 'app.js', css: 'app.css' }));
     for (const file of [
         `public/hydro-xcpcio/${version}/app.js`, `public/hydro-xcpcio/${version}/app.css`,
-        `public/hydro-xcpcio/${version}/award-policy.mjs`, `public/hydro-xcpcio/${version}/standings.js`,
+        `public/hydro-xcpcio/${version}/award-policy.mjs`, `public/hydro-xcpcio/${version}/standings.js`, `public/hydro-xcpcio/${version}/trophies.js`,
         `public/hydro-resolver/${version}/js/play.js`, 'public/hydro-resolver/logos/index.json',
         'public/hydro-live/admin/index.html', 'public/hydro-live/overlay/index.html',
     ]) write(path.join(folder, file), '{}');

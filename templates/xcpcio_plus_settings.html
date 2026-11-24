@@ -24,6 +24,7 @@
           <label class="xp-field">同分规则<select class="select" id="xp-tie-break">
             <option value="hydro">Hydro 规则（罚时按秒）</option>
             <option value="icpc">ICPC 区域赛规则（罚时按分钟，再比最后一题通过时间）</option>
+            <option value="ccpc">CCPC 规则（罚时按分钟，同题数同用时并列）</option>
           </select></label>
           <label class="xp-field">奖牌名额<select class="select" id="xp-medal-basis">
             <option value="count">固定数量</option>
@@ -37,6 +38,7 @@
           <div id="xp-default-award-options"></div>
         </div>
       </section>
+      <div class="xp-settings-stack">
       <section class="section visible">
         <div class="section__header"><h2 class="section__title">自动分榜</h2></div>
         <div class="section__body">
@@ -46,6 +48,21 @@
           </div>
         </div>
       </section>
+      <section class="section visible" id="board-mode">
+        <div class="section__header"><h2 class="section__title">CCPC 新榜单模式</h2></div>
+        <div class="section__body">
+          <div class="xp-checks">
+            <label class="checkbox"><input type="checkbox" id="xp-ccpc-board"><span>封榜前隐藏题号</span></label>
+            <label class="checkbox"><input type="checkbox" id="xp-ignore-after-accept"><span>过题后忽略再次提交</span></label>
+          </div>
+          <div class="xp-inline-fields" id="xp-ccpc-reveal">
+            <label class="xp-field">过题达到<input class="textbox" id="xp-ccpc-reveal-value" type="number" min="1" step="1" required></label>
+            <label class="xp-field">单位<select class="select" id="xp-ccpc-reveal-basis"><option value="count">队</option><option value="percent">% 队伍（下取整）</option></select></label>
+            <span class="xp-muted">时显示题号</span>
+          </div>
+        </div>
+      </section>
+      </div>
     </div>
     <section class="section visible">
       <div class="section__header"><h2 class="section__title">访问与默认榜单</h2></div>

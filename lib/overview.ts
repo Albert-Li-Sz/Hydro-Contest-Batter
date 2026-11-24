@@ -19,7 +19,7 @@ export interface OverviewInput {
      */
     masked?: boolean;
     /** The contest's ranking rule (lib/settings.ts TieBreak), as on the board. */
-    tieBreak?: 'hydro' | 'icpc';
+    tieBreak?: 'hydro' | 'icpc' | 'ccpc';
 }
 
 const unsetSchool = (name: string) => !name.trim() || name.trim() === '未填写学校';
@@ -93,14 +93,15 @@ export function contestOverview(input: OverviewInput) {
         else if (!exempt.has(record.status)) cell.tries++;
     }
     // Penalty in seconds: whole seconds per accepted time under Hydro's rule, whole minutes under the
-    // ICPC rule, which then ranks the earlier last accept first (resolver/public/js/standings.js).
+    // ICPC and CCPC rules; ICPC then ranks the earlier last accept first (resolver/public/js/standings.js).
     const icpc = input.tieBreak === 'icpc';
+    const minutes = icpc || input.tieBreak === 'ccpc';
     const scores = new Map(data.teams.map((team) => [team.team_id, { solved: 0, penalty: 0, last: -1 }]));
     for (const [key, cell] of cells) {
         if (cell.solvedAt === null) continue;
         const score = scores.get(key.slice(0, key.lastIndexOf('/')))!;
         score.solved++;
-        score.penalty += (icpc ? Math.floor(cell.solvedAt / 60_000) * 60 : Math.floor(cell.solvedAt / 1000)) + cell.tries * PENALTY_SECONDS;
+        score.penalty += (minutes ? Math.floor(cell.solvedAt / 60_000) * 60 : Math.floor(cell.solvedAt / 1000)) + cell.tries * PENALTY_SECONDS;
         score.last = Math.max(score.last, Math.floor(cell.solvedAt / 60_000));
     }
     const order = (a: { solved: number; penalty: number; last: number }, b: typeof a) => b.solved - a.solved || a.penalty - b.penalty

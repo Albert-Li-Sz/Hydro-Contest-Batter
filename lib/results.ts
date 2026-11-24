@@ -28,7 +28,7 @@ export const settled = (source: ResultsData) => resultsFinal(source.data, source
 
 interface ResultProblem { id: number; label: string }
 interface ProblemCell { attempts: number; wrong: number; pending: number; solved: boolean; time: number | null }
-type ResultAward = { id: string; name: string; kind: 'medal' | 'first' | 'special'; teamIds: string[] };
+type ResultAward = { id: string; name: string; kind: 'trophy' | 'medal' | 'first' | 'special'; teamIds: string[] };
 export interface ResultRow {
     id: string;
     name: string;
@@ -36,9 +36,12 @@ export interface ResultRow {
     members: string[];
     coaches: string[];
     rank: number;
+    /** School rank (CCPC 基本规则 4.2); 0 for unofficial teams. */
+    schoolRank: number;
     solved: number;
     penalty: number;
     cells: Record<number, ProblemCell>;
+    trophies: string[];
     medals: string[];
     firsts: string[];
     specials: string[];
@@ -78,9 +81,9 @@ export function resultBoard(source: ResultsData, board: string): ResultBoard {
     const teamIds = new Set(ranking.order);
     const teamInfo = new Map(teams.map((team) => [team.team_id, team]));
     const raw = new Map(enhanced.submissions.map((run) => [run.submission_id, run]));
-    const resultAwards: ResultAward[] = ranking.awards.map((award) => ({
-        id: award.id, name: award.citation, kind: 'medal', teamIds: award.teams,
-    }));
+    // Trophies first, as they are presented.
+    const resultAwards: ResultAward[] = [...ranking.awards].sort((a, b) => Number(b.id.startsWith('podium-')) - Number(a.id.startsWith('podium-')))
+        .map((award) => ({ id: award.id, name: award.citation, kind: award.id.startsWith('podium-') ? 'trophy' : 'medal', teamIds: award.teams }));
 
     // Same eligibility as the selected board. An earlier eligible pending attempt can still take first solve.
     const eligible = new Set(info.teams.filter((team) => !team.isOutOfContest || rules.unofficialFirstSolve).map((team) => team.id));
@@ -109,7 +112,7 @@ export function resultBoard(source: ResultsData, board: string): ResultBoard {
     const honors = new Map<string, Record<ResultAward['kind'], string[]>>();
     for (const award of resultAwards) {
         for (const id of award.teamIds) {
-            const entry = honors.get(id) || { medal: [], first: [], special: [] };
+            const entry = honors.get(id) || { trophy: [], medal: [], first: [], special: [] };
             entry[award.kind].push(award.name);
             honors.set(id, entry);
         }
@@ -132,12 +135,13 @@ export function resultBoard(source: ResultsData, board: string): ResultBoard {
             }
             return {
                 id, name: team.name, school: team.organization || '', members: team.members?.length ? team.members : [team.name],
-                coaches: source.coaches[id] || [], rank: ranking.ranks[index], solved: score.totalScore, penalty: score.penalty,
+                coaches: source.coaches[id] || [], rank: ranking.ranks[index], schoolRank: ranking.schoolRanks[index] ?? 0,
+                solved: score.totalScore, penalty: score.penalty,
                 cells: Object.fromEntries(score.problemResults.map((cell, problem) => [problems[problem].id, {
                     attempts: attempts.get(String(problem)) || 0, wrong: cell.wrongAttempts, pending: cell.pendingAttempts,
                     solved: cell.isSolved, time: last.get(String(problem)) ?? null,
                 }])),
-                medals: awards?.medal || [], firsts: awards?.first || [], specials: awards?.special || [],
+                trophies: awards?.trophy || [], medals: awards?.medal || [], firsts: awards?.first || [], specials: awards?.special || [],
             };
         }),
     };
@@ -196,11 +200,11 @@ export function resultsCsv(rows: CsvValue[][]) {
 
 export function standingsCsv(result: ResultBoard) {
     return resultsCsv([
-        ['名次', '队伍 ID', '队伍', '学校', '队员', '过题数', '罚时（秒）', '奖牌', '一血', '特别奖',
+        ['名次', '学校名次', '队伍 ID', '队伍', '学校', '队员', '过题数', '罚时（秒）', '奖杯', '奖牌', '一血', '特别奖',
             ...result.problems.flatMap(({ label }) => [`${label} 状态`, `${label} 尝试次数`, `${label} 计罚次数`, `${label} 时间（秒）`])],
         ...result.rows.map((row) => [
-            row.rank || '*', Number(row.id), row.name, row.school, row.members.join('、'), row.solved, row.penalty,
-            row.medals.join('、'), row.firsts.join('、'), row.specials.join('、'),
+            row.rank || '*', row.schoolRank || '*', Number(row.id), row.name, row.school, row.members.join('、'), row.solved, row.penalty,
+            row.trophies.join('、'), row.medals.join('、'), row.firsts.join('、'), row.specials.join('、'),
             ...result.problems.flatMap(({ id }) => {
                 const cell = row.cells[id];
                 return [cell.solved ? '通过' : cell.pending ? '评测中' : cell.attempts ? '未通过' : '', cell.attempts, cell.wrong, cell.time];

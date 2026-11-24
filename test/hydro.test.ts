@@ -313,8 +313,8 @@ describe('Hydro 数据与权限', () => {
         };
         const pub = await loadContestData(state.contest as Tdoc, false);
         expect(pub.teams).toEqual([
-            { team_id: '-1001', name: '星火队', organization: undefined, group: ['official'], members: ['林澈', '周宁'] },
-            { team_id: '1', name: '测试选手', organization: undefined, group: ['official'] },
+            { team_id: '-1001', name: '星火队', organization: undefined, group: ['official'], school_key: 's1', members: ['林澈', '周宁'] },
+            { team_id: '1', name: '测试选手', organization: undefined, group: ['official'], school_key: 's2' },
         ]);
         expect(pub.submissions.map((item) => item.team_id)).toEqual(['-1001', '1']);
         const full = await loadContestData(state.contest as Tdoc, false, true);

@@ -343,9 +343,14 @@ export function applyScreens(ctx: Context, dependencies: {
                         });
                     });
                     if (type === 'logo-wall' && !projection.contest.organizations.length) throw new ScreenError('暂无可展示的学校，请检查公开榜的学校显示设置');
+                    // CCPC 新榜单模式: before the freeze the board's columns are not problems.
+                    if (type === 'balloons' && (await cached(`${prefix}|source`, () => source(tdoc))).data.hiddenFrom !== undefined) {
+                        throw new ScreenError('封榜前隐藏题号时不显示气球配送图');
+                    }
                     const balloons = type === 'balloons' ? await cached(`${prefix}|balloons`, async () => {
                         // 气球配送 tracks the balloons itself when the contest uses it (also after the freeze, in its colours).
                         const own = await dependencies.balloons?.(tdoc);
+                        if (own?.withheld) throw new ScreenError('按队配色或统一一血气球时不显示气球配送图');
                         if (own) return own;
                         const index = new Map(tdoc.pids.map((pid, i) => [pid, String(i)]));
                         const rows = await ContestModel.getMultiBalloon(tdoc.domainId, tdoc.docId, { sent: { $exists: false } })

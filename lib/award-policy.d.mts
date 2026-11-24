@@ -1,4 +1,5 @@
 export const AWARD_EXEMPT_TAG: string;
+export const SCHOOL_TAG: string;
 interface AwardTeam {
     tag: string[];
     awards: unknown[];

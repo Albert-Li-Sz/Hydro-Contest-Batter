@@ -8,7 +8,7 @@ if (app) {
         awardRules = event.detail.rules;
         const podium = document.getElementById('xp-podium');
         podium.hidden = !event.detail.podium.length;
-        podium.textContent = event.detail.podium.map((team, index) => `${['冠军', '亚军', '季军'][index]} ${team.name}`).join(' · ');
+        podium.textContent = event.detail.podium.map((trophy) => `${trophy.name} ${trophy.teams.join('、')}`).join(' · ');
         for (const tier of ['gold', 'silver', 'bronze']) {
             const dot = document.querySelector(`#xp-legend .xp-${tier}`);
             if (dot?.nextSibling) dot.nextSibling.textContent = awardRules?.[`${tier}Citation`] || { gold: '金牌', silver: '银牌', bronze: '铜牌' }[tier];
@@ -293,8 +293,10 @@ if (app) {
                     header.classList.add(`xp-col-${names[index]}`);
                     if (header.childElementCount === 0) header.textContent = translations[index];
                 });
-                for (const header of headers.slice(names.length, -2)) {
+                for (const [column, header] of headers.slice(names.length, -2).entries()) {
                     header.classList.add('xp-col-problem');
+                    // CCPC 新榜单模式: from `hiddenFrom` on, a column is a position in each row, not a problem.
+                    header.classList.toggle('xp-problem-hidden', awardRules?.hiddenFrom !== undefined && column >= awardRules.hiddenFrom);
                     // Headers carry the contest's Hydro balloon colour inline. The server sends
                     // #e2e8f0 for problems that have none; those stay plain like the other headers.
                     const fill = header.style.backgroundColor;

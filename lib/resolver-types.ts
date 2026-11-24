@@ -28,7 +28,7 @@ export interface ResolverContest {
     freezeDurationMs: number;
     scoringMode: 'hydro';
     /** lib/settings.ts TieBreak; omitted means Hydro's rule. */
-    tieBreak?: 'hydro' | 'icpc';
+    tieBreak?: 'hydro' | 'icpc' | 'ccpc';
     penaltyMinutes: number;
     unofficialFirstSolve: boolean;
     firstSolveEnabled: boolean;
@@ -64,6 +64,10 @@ export interface ResolverConfig {
     bronzeCitation: string;
     medalSameScore: boolean;
     podiumEnabled: boolean;
+    podiumBasis: 'team' | 'school';
+    podiumTie: 'lastAccept' | 'shared';
+    podiumNames: string[];
+    medalRanking: 'team' | 'school';
     firstSolve: boolean;
     rowsPerScreen: number;
     autoplay: boolean;

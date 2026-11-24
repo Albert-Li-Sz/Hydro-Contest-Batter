@@ -40,10 +40,20 @@ export interface TicketRule {
     printers: TicketPrinterRef[];
 }
 
+/**
+ * The balloon of a problem's first solve (CCPC 新榜单模式 offers the two others): problem, the problem's own colour
+ * marked as first; uniform, one colour for every first solve, unlike any other balloon; sequence, that colour with
+ * a number or letter telling the how-manyth first solve of the contest it is, not the problem.
+ */
+export type FirstStyle = 'problem' | 'uniform' | 'sequence';
+
 export interface BalloonSettings {
     enabled: boolean;
     /** continue: balloons for accepts after the freeze go out at once; hold: they wait until the board is unlocked. */
     afterFreeze: 'continue' | 'hold';
+    first: { style: FirstStyle; color: BalloonColor; labels: 'number' | 'letter' };
+    /** Each team has its own problem-to-colour assignment (the contest's colours, shuffled per team), unknown to teams. */
+    teamColors: boolean;
     /** By Hydro problem id. */
     colors: Record<string, BalloonColor>;
     tickets: {
@@ -55,8 +65,10 @@ export interface BalloonSettings {
     };
 }
 
+// Accepts after the freeze would show on the balloons: they wait for the board by default (CCPC 基本规则 3.6).
 export const defaultBalloonSettings = (): BalloonSettings => ({
-    enabled: false, afterFreeze: 'continue', colors: {},
+    enabled: false, afterFreeze: 'hold', colors: {},
+    first: { style: 'problem', color: { name: '金', hex: '#d4af37' }, labels: 'number' }, teamColors: false,
     tickets: { enabled: false, rules: [], solvedList: true, members: false },
 });
 
@@ -121,6 +133,25 @@ export function normalizeBalloonSettings(input: unknown, pids: number[], base = 
         if (raw.afterFreeze !== 'continue' && raw.afterFreeze !== 'hold') throw new BalloonError('封榜后的发放方式无效');
         settings.afterFreeze = raw.afterFreeze;
     }
+    if (raw.first !== undefined) {
+        const first = raw.first && typeof raw.first === 'object' ? raw.first : {};
+        if (first.style !== undefined) {
+            if (!['problem', 'uniform', 'sequence'].includes(first.style)) throw new BalloonError('一血气球的方式无效');
+            settings.first.style = first.style;
+        }
+        if (first.labels !== undefined) {
+            if (first.labels !== 'number' && first.labels !== 'letter') throw new BalloonError('一血气球的编号方式无效');
+            settings.first.labels = first.labels;
+        }
+        if (first.color !== undefined) {
+            const hex = hexOf(first.color?.hex);
+            const name = String(first.color?.name ?? '').trim();
+            if (!hex) throw new BalloonError('一血气球的颜色值无效');
+            if (name.length > 12) throw new BalloonError('颜色名称不能超过 12 个字符');
+            settings.first.color = { hex, name: name || nearestColorName(hex) };
+        }
+    }
+    if (typeof raw.teamColors === 'boolean') settings.teamColors = raw.teamColors;
     const known = new Set(pids.map(String));
     if (raw.colors !== undefined) {
         if (!raw.colors || typeof raw.colors !== 'object' || Array.isArray(raw.colors)) throw new BalloonError('气球颜色格式无效');
@@ -323,6 +354,52 @@ export function firstBalloons(balloons: Pick<StoredBalloon, 'uid' | 'pid' | 'sub
         && Math.floor(balloon.submittedAt / 1000) === earliest.get(balloon.pid)).map((balloon) => balloon.key));
 }
 
+const letters = (n: number) => {
+    let text = '';
+    for (let value = n; value > 0; value = Math.floor((value - 1) / 26)) text = String.fromCharCode(65 + ((value - 1) % 26)) + text;
+    return text;
+};
+
+/** The how-manyth first solve of the contest each first balloon is, 1 the earliest (by accept, then by balloon number). */
+export function firstNumbers(balloons: Pick<StoredBalloon, 'key' | 'submittedAt' | 'seq'>[], first: Set<string>) {
+    const ordered = balloons.filter((balloon) => first.has(balloon.key)).sort((a, b) => a.submittedAt - b.submittedAt || a.seq - b.seq);
+    return new Map(ordered.map((balloon, index) => [balloon.key, index + 1]));
+}
+
+/** A team's own colours: the contest's colours shuffled by a secret seed and the team, so no team can work them out. */
+export function teamPalette(colors: (BalloonColor | null)[], seed: string, uid: number): (BalloonColor | null)[] {
+    let state = fnv(`${seed}\n${uid}`) || 1;
+    const next = () => {
+        state ^= state << 13; state >>>= 0;
+        state ^= state >>> 17;
+        state ^= state << 5; state >>>= 0;
+        return state / 0x100000000;
+    };
+    const result = [...colors];
+    for (let index = result.length - 1; index > 0; index--) {
+        const other = Math.floor(next() * (index + 1));
+        [result[index], result[other]] = [result[other], result[index]];
+    }
+    return result;
+}
+
+/** What a balloon looks like when handed out: its colour, and for a first solve the mark or number it carries. */
+export function balloonLook(balloon: { uid: number; pid: number; key: string }, context: {
+    settings: Pick<BalloonSettings, 'first' | 'teamColors'>; pids: number[]; colors: (BalloonColor | null)[]; seed: string;
+    first: Set<string>; numbers: Map<string, number>;
+}) {
+    const index = context.pids.indexOf(balloon.pid);
+    const first = context.first.has(balloon.key);
+    if (first && context.settings.first.style !== 'problem') {
+        const number = context.numbers.get(balloon.key);
+        const label = context.settings.first.style === 'sequence' && number
+            ? (context.settings.first.labels === 'letter' ? letters(number) : String(number)) : '';
+        return { color: context.settings.first.color, first, firstLabel: label ? `一血 ${label}` : '一血' };
+    }
+    const colors = context.settings.teamColors ? teamPalette(context.colors, context.seed, balloon.uid) : context.colors;
+    return { color: colors[index] ?? null, first, firstLabel: first ? '本题一血' : '' };
+}
+
 /** A ticket waits for a printer: an active balloon, not held, not yet delivered. */
 export const ticketReady = (balloon: Pick<StoredBalloon, 'state' | 'held' | 'delivered' | 'ticket'>) =>
     balloon.state === 'active' && !balloon.held && !balloon.delivered && balloon.ticket.status === 'pending';
@@ -405,6 +482,8 @@ export interface TicketInput {
     problemTitle: string;
     color: BalloonColor | null;
     first: boolean;
+    /** How the first-solve balloon is marked (本题一血, 一血, 一血 3). */
+    firstLabel?: string;
     team: string;
     school: string;
     members: string[];
@@ -431,7 +510,7 @@ export function ticketLines(input: TicketInput, options: { solvedList: boolean; 
         { text: '', size: 'm', rule: true },
         { text: input.seat ? `座位 ${input.seat}` : '座位未导入', size: 'xl', bold: true, align: 'center' },
         { text: `${input.label} 题 · ${input.color?.name || '未设颜色'}`, size: 'xl', bold: true, align: 'center' },
-        input.first ? { text: '★ 本题一血 ★', size: 'l', bold: true, align: 'center', invert: true } : null,
+        input.first ? { text: `★ ${input.firstLabel || '本题一血'} ★`, size: 'l', bold: true, align: 'center', invert: true } : null,
         { text: '', size: 'm', rule: true },
         { text: `${input.team}${input.unofficial ? '（打星）' : ''}`, size: 'l', bold: true },
         input.school ? { text: input.school, size: 'm' } : null,

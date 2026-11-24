@@ -17,15 +17,26 @@ export interface ManualBoard {
  */
 export type MedalBasis = 'count' | 'ratio';
 
+/** What the trophies (冠军、亚军、季军 by default) go by, and how tied teams receive them (resolver/public/js/trophies.js). */
+export type PodiumBasis = 'team' | 'school';
+export type PodiumTie = 'lastAccept' | 'shared';
+/** Medals by team rank, or by school rank (CCPC 总决赛: school ranks 1–10 gold, 11–30 silver, 31–60 bronze). */
+export type MedalRanking = 'team' | 'school';
+
 export interface BoardAwards {
     medals: Medals;
     medalBasis: MedalBasis;
+    medalRanking: MedalRanking;
     goldCitation: string;
     silverCitation: string;
     bronzeCitation: string;
     medalSameScore: boolean;
     firstSolve: boolean;
     podiumEnabled: boolean;
+    podiumBasis: PodiumBasis;
+    podiumTie: PodiumTie;
+    /** One trophy per name, in order: 1 to 10 names. */
+    podiumNames: string[];
     unofficialFirstSolve: boolean;
 }
 
@@ -34,9 +45,24 @@ export interface BoardAwards {
  * hydro: Hydro's ACM rule, penalty in whole seconds, equal penalty shares a rank.
  * icpc: the ICPC regional rule, total time in minutes (accepted time truncated to the minute plus 20 minutes per
  * rejected run), then the earlier last accepted run; teams equal in both share a rank.
+ * ccpc: CCPC 基本规则 4.1, total time in minutes as ICPC; teams equal in solved and time share the rank (listed by
+ * the earlier last accepted run, which also decides trophies by 附录二).
  */
-export type TieBreak = 'hydro' | 'icpc';
-export const tieBreaks: readonly TieBreak[] = ['hydro', 'icpc'];
+export type TieBreak = 'hydro' | 'icpc' | 'ccpc';
+export const tieBreaks: readonly TieBreak[] = ['hydro', 'icpc', 'ccpc'];
+
+/**
+ * CCPC 新榜单模式 (2026.9.14): until the freeze, the public board hides problem labels. A problem's label shows
+ * once `reveal` teams solved it (a number of teams, or a percentage of the contest's teams rounded down); each
+ * team's row lists the shown problems first, then its other accepts by time, then its other attempts by the
+ * last submission, then the problems it never tried. Staff and the frozen board see the usual board.
+ */
+export interface CcpcBoard {
+    enabled: boolean;
+    revealBasis: 'count' | 'percent';
+    reveal: number;
+}
+export const defaultCcpcBoard = (): CcpcBoard => ({ enabled: false, revealBasis: 'count', reveal: 50 });
 
 /**
  * 特别奖, named by the organiser and given by rule:
@@ -75,13 +101,19 @@ export interface BoardSettings extends BoardAwards {
     /** Serve the contest through the ICPC CCS Contest API (lib/ccs). */
     ccsApi: boolean;
     ccsAutoFinalize: boolean;
+    ccpcBoard: CcpcBoard;
+    /** Submissions to a problem the team already solved are left out everywhere (CCPC 新榜单模式). */
+    ignoreAfterAccept: boolean;
 }
+
+export const defaultPodiumNames = ['冠军', '亚军', '季军'];
 
 export const defaultSettings: BoardSettings = {
     medals: { gold: 1, silver: 2, bronze: 3 },
-    medalBasis: 'count',
+    medalBasis: 'count', medalRanking: 'team',
     goldCitation: '金奖', silverCitation: '银奖', bronzeCitation: '铜奖',
     medalSameScore: true, firstSolve: false, podiumEnabled: false, unofficialFirstSolve: false,
+    podiumBasis: 'team', podiumTie: 'lastAccept', podiumNames: defaultPodiumNames,
     tieBreak: 'hydro',
     specialAwards: [],
     boardAwards: {},
@@ -93,6 +125,8 @@ export const defaultSettings: BoardSettings = {
     showIdentity: false,
     ccsApi: false,
     ccsAutoFinalize: false,
+    ccpcBoard: defaultCcpcBoard(),
+    ignoreAfterAccept: false,
 };
 
 function object(value: unknown, label: string): Record<string, unknown> {
@@ -121,10 +155,26 @@ function normalizeAwards(input: Record<string, unknown>, fallback: BoardAwards):
         ?? (input.medals !== undefined ? 'count' : fallback.medalBasis ?? 'count');
     const counts = medals(input.medals ?? fallback.medals, '奖牌数量');
     if (medalBasis === 'ratio' && counts.gold + counts.silver + counts.bronze > 100) throw new Error('按比例设奖时，金银铜比例之和不能超过 100%');
-    const result: BoardAwards = { medals: counts, medalBasis,
+    const result: BoardAwards = { medals: counts, medalBasis, medalRanking: fallback.medalRanking ?? 'team',
         goldCitation: fallback.goldCitation, silverCitation: fallback.silverCitation, bronzeCitation: fallback.bronzeCitation,
         medalSameScore: fallback.medalSameScore, firstSolve: fallback.firstSolve,
-        podiumEnabled: fallback.podiumEnabled, unofficialFirstSolve: fallback.unofficialFirstSolve };
+        podiumEnabled: fallback.podiumEnabled, podiumBasis: fallback.podiumBasis ?? 'team', podiumTie: fallback.podiumTie ?? 'lastAccept',
+        podiumNames: [...fallback.podiumNames ?? defaultPodiumNames], unofficialFirstSolve: fallback.unofficialFirstSolve };
+    const choice = <K extends 'medalRanking' | 'podiumBasis' | 'podiumTie'>(key: K, allowed: BoardAwards[K][], label: string) => {
+        if (input[key] === undefined) return;
+        if (!allowed.includes(input[key] as BoardAwards[K])) throw new Error(`${label}无效`);
+        result[key] = input[key] as BoardAwards[K];
+    };
+    choice('medalRanking', ['team', 'school'], '奖牌排名依据');
+    choice('podiumBasis', ['team', 'school'], '奖杯排名依据');
+    choice('podiumTie', ['lastAccept', 'shared'], '奖杯并列办法');
+    if (input.podiumNames !== undefined) {
+        if (!Array.isArray(input.podiumNames) || !input.podiumNames.length || input.podiumNames.length > 10) throw new Error('奖杯应有 1 至 10 个');
+        result.podiumNames = input.podiumNames.map((name, index) => {
+            if (typeof name !== 'string' || !name.trim() || name.trim().length > 40) throw new Error(`第 ${index + 1} 个奖杯名称应为 1 至 40 个字符`);
+            return name.trim();
+        });
+    }
     for (const key of ['medalSameScore', 'firstSolve', 'podiumEnabled', 'unofficialFirstSolve'] as const) {
         if (input[key] === undefined) continue;
         if (typeof input[key] !== 'boolean') throw new Error(`${key} 必须是布尔值`);
@@ -190,14 +240,16 @@ export function awardsFor(settings: BoardSettings, boardId: string): BoardRules 
     if (settings.boardAwards[boardId]) return { ...settings.boardAwards[boardId], tieBreak };
     const manual = settings.manualBoards.find((board) => `manual-${board.id}` === boardId);
     return { medals: manual?.medals || settings.medals, medalBasis: manual?.medals ? 'count' : settings.medalBasis ?? 'count',
+        medalRanking: settings.medalRanking ?? 'team',
         goldCitation: settings.goldCitation, silverCitation: settings.silverCitation, bronzeCitation: settings.bronzeCitation,
         medalSameScore: settings.medalSameScore, firstSolve: settings.firstSolve,
-        podiumEnabled: settings.podiumEnabled, unofficialFirstSolve: settings.unofficialFirstSolve, tieBreak };
+        podiumEnabled: settings.podiumEnabled, podiumBasis: settings.podiumBasis ?? 'team', podiumTie: settings.podiumTie ?? 'lastAccept',
+        podiumNames: settings.podiumNames ?? defaultPodiumNames, unofficialFirstSolve: settings.unofficialFirstSolve, tieBreak };
 }
 
 export function normalizeSettings(value: unknown): BoardSettings {
     const input = object(value, '榜单设置');
-    for (const key of ['schoolBoards', 'participationBoards', 'publicAccess', 'replaceNative', 'unofficialAwards', 'showIdentity', 'ccsApi', 'ccsAutoFinalize']) {
+    for (const key of ['schoolBoards', 'participationBoards', 'publicAccess', 'replaceNative', 'unofficialAwards', 'showIdentity', 'ccsApi', 'ccsAutoFinalize', 'ignoreAfterAccept']) {
         if (input[key] !== undefined && typeof input[key] !== 'boolean') throw new Error(`${key} 必须是布尔值`);
     }
     if (input.tieBreak !== undefined && !tieBreaks.includes(input.tieBreak as TieBreak)) throw new Error('同分规则无效');
@@ -237,7 +289,7 @@ export function normalizeSettings(value: unknown): BoardSettings {
     }
     return {
         ...awards, boardAwards,
-        tieBreak: input.tieBreak === 'icpc' ? 'icpc' : 'hydro',
+        tieBreak: (input.tieBreak as TieBreak | undefined) ?? 'hydro',
         specialAwards: specialAwards(input.specialAwards, ids),
         schoolBoards: input.schoolBoards === true,
         participationBoards: input.participationBoards === true,
@@ -248,7 +300,29 @@ export function normalizeSettings(value: unknown): BoardSettings {
         showIdentity: input.showIdentity === true,
         ccsApi: input.ccsApi === true,
         ccsAutoFinalize: input.ccsAutoFinalize === true,
+        ccpcBoard: normalizeCcpcBoard(input.ccpcBoard),
+        ignoreAfterAccept: input.ignoreAfterAccept === true,
     };
+}
+
+export function normalizeCcpcBoard(value: unknown): CcpcBoard {
+    if (value === undefined) return defaultCcpcBoard();
+    const input = object(value, 'CCPC 新榜单模式');
+    const board = defaultCcpcBoard();
+    if (input.enabled !== undefined && typeof input.enabled !== 'boolean') throw new Error('ccpcBoard.enabled 必须是布尔值');
+    board.enabled = input.enabled === true;
+    if (input.revealBasis !== undefined) {
+        if (input.revealBasis !== 'count' && input.revealBasis !== 'percent') throw new Error('题号显示门槛的方式无效');
+        board.revealBasis = input.revealBasis;
+    }
+    if (input.reveal !== undefined) {
+        const max = board.revealBasis === 'percent' ? 100 : 100000;
+        if (typeof input.reveal !== 'number' || !Number.isSafeInteger(input.reveal) || input.reveal < 1 || input.reveal > max) {
+            throw new Error(board.revealBasis === 'percent' ? '题号显示门槛应为 1% 至 100%' : '题号显示门槛应为 1 至 100000 队');
+        }
+        board.reveal = input.reveal;
+    } else if (board.revealBasis === 'percent') board.reveal = 20;
+    return board;
 }
 
 /** Compared the way viewers read them: width, case and spacing differences do not make a name distinct. */

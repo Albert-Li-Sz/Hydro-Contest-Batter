@@ -21,6 +21,8 @@ import { createPrintersPreview } from '../preview/printers';
 import { createBalloonsPreview } from '../preview/balloons';
 import { createClarificationPreview } from '../preview/clarification-desk';
 import { previewDatabase } from '../preview/resolver-memory-db';
+import { createControlPreview } from '../preview/control';
+import { dropAfterAccept, hideProblemLabels } from '../lib/ccpc-board';
 
 async function main() {
 const root = path.resolve(__dirname, '..');
@@ -52,6 +54,12 @@ const clarificationPreview = createClarificationPreview(env, pluginVersion, (tex
     livePreview.hub.tickerMessage.createTemporaryFromInput({ type: 'text', part: 'long', periodMs: 30_000, text }, 5 * 60_000);
 });
 const ccsPreview = createCcsPreview(demoData(), () => settings);
+const saveState = async (next: typeof settings) => {
+    await fs.writeFile(`${statePath}.tmp`, JSON.stringify(next, null, 2));
+    await fs.rename(`${statePath}.tmp`, statePath);
+    settings = next;
+};
+const controlPreview = createControlPreview(env, pluginVersion, demoData, { get: () => settings, set: saveState });
 const base = '/contest/demo';
 let unlocked = false;
 const boardUrl = `${base}/scoreboard/xcpcio-plus`;
@@ -69,7 +77,10 @@ const server = http.createServer(async (request, response) => {
         const displayData = url.searchParams.get('fixture') === 'wide' ? wideData() : url.searchParams.get('fixture') === 'team' ? teamData() : data;
         const displayDefaults = { ...defaults, hideSubmissions: url.searchParams.get('running') === '1',  tdoc: { title: displayData.contest.contest_name } };
         const boardResponse = () => {
-            const board = enhanceBoard(displayData, settings, { identity: settings.showIdentity });
+            // As index.ts applyBoardRules: ?running=1 is before the freeze, where the CCPC board hides labels.
+            let shown = settings.ignoreAfterAccept ? dropAfterAccept(displayData) : displayData;
+            if (settings.ccpcBoard.enabled && url.searchParams.get('running') === '1' && url.searchParams.get('frozen') !== '1') shown = hideProblemLabels(shown, settings.ccpcBoard);
+            const board = enhanceBoard(shown, settings, { identity: settings.showIdentity });
             return displaySpecialAwards(board, settings, url.searchParams.get('running') !== '1', url.searchParams.get('frozen') === '1');
         };
         const fixtureQuery = ['wide', 'team'].includes(url.searchParams.get('fixture') || '') ? `&fixture=${url.searchParams.get('fixture')}` : '';
@@ -86,14 +97,13 @@ const server = http.createServer(async (request, response) => {
         if (await balloonsPreview.handle(request, response, url)) return;
         if (await clarificationPreview.handle(request, response, url)) return;
         if (await managePreview(request, response, url)) return;
+        if (await controlPreview(request, response, url)) return;
         if (request.method === 'POST' && url.pathname === settingsUrl) {
             let body = '';
             for await (const chunk of request) { body += chunk; if (body.length > 1000000) throw new Error('设置内容过大'); }
             const next = pruneMembers(normalizeSettings(JSON.parse(new URLSearchParams(body).get('config') || 'null')), new Set(data.teams.map((team) => team.team_id)));
             checkBoardNames(next, reservedBoardNames(data.teams, next));
-            await fs.writeFile(`${statePath}.tmp`, JSON.stringify(next, null, 2));
-            await fs.rename(`${statePath}.tmp`, statePath);
-            settings = next;
+            await saveState(next);
             await ccsPreview.sync();
             ccsPreview.app.writer.touch(`system/${previewCcsId}`);
             response.writeHead(303, { Location: `${settingsUrl}?saved=1` }).end(); return;

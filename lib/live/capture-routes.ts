@@ -13,7 +13,7 @@ import { isTeamEntry, loadSeats, memberIds, type TeamEntry } from '../teams';
 import {
     CaptureError, type CaptureDevice, type CaptureEnvelope, captureMedias, captureProfile, CaptureRelay, captureSecretMatches, type CaptureSettings,
     type CaptureStream, captureStreams, defaultCaptureSettings, isCaptureOnline, newCaptureSecret, normalizeCaptureSettings, normalizeDeviceInput,
-    participantDeviceId, streamAllowed,
+    participantDeviceId, streamAllowed, boardSealed,
 } from './capture';
 import { startStunServer } from './stun';
 import type { MediaType } from './types';
@@ -100,6 +100,25 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
         return doc;
     }
 
+    /** Saves a contest's capture settings (the capture page and 赛事中控) and tells open devices and overlays. */
+    async function saveSettings(tdoc: Tdoc, input: unknown, uid: number) {
+        const contestKey = helpers.key(tdoc);
+        const previous = await loadSettings(contestKey);
+        const settings = normalizeCaptureSettings(input, previous);
+        await configs.updateOne({ _id: contestKey }, { $set: { settings, updatedAt: new Date(), updatedBy: uid } }, { upsert: true });
+        const now = Date.now();
+        if (!settings.enabled) {
+            for (const doc of await devices.find({ contestKey }).project({ _id: 1 }).toArray()) relay.kickDevice(doc._id, '本场比赛已停用画面采集，重新启用后会自动连接', 4005);
+        } else {
+            // Capture pages already open take the new quality settings at once.
+            if (JSON.stringify(captureProfile(settings)) !== JSON.stringify(captureProfile(previous))) relay.configureDevices(contestKey, { ...captureProfile(settings), stunPort });
+            // Screens the overlay is showing stop when they are no longer allowed.
+            if (streamAllowed('screen', 'overlay', previous, tdoc, now) && !streamAllowed('screen', 'overlay', settings, tdoc, now)) relay.endOverlayScreens(contestKey);
+        }
+        mediaCache.delete(contestKey);
+        return settings;
+    }
+
     const captureUrl = (tdoc: Tdoc, doc: Pick<CaptureDevice, '_id' | 'secret'>) => `${helpers.contestBase(tdoc)}/live-capture/${doc._id}/${doc.secret}`;
 
     /** Who may watch: the viewer's kind decides about screens; the device must be of this contest and online. */
@@ -111,7 +130,7 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
             ]);
             if (!doc || !current) return '设备不存在';
             if (!settings.enabled) return '本场比赛未启用画面采集';
-            if (!streamAllowed(stream, viewer, settings, current, Date.now())) return '比赛结束前不提供屏幕画面';
+            if (!streamAllowed(stream, viewer, settings, current, Date.now())) return boardSealed(current) ? '解除封榜前不提供屏幕画面' : '比赛结束前不提供屏幕画面';
             if (!isCaptureOnline(doc, Date.now())) return '设备未在线';
             if (!doc.streams.includes(stream)) return stream === 'screen' ? '该设备没有在采集屏幕' : '该设备没有在采集摄像头';
             return true;
@@ -222,21 +241,7 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
 
         @param('payload', Types.String)
         async postSettings(_domainId: string, input: string) {
-            const contestKey = helpers.key(this.tdoc);
-            const previous = await loadSettings(contestKey);
-            const settings = normalizeCaptureSettings(this.payload(input).settings, previous);
-            await configs.updateOne({ _id: contestKey }, { $set: { settings, updatedAt: new Date(), updatedBy: this.user._id } }, { upsert: true });
-            const now = Date.now();
-            if (!settings.enabled) {
-                for (const doc of await devices.find({ contestKey }).project({ _id: 1 }).toArray()) relay.kickDevice(doc._id, '本场比赛已停用画面采集，重新启用后会自动连接', 4005);
-            } else {
-                // Capture pages already open take the new quality settings at once.
-                if (JSON.stringify(captureProfile(settings)) !== JSON.stringify(captureProfile(previous))) relay.configureDevices(contestKey, { ...captureProfile(settings), stunPort });
-                // Screens the overlay is showing stop when they are no longer allowed.
-                if (streamAllowed('screen', 'overlay', previous, this.tdoc, now) && !streamAllowed('screen', 'overlay', settings, this.tdoc, now)) relay.endOverlayScreens(contestKey);
-            }
-            mediaCache.delete(contestKey);
-            this.response.body = { settings };
+            this.response.body = { settings: await saveSettings(this.tdoc, this.payload(input).settings, this.user._id) };
         }
     }
 
@@ -593,6 +598,7 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
     return {
         mediasFor,
         directorStatus,
+        settings: { get: (tdoc: Tdoc) => loadSettings(helpers.key(tdoc)), save: saveSettings },
         /** The contest's capture links (lib/links.ts): one per device. */
         async linkStatus(tdoc: Tdoc) {
             const [row] = await devices.aggregate([

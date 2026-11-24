@@ -22,6 +22,33 @@ export function applyResolver(ctx: Context, dependencies: {
     const sessionTtl = dependencies.sessionDays * 24 * 3600 * 1000;
     ctx.on('app/started', async () => { await sessions.ensureIndexes(); await sessions.prune(sessionTtl); });
 
+    async function sourceFor(tdoc: Tdoc, privateInfo: boolean) {
+        const settings = await dependencies.loadSettings(tdoc);
+        const identity = settings.showIdentity || privateInfo;
+        const data = await dependencies.loadData(tdoc, true, identity, true);
+        const boards = resolverBoards(data, settings, identity);
+        return { settings, data, boards, ended: ContestModel.isDone(tdoc) };
+    }
+
+    async function payloadFor(tdoc: Tdoc, input: unknown, privateInfo: boolean) {
+        const { settings, data, boards, ended } = await sourceFor(tdoc, privateInfo);
+        const board = boards.find((item) => item.id === (input as { boardId?: unknown })?.boardId);
+        const defaults = defaultResolverConfig({ ...settings, medals: board?.medals || settings.medals }, ended);
+        const config = parseResolverConfig(input, defaults);
+        try {
+            return prepareResolver(data, boards, config, {
+                contestId: String(tdoc.docId), ended, capturedAt: new Date(), logoNames,
+                special: specialAwardResults(enhanceBoard(data, settings, { identity: true }), settings),
+            });
+        } catch (error) {
+            // Upstream validates input size before generating potentially large step sets.
+            if (error instanceof Error && 'expose' in error && error.expose === true && 'status' in error) {
+                throw new ResolverError(error.message, Number(error.status));
+            }
+            throw error;
+        }
+    }
+
     class ResolverHandler extends Handler {
         tdoc!: Tdoc;
         scope!: ResolverScope;
@@ -45,33 +72,14 @@ export function applyResolver(ctx: Context, dependencies: {
         }
 
         async source() {
-            const settings = await dependencies.loadSettings(this.tdoc);
-            const identity = settings.showIdentity || this.user.hasPerm(PERM.PERM_VIEW_USER_PRIVATE_INFO);
-            const data = await dependencies.loadData(this.tdoc, true, identity, true);
-            const boards = resolverBoards(data, settings, identity);
-            return { settings, data, boards, ended: ContestModel.isDone(this.tdoc) };
+            return sourceFor(this.tdoc, this.user.hasPerm(PERM.PERM_VIEW_USER_PRIVATE_INFO));
         }
 
         async payload(raw: string) {
             if (typeof raw !== 'string' || raw.length > 10000) throw new ResolverError('滚榜配置格式无效或内容过大');
             let input: unknown;
             try { input = JSON.parse(raw); } catch { throw new ResolverError('滚榜配置必须是有效 JSON'); }
-            const { settings, data, boards, ended } = await this.source();
-            const board = boards.find((item) => item.id === (input as { boardId?: unknown })?.boardId);
-            const defaults = defaultResolverConfig({ ...settings, medals: board?.medals || settings.medals }, ended);
-            const config = parseResolverConfig(input, defaults);
-            try {
-                return prepareResolver(data, boards, config, {
-                    contestId: this.scope.contestId, ended, capturedAt: new Date(), logoNames,
-                    special: specialAwardResults(enhanceBoard(data, settings, { identity: true }), settings),
-                });
-            } catch (error) {
-                // Upstream validates input size before generating potentially large step sets.
-                if (error instanceof Error && 'expose' in error && error.expose === true && 'status' in error) {
-                    throw new ResolverError(error.message, Number(error.status));
-                }
-                throw error;
-            }
+            return payloadFor(this.tdoc, input, this.user.hasPerm(PERM.PERM_VIEW_USER_PRIVATE_INFO));
         }
 
         controlledSession() {
@@ -195,4 +203,21 @@ export function applyResolver(ctx: Context, dependencies: {
         handler.UiContext.xcpcioResolverUrl = `/d/${encodeURIComponent(handler.domain._id)}/contest/${tdoc.docId}/resolver`;
     });
     ctx.i18n.load('zh', { contest_resolver: '滚榜', contest_resolver_play: '滚榜播放' });
+    return {
+        /** Every resolver session of the contest, whoever created it. */
+        ofContest: (tdoc: Tdoc) => sessions.ofContest(tdoc.domainId, String(tdoc.docId)),
+        /** A new session for `ownerId` with each listed session's configuration, on the current results; the old ones stay. */
+        async rebuild(tdoc: Tdoc, ids: string[], ownerId: number, privateInfo: boolean) {
+            const all = await sessions.ofContest(tdoc.domainId, String(tdoc.docId));
+            const created: { from: string; id: string; url: string }[] = [];
+            for (const id of ids) {
+                const old = all.find((session) => session.id === id);
+                if (!old) continue;
+                const payload = await payloadFor(tdoc, old.config, privateInfo);
+                const session = await sessions.create({ domainId: tdoc.domainId, contestId: String(tdoc.docId), ownerId }, payload);
+                created.push({ from: id, id: session._id, url: `/d/${encodeURIComponent(tdoc.domainId)}/contest/${tdoc.docId}/resolver/sessions/${session._id}` });
+            }
+            return created;
+        },
+    };
 }

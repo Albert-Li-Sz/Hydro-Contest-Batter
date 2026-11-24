@@ -48,8 +48,15 @@ if (patchedShareMenus !== 1) throw new Error('无法定位唯一的 XCPCIO 榜�
 if (layoutSwitches !== 14) throw new Error(`XCPCIO 布局切换数量为 ${layoutSwitches}，预期 14 处，请检查上游构建产物`);
 await cp(path.join(root, 'client'), target, { recursive: true });
 const awardPolicy = await readFile(path.join(root, 'lib/award-policy.mjs'), 'utf8');
-await writeFile(path.join(target, 'award-policy.mjs'), awardPolicy.replace('../resolver/public/js/standings.js', './standings.js'));
+const policyImports = { '../resolver/public/js/standings.js': './standings.js', '../resolver/public/js/trophies.js': './trophies.js' };
+let policyBundle = awardPolicy;
+for (const [from, to] of Object.entries(policyImports)) {
+    if (!policyBundle.includes(`'${from}'`)) throw new Error(`award-policy.mjs 缺少 ${from} 的引用`);
+    policyBundle = policyBundle.replace(`'${from}'`, `'${to}'`);
+}
+await writeFile(path.join(target, 'award-policy.mjs'), policyBundle);
 await cp(path.join(root, 'resolver/public/js/standings.js'), path.join(target, 'standings.js'));
+await cp(path.join(root, 'resolver/public/js/trophies.js'), path.join(target, 'trophies.js'));
 await cp(path.join(root, 'licenses/XCPCIO-MIT.txt'), path.join(target, 'XCPCIO-LICENSE.txt'));
 // School logos are fetched ahead of time by scripts/fetch-logos.mjs; the board works without them.
 // The board shows them at icon size, so it gets the thumbnails and a name index without the

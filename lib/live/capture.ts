@@ -167,12 +167,20 @@ export function normalizeDeviceInput(input: unknown, base?: Pick<CaptureDevice, 
     return device;
 }
 
-/** Whether a viewer may watch a stream. Contest staff always; the OBS overlay sees screens only when allowed. */
-export function streamAllowed(stream: CaptureStream, viewer: 'staff' | 'overlay', settings: CaptureSettings, contest: { endAt: Date }, now: number) {
+/** The board still hides the end of the contest: frozen, and not yet unlocked (Hydro keeps the freeze after the end). */
+export const boardSealed = (contest: { lockAt?: Date | null; unlocked?: boolean }) => !!contest.lockAt && !contest.unlocked;
+
+/**
+ * Whether a viewer may watch a stream. Contest staff always; the OBS overlay sees screens during the contest only
+ * when allowed, otherwise from the end on, and with a freeze only once the board is unlocked: a screen must not
+ * show the results before the resolver does.
+ */
+export function streamAllowed(stream: CaptureStream, viewer: 'staff' | 'overlay', settings: CaptureSettings,
+    contest: { endAt: Date; lockAt?: Date | null; unlocked?: boolean }, now: number) {
     if (!settings.enabled) return false;
     if (stream === 'webcam') return settings.webcam;
     if (viewer === 'staff') return true;
-    return settings.screenDuringContest || now >= contest.endAt.getTime();
+    return settings.screenDuringContest || (now >= contest.endAt.getTime() && !boardSealed(contest));
 }
 
 /** A team's camera and screen in the overlay: devices bound to it by hand first, then by seat. */

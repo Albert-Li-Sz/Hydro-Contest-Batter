@@ -1,6 +1,9 @@
 const entryIds = ['xcpcio-resolver-entry', 'xcpcio-screens-entry', 'xcpcio-live-entry', 'xcpcio-capture-entry', 'xcpcio-monitor-entry', 'xcpcio-overview-entry', 'xcpcio-awards-entry', 'xcpcio-balloons-entry', 'xcpcio-presence-entry', 'xcpcio-clarification-desk-entry'];
 const resultsEntryId = 'xcpcio-results-entry';
+const controlEntryId = 'xcpcio-control-entry';
 const entries = (url, { live = true, capture = false } = {}) => [
+    // 赛事中控: the settings of every page below that a contest day needs, in one place.
+    [controlEntryId, url.replace(/\/resolver$/, '/control'), 'icon-settings', '赛事中控'],
     // One place for the boards and every award the board, the resolver, the screens and the broadcast use.
     [entryIds[6], url.replace(/\/resolver$/, '/xcpcio-settings'), 'icon-award', '榜单与奖项'],
     [resultsEntryId, url.replace(/\/resolver$/, '/results'), 'icon-download', '成绩与导出'],
@@ -17,7 +20,7 @@ const entries = (url, { live = true, capture = false } = {}) => [
     [entryIds[5], url.replace(/\/resolver$/, '/overview'), 'icon-pie-chart', '赛况总览'],
     [entryIds[9], url.replace(/\/resolver$/, '/clarification-desk'), 'icon-comment', '答疑台'],
 ];
-const removeEntries = () => { for (const id of [...entryIds, resultsEntryId]) document.getElementById(id)?.remove(); };
+const removeEntries = () => { for (const id of [...entryIds, resultsEntryId, controlEntryId]) document.getElementById(id)?.remove(); };
 
 /** Add the entries after CCS, including when CCS finishes loading later. */
 export function installResolverEntry(url, options = {}) {

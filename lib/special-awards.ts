@@ -57,7 +57,7 @@ export function specialAwardResults(data: BoardData, settings: Pick<BoardSetting
         if (cell.solvedAt !== null || pending.has(record.status)) continue;
         if (record.status === 'CORRECT') { cell.solvedAt = record.timestamp; cell.id = record.submission_id; } else if (!exempt.has(record.status)) cell.tries++;
     }
-    const ranking = { scoringMode: 'hydro', tieBreak: settings.tieBreak === 'icpc' ? 'icpc' as const : 'hydro' as const, penaltyMinutes: 20 };
+    const ranking = { scoringMode: 'hydro', tieBreak: settings.tieBreak ?? 'hydro', penaltyMinutes: 20 };
     const results = Object.fromEntries([...cells].map(([teamId, team]) => [teamId, [...team.values()].filter((cell) => cell.solvedAt !== null)
         .map((cell): StandingsCell => ({ status: 'solved', time: Math.floor(cell.solvedAt! / 60_000), timeSeconds: Math.floor(cell.solvedAt! / 1000), penaltyCount: cell.tries }))]));
 

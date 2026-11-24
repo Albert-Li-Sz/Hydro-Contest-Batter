@@ -1,6 +1,7 @@
 {% set page_name = 'contest_xcpcio_results' %}
 {% extends "layout/basic.html" %}
 {% macro rank(row) %}{% if row %}{{ row.rank if row.rank else '*' }}{% else %}—{% endif %}{% endmacro %}
+{% macro school_rank(row) %}{% if row %}{{ row.schoolRank if row.schoolRank else '*' }}{% else %}—{% endif %}{% endmacro %}
 {% macro metric(row, field) %}{% if row %}{{ row[field] }}{% else %}—{% endif %}{% endmacro %}
 {% macro awards(row, field) %}{% if row and row[field].length %}{{ row[field] | join('、') }}{% else %}—{% endif %}{% endmacro %}
 {% macro difference(left, right, field) %}
@@ -58,14 +59,16 @@
       {% if comparison %}
         {% if changes.length %}
         <table class="data-table" id="results-comparison">
-          <thead><tr><th scope="col">队伍</th><th scope="col">名次</th><th scope="col">过题数</th><th scope="col">罚时（秒）</th><th scope="col">奖牌</th><th scope="col">一血</th><th scope="col">特别奖</th></tr></thead>
+          <thead><tr><th scope="col">队伍</th><th scope="col">名次</th><th scope="col">学校名次</th><th scope="col">过题数</th><th scope="col">罚时（秒）</th><th scope="col">奖杯</th><th scope="col">奖牌</th><th scope="col">一血</th><th scope="col">特别奖</th></tr></thead>
           <tbody>
           {% for row in changes %}
             <tr>
               <th scope="row">{{ row.name }}</th>
               <td><span{% if row.before.rank != row.after.rank %} class="results-cell--changed"{% endif %}>{{ rank(row.before) }} → {{ rank(row.after) }}</span></td>
+              <td><span{% if row.before.schoolRank != row.after.schoolRank %} class="results-cell--changed"{% endif %}>{{ school_rank(row.before) }} → {{ school_rank(row.after) }}</span></td>
               <td>{{ difference(row.before, row.after, 'solved') }}</td>
               <td>{{ difference(row.before, row.after, 'penalty') }}</td>
+              <td>{{ award_difference(row.before, row.after, 'trophies') }}</td>
               <td>{{ award_difference(row.before, row.after, 'medals') }}</td>
               <td>{{ award_difference(row.before, row.after, 'firsts') }}</td>
               <td>{{ award_difference(row.before, row.after, 'specials') }}</td>
@@ -77,10 +80,10 @@
       {% else %}
         {% if result.rows.length %}
         <table class="data-table" id="results-standings">
-          <thead><tr><th scope="col">名次</th><th scope="col">队伍 / 学校</th><th scope="col">过题数</th><th scope="col">罚时（秒）</th><th scope="col">奖牌</th><th scope="col">一血</th><th scope="col">特别奖</th></tr></thead>
+          <thead><tr><th scope="col">名次</th><th scope="col">学校名次</th><th scope="col">队伍 / 学校</th><th scope="col">过题数</th><th scope="col">罚时（秒）</th><th scope="col">奖杯</th><th scope="col">奖牌</th><th scope="col">一血</th><th scope="col">特别奖</th></tr></thead>
           <tbody>
           {% for row in result.rows %}
-            <tr><td>{{ rank(row) }}</td><th scope="row">{{ row.name }} <small>{{ row.school }}</small></th><td>{{ row.solved }}</td><td>{{ row.penalty }}</td><td>{{ awards(row, 'medals') }}</td><td>{{ awards(row, 'firsts') }}</td><td>{{ awards(row, 'specials') }}</td></tr>
+            <tr><td>{{ rank(row) }}</td><td>{{ school_rank(row) }}</td><th scope="row">{{ row.name }} <small>{{ row.school }}</small></th><td>{{ row.solved }}</td><td>{{ row.penalty }}</td><td>{{ awards(row, 'trophies') }}</td><td>{{ awards(row, 'medals') }}</td><td>{{ awards(row, 'firsts') }}</td><td>{{ awards(row, 'specials') }}</td></tr>
           {% endfor %}
           </tbody>
         </table>

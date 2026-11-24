@@ -203,7 +203,7 @@ export function screenData(data: BoardData, members: Set<string> | null, context
     /** The board's first-solve rules (awardsFor), so screens highlight exactly what the board does. */
     firstSolve: boolean; unofficialFirstSolve: boolean;
     /** The contest's ranking rule (lib/settings.ts TieBreak). */
-    tieBreak?: 'hydro' | 'icpc';
+    tieBreak?: 'hydro' | 'icpc' | 'ccpc';
     /** 分组排行: the groups (boards, or schools when omitted) teams belong to. */
     groups?: { id: string; name: string; teamIds: string[] }[] | null;
     /** Seats onsite-toolkit imported, by team id. */

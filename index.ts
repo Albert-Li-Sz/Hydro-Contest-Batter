@@ -23,7 +23,9 @@ import { applyBalloons } from './lib/balloon-routes';
 import { ContestLinks } from './lib/links';
 import { applyPresence } from './lib/presence-routes';
 import { applyClarificationDesk } from './lib/clarification-desk-routes';
+import { applyControl } from './lib/control-routes';
 import { displaySpecialAwards } from './lib/special-awards';
+import { applyBoardRules, labelsHidden } from './lib/ccpc-board';
 
 export const name = 'scoreboard-xcpcio-plus';
 export const Config = Schema.object({
@@ -76,13 +78,20 @@ export async function loadContestData(tdoc: Tdoc, realtime: boolean, identity = 
     const users = await UserModel.getList(tdoc.domainId, [...entries.map((entry) => entry.uid), ...memberIds(tdoc, entries as TeamEntry[])]);
     const ended = ContestModel.isDone(tdoc);
     const frozen = ContestModel.isLocked(tdoc) && !realtime;
+    // School ranks need to know which teams share a school, also where the school name stays private.
+    const schoolKeys = new Map<string, string>();
     const teams: BoardTeam[] = entries.filter((entry) => users[entry.uid]).map((entry) => {
         const team = describeTeam(entry as TeamEntry, users, identity)!;
+        // A team without a school counts on its own.
+        const own = describeTeam(entry as TeamEntry, users, true)!.school?.trim();
+        const school = own ? schoolName(own) : `#${entry.uid}`;
+        if (!schoolKeys.has(school)) schoolKeys.set(school, `s${schoolKeys.size + 1}`);
         return {
             team_id: `${entry.uid}`,
             name: team.name,
             organization: team.school,
             group: [entry.unrank ? 'unofficial' : 'official'],
+            school_key: schoolKeys.get(school),
             ...team.members?.length ? { members: team.members } : {},
         };
     });
@@ -167,6 +176,19 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     const profileFields = config.profileFields || defaultProfileFields;
     const contestBase = (tdoc: Tdoc) => `/d/${encodeURIComponent(tdoc.domainId)}/contest/${tdoc.docId}`;
     const publicPath = (tdoc: Tdoc) => `${contestBase(tdoc)}/xcpcio-public`;
+    /**
+     * The contest's board data with its board rules: 过题后忽略再次提交 for everyone, and before the freeze the CCPC
+     * board's hidden labels for every public projection (`realtime` false). Every channel reads it through here.
+     */
+    const loadData = async (tdoc: Tdoc, realtime: boolean, identity = false, results: boolean | 'live' = false, saved?: BoardSettings) => {
+        const [data, settings] = await Promise.all([loadContestData(tdoc, realtime, identity, results), saved || loadSettings(tdoc)]);
+        return applyBoardRules(data, settings, tdoc, Date.now(), realtime);
+    };
+    // The CCS API keeps one problem per id (its public view is withheld while the labels are hidden, lib/ccs/source.ts).
+    const loadPlain = async (tdoc: Tdoc, realtime: boolean, identity = false, results: boolean | 'live' = false) => {
+        const [data, settings] = await Promise.all([loadContestData(tdoc, realtime, identity, results), loadSettings(tdoc)]);
+        return applyBoardRules(data, settings, tdoc, Date.now(), true);
+    };
     const respond = async (handler: Handler, tdoc: Tdoc, realtime: boolean, json: boolean, publicView = false, saved?: BoardSettings) => {
         const settings = saved || await loadSettings(tdoc);
         if (realtime && !handler.user.own(tdoc)) handler.checkPerm(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
@@ -176,7 +198,7 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
         const ended = ContestModel.isDone(tdoc);
         const frozen = ContestModel.isLocked(tdoc) && !realtime;
         const board = async () => {
-            const data = await loadContestData(tdoc, realtime, identity);
+            const data = await loadData(tdoc, realtime, identity, false, settings);
             return displaySpecialAwards(enhanceBoard(data, settings, { identity }), settings, ended, frozen);
         };
         if (json || handler.request.json) {
@@ -224,6 +246,26 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
         };
     };
 
+    /** Saves checked settings (the settings page and 赛事中控); every process sees them on its next read. */
+    const saveSettings = async (tdoc: Tdoc, input: BoardSettings, uid: number) => {
+        let settings = input;
+        try {
+            const teams = await loadRoster(tdoc, profileFields);
+            // Participants can leave between page load and save; drop them instead of rejecting the form.
+            settings = pruneMembers(settings, new Set(teams.map((team) => team.team_id)));
+            checkBoardNames(settings, reservedBoardNames(teams, settings));
+        } catch (error) {
+            throw new ValidationError('config', error instanceof Error ? error.message : '无效设置');
+        }
+        await collection.updateOne(
+            { _id: settingsKey(tdoc.domainId, `${tdoc.docId}`) },
+            { $set: { settings, updatedBy: uid, updatedAt: new Date() } },
+            { upsert: true },
+        );
+        (ctx.broadcast as any)('xcpcio/ccs-touch', settingsKey(tdoc.domainId, `${tdoc.docId}`));
+        return settings;
+    };
+
     class SettingsHandler extends Handler {
         tdoc!: Tdoc;
 
@@ -260,19 +302,10 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
             try {
                 if (raw.length > 1000000) throw new Error('设置内容过大');
                 settings = normalizeSettings(JSON.parse(raw));
-                const teams = await loadRoster(this.tdoc, profileFields);
-                // Participants can leave between page load and save; drop them instead of rejecting the form.
-                settings = pruneMembers(settings, new Set(teams.map((team) => team.team_id)));
-                checkBoardNames(settings, reservedBoardNames(teams, settings));
             } catch (error) {
                 throw new ValidationError('config', error instanceof Error ? error.message : '无效设置');
             }
-            await collection.updateOne(
-                { _id: settingsKey(this.tdoc.domainId, `${this.tdoc.docId}`) },
-                { $set: { settings, updatedBy: this.user._id, updatedAt: new Date() } },
-                { upsert: true },
-            );
-            (ctx.broadcast as any)('xcpcio/ccs-touch', settingsKey(this.tdoc.domainId, `${this.tdoc.docId}`));
+            await saveSettings(this.tdoc, settings, this.user._id);
             this.response.redirect = `${contestBase(this.tdoc)}/xcpcio-settings?saved=1`;
         }
     }
@@ -303,24 +336,36 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     }
 
     ctx.Route('contest_xcpcio_plus_settings', '/contest/:tid/xcpcio-settings', SettingsHandler);
-    applyResolver(ctx, { loadSettings, loadData: loadContestData, sessionDays: config.resolverSessionDays ?? 0 });
+    const resolver = applyResolver(ctx, { loadSettings, loadData, sessionDays: config.resolverSessionDays ?? 0 });
     const monitor = applyMonitor(ctx);
     // 气球配送: its balloons feed the 气球配送图 screen, its tickets the print servers' receipt printers.
     // Links that work without a Hydro login register here, so they can be revoked after the contest.
     const links = new ContestLinks<Tdoc>();
     const balloons = applyBalloons(ctx, { loadSettings, links });
-    applyScreens(ctx, { loadSettings, loadData: loadContestData, machines: monitor.machines, balloons: balloons.screen, links });
-    applyOverview(ctx, { loadSettings, loadData: loadContestData });
-    const results = applyResults(ctx, { loadSettings, loadData: loadContestData, statusOf: boardStatus });
-    applyCcs(ctx, { loadSettings, loadData: loadContestData });
+    applyScreens(ctx, { loadSettings, loadData, machines: monitor.machines, balloons: balloons.screen, links });
+    applyOverview(ctx, { loadSettings, loadData });
+    const results = applyResults(ctx, { loadSettings, loadData, statusOf: boardStatus, resolver });
+    applyCcs(ctx, { loadSettings, loadData: loadPlain });
     applyManage(ctx, { machines: monitor.machines, links, beforeRejudge: results.beforeRejudge });
     applyPresence(ctx);
     applyPrintServers(ctx, { receipts: balloons.receipts });
     const live = config.live !== false
-        ? applyLive(ctx, { loadSettings, loadData: (tdoc, identity) => loadContestData(tdoc, false, identity, 'live'), capture: config.liveCapture !== false, captureStunPort: config.liveCaptureStunPort ?? 3478, links })
+        ? applyLive(ctx, { loadSettings, loadData: (tdoc, identity) => loadData(tdoc, false, identity, 'live'), capture: config.liveCapture !== false, captureStunPort: config.liveCaptureStunPort ?? 3478, links })
         : null;
     applyClarificationDesk(ctx, { links, liveTicker: live?.announceOnTicker });
+    applyControl(ctx, {
+        loadSettings, saveSettings, balloons: balloons.control, capture: live?.capture ?? null, live: !!live, review: results.reviewSummary,
+    });
     ctx.Route('contest_xcpcio_plus_public', '/contest/:tid/xcpcio-public', PublicBoardHandler);
+    // CCPC 新榜单模式: Hydro's own board views (HTML, CSV) show every label; until the freeze they are for staff only.
+    ctx.on('handler/before-prepare', async (handler: Handler) => {
+        const match = /\/contest\/([a-f\d]{24})\/scoreboard\/([^/?#]+)\/?$/i.exec(handler.context.originalPath || handler.request.path);
+        if (!match || match[2] === 'xcpcio-plus') return;
+        const tdoc = await ContestModel.get(handler.domain._id, new ObjectId(match[1]));
+        if (!tdoc || tdoc.rule !== 'acm') return;
+        if (handler.user.own(tdoc) || handler.user.hasPerm(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD)) return;
+        if (labelsHidden((await loadSettings(tdoc)).ccpcBoard, tdoc, Date.now())) throw new ForbiddenError('封榜前隐藏题号期间不提供此榜单');
+    });
     ctx.i18n.load('zh', { 'XCPCIO Plus': 'XCPCIO 增强榜' });
     ctx.inject(['scoreboard', 'server'], ({ scoreboard, server }) => {
         scoreboard.addView('xcpcio-plus', 'XCPCIO Plus', { tdoc: 'tdoc', realtime: (value: unknown) => Types.Boolean[0](value), json: (value: unknown) => Types.Boolean[0](value) }, {
@@ -338,7 +383,9 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
             const tdoc = await ContestModel.get(domainId, new ObjectId(route.tid));
             if (!tdoc || tdoc.rule !== 'acm') return next();
             const settings = await loadSettings(tdoc);
-            if (route.enhanced ? !settings.publicAccess : !config.asDefault || !settings.replaceNative) return next();
+            // While the CCPC board hides labels, Hydro's own board (which shows them) is never served.
+            const sealed = labelsHidden(settings.ccpcBoard, tdoc, Date.now());
+            if (route.enhanced ? !settings.publicAccess : !sealed && (!config.asDefault || !settings.replaceNative)) return next();
             const target = settings.publicAccess ? publicPath(tdoc) : `${contestBase(tdoc)}/scoreboard/xcpcio-plus`;
             const url = `${target}${route.query ? `?${route.query}` : ''}`;
             const response = context.HydroContext?.response;

@@ -9,6 +9,7 @@ import type { Context, Tdoc } from 'hydrooj';
 export type HydroApi = typeof import('hydrooj');
 import { type BoardData, problemColor, UNSET_PROBLEM_COLOR } from '../board';
 import { resolverBoards } from '../resolver-data';
+import { labelsHidden } from '../ccpc-board';
 import type { BoardSettings } from '../settings';
 import { isTeamEntry, memberIds, type TeamEntry } from '../teams';
 import type {
@@ -248,7 +249,8 @@ async function loadCcsSource(ctx: Context, store: CcsStore, dependencies: Source
         settings,
         full,
         public: publicData,
-        publicVisible: !!ContestModel.canShowScoreboard.call(nobody as never, tdoc, false),
+        // CCPC 新榜单模式: no public scoreboard while the board hides problem labels.
+        publicVisible: !!ContestModel.canShowScoreboard.call(nobody as never, tdoc, false) && !labelsHidden(settings.ccpcBoard, tdoc, Date.now()),
         boards: resolverBoards(full, settings, true),
         publicBoards: resolverBoards(publicData, settings, settings.showIdentity),
         logoNames: registry.names,

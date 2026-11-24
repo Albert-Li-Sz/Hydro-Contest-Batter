@@ -532,6 +532,8 @@ export function applyLive(ctx: Context, dependencies: {
         }
     });
     return {
+        /** 画面采集 settings, for 赛事中控 (null when capture is off in the plugin's configuration). */
+        capture: capture?.settings ?? null,
         async announceOnTicker(tdoc: Tdoc, text: string) {
             const hub = await hubFor(tdoc);
             return hub.tickerMessage.createTemporaryFromInput({ type: 'text', part: 'long', periodMs: 30_000, text }, 5 * 60_000);

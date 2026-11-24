@@ -1,9 +1,12 @@
 // HydroXCPCIO: zero-solve teams do not receive medals or podium awards.
 import { sameStanding } from './standings.js';
+import { schoolRanks, trophyWinners } from './trophies.js';
 export const MEDAL_DEFAULTS = Object.freeze({
   medalMode: 'imported', goldCount: 4, silverCount: 4, bronzeCount: 4,
   goldCitation: '金奖', silverCitation: '银奖', bronzeCitation: '铜奖', medalSameScore: true,
   podiumEnabled: false, championCitation: '冠军', runnerUpCitation: '亚军', thirdPlaceCitation: '季军',
+  // HydroXCPCIO: trophies by team or school rank, how tied teams receive them, and their names; medals by school rank.
+  podiumBasis: 'team', podiumTie: 'lastAccept', podiumNames: null, medalRanking: 'team',
   firstSolveMode: 'imported', firstSolveProblemIds: Object.freeze([]), firstSolveIncludeUnrank: false,
 });
 
@@ -19,6 +22,13 @@ export function normalizeMedalOptions(raw = {}) {
   for (const field of ['championCitation', 'runnerUpCitation', 'thirdPlaceCitation']) {
     if (typeof raw[field] === 'string') options[field] = raw[field].trim().slice(0, 80) || MEDAL_DEFAULTS[field];
   }
+  if (raw.podiumBasis === 'school') options.podiumBasis = 'school';
+  if (raw.podiumTie === 'shared') options.podiumTie = 'shared';
+  if (raw.medalRanking === 'school') options.medalRanking = 'school';
+  if (Array.isArray(raw.podiumNames)) {
+    const names = raw.podiumNames.filter((name) => typeof name === 'string' && name.trim()).map((name) => name.trim().slice(0, 80)).slice(0, 10);
+    if (names.length) options.podiumNames = names;
+  }
   options.firstSolveMode = ['all', 'selected'].includes(raw.firstSolveMode) ? raw.firstSolveMode : 'imported';
   options.firstSolveProblemIds = Array.isArray(raw.firstSolveProblemIds) ? [...new Set(raw.firstSolveProblemIds
     .filter((id) => typeof id === 'string' && id.trim() && id.length <= 200).map((id) => id.trim()))].slice(0, 30) : [];
@@ -26,7 +36,26 @@ export function normalizeMedalOptions(raw = {}) {
   return options;
 }
 
-/** Cumulative award cutoffs; equal solved/time groups inherit the higher tier. */
+/** Each team's school and last accepted run, as the trophies and school ranks need them. */
+function trophyRows(contest, standings) {
+  const teams = new Map((contest.teams || []).map((team) => [team.id, team]));
+  const solved = new Map();
+  const lastAccept = new Map();
+  for (const submission of [...(contest.submissions || [])].sort((a, b) => a.contestTime - b.contestTime)) {
+    if (submission.status !== 'solved' || (contest.durationMs > 0 && submission.contestTime >= contest.durationMs)) continue;
+    const key = `${submission.teamId}/${submission.problemId}`;
+    if (solved.has(key)) continue;
+    solved.set(key, true);
+    lastAccept.set(submission.teamId, Math.max(lastAccept.get(submission.teamId) ?? -1, Math.floor(submission.contestTime / 1000) * 1000));
+  }
+  return standings.map((row) => {
+    const team = teams.get(row.teamId);
+    return { ...row, official: !row.unrank, school: team?.schoolKey || team?.organizationName || `#${row.teamId}`,
+      lastAcceptMs: lastAccept.get(row.teamId) ?? null };
+  });
+}
+
+/** Cumulative award cutoffs; equal solved/time groups inherit the higher tier. With school ranking, by school rank. */
 function medalAwards(options, standings, contest = {}) {
   const tiers = ['gold', 'silver', 'bronze'];
   const awards = tiers.map((tier) => ({ id: `medal-${tier}`, citation: options[`${tier}Citation`], teamIds: [], displayMode: 'detail', awardType: 'medal' }));
@@ -34,23 +63,27 @@ function medalAwards(options, standings, contest = {}) {
   let total = 0;
   for (const tier of tiers) limits.push(total += options[`${tier}Count`]);
   const ranked = standings.filter((row) => !row.unrank && row.solved > 0);
+  const bySchool = options.medalRanking === 'school'
+    ? schoolRanks(trophyRows(contest, standings), (a, b) => sameStanding(contest, a, b)) : null;
   let previous = null;
   let tier = -1;
   ranked.forEach((row, i) => {
+    if (bySchool) tier = limits.findIndex((limit) => bySchool.get(row.teamId) <= limit);
     // Teams the ranking rule cannot separate (they share a rank) share the higher medal.
-    const tied = options.medalSameScore && previous && sameStanding(contest, row, previous);
-    if (!tied) tier = limits.findIndex((limit) => i < limit);
+    else if (!(options.medalSameScore && previous && sameStanding(contest, row, previous))) tier = limits.findIndex((limit) => i < limit);
     if (tier >= 0) awards[tier].teamIds.push(row.teamId);
     previous = row;
   });
   return awards.filter((award) => award.teamIds.length);
 }
 
-function podiumAwards(options, standings) {
-  const ranked = standings.filter((row) => !row.unrank && row.solved > 0).slice(0, 3);
-  return ['champion', 'runner-up', 'third-place'].slice(0, ranked.length).map((place, i) => ({
-    id: `podium-${place}`, citation: options[['championCitation', 'runnerUpCitation', 'thirdPlaceCitation'][i]],
-    teamIds: [ranked[i].teamId], displayMode: 'detail', awardType: i === 0 ? 'winner' : 'rank',
+function podiumAwards(options, standings, contest = {}) {
+  const names = options.podiumNames || [options.championCitation, options.runnerUpCitation, options.thirdPlaceCitation];
+  const ids = ['champion', 'runner-up', 'third-place'];
+  return trophyWinners(trophyRows(contest, standings), { basis: options.podiumBasis, tie: options.podiumTie, names },
+    (a, b) => sameStanding(contest, a, b)).map((trophy) => ({
+    id: `podium-${ids[trophy.place] ?? `place-${trophy.place + 1}`}`, citation: trophy.name,
+    teamIds: trophy.teamIds, displayMode: 'detail', awardType: trophy.place === 0 ? 'winner' : 'rank',
   }));
 }
 
@@ -89,8 +122,8 @@ export function configuredAwards(contest, rawOptions, standings) {
   }
   if (options.podiumEnabled) {
     awards = awards.filter((award) => award.awardType !== 'winner' &&
-      !/^podium-(?:champion|runner-up|third-place)$/.test(award.id) && !/^rank-[123]$/.test(award.id))
-      .concat(podiumAwards(options, standings));
+      !/^podium-/.test(award.id) && !/^rank-[123]$/.test(award.id))
+      .concat(podiumAwards(options, standings, contest));
   }
   if (options.firstSolveMode !== 'imported') {
     awards = awards.filter((award) => award.awardType !== 'first-to-solve' && !/^first-to-solve-/.test(award.id))

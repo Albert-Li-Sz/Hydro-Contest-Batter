@@ -143,3 +143,23 @@
 .xcpcio-manage .manage-backup__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .xcpcio-manage .manage-backup .link { color: #5f9fd6; background: none; border: 0; padding: 0; cursor: pointer; }
 .xcpcio-manage .manage-file { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 13px; }
+/* 重测复核: filter chips, and rows whose change moves a team or an award. */
+.xcpcio-review .manage-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.xcpcio-review .manage-filter { display: inline-flex; align-items: center; min-height: 28px; padding: 0 12px; border: 1px solid var(--manage-line); border-radius: 999px; background: transparent; color: inherit; cursor: pointer; font-size: 13px; }
+.xcpcio-review .manage-filter.is-active { border-color: #5f9fd6; background: rgba(95, 159, 214, .16); font-weight: 600; }
+.xcpcio-review .manage-row--warn > td { background: rgba(230, 162, 60, .12); }
+/* 赛事中控 */
+.xcpcio-control .control-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 0 18px; }
+.xcpcio-control .control-status .button { margin: 0 0 0 auto; }
+.xcpcio-control .control-group { margin-bottom: 20px; }
+.xcpcio-control .control-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 20px; margin: 0 0 10px; }
+.xcpcio-control .control-row > .button { margin: 0; }
+.xcpcio-control .control-field { display: grid; gap: 4px; margin: 0; font-size: 13px; min-width: 160px; }
+.xcpcio-control .control-field .select, .xcpcio-control .control-field .textbox { margin: 0; }
+.xcpcio-control .control-field--short { min-width: 0; width: 96px; }
+.xcpcio-control .control-check { display: inline-flex; align-items: center; gap: 6px; margin: 0; min-height: 32px; cursor: pointer; }
+.xcpcio-control .control-check input { margin: 0; }
+.xcpcio-control .control-check:has(input:disabled) { opacity: .5; cursor: default; }
+.xcpcio-control .control-suffix { padding-bottom: 8px; }
+.xcpcio-control .control-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.xcpcio-control .control-links .button { margin: 0; }
