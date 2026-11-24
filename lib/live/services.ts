@@ -54,7 +54,7 @@ export class QueueService {
         if (!featured) return;
         const run = this.runs.get(featured.runId) || this.removedRuns.get(featured.runId);
         this.featured = null;
-        if (run) this.modifyRun(run, this.runs.has(run.id));
+        if (run && this.runs.has(run.id)) this.modifyRun(run);
     }
 
     private removeRun(run: RunInfo) {
@@ -122,19 +122,16 @@ export class QueueService {
 
     feature(runId: string, media: MediaType[]) {
         const run = this.runs.get(runId) || this.removedRuns.get(runId);
-        if (!run || !this.info) return null;
+        if (!run || run.isHidden || !this.info) return false;
         this.makeNotFeatured();
         this.featured = { runId, media };
         this.modifyRun(run);
         this.lastUpdateTime.set(run.id, run.time);
-        return { expirationTimeUnixMs: Date.now() + this.info.queueSettings.featuredRunWaitTimeSeconds * 1000, mediaType: media };
+        return true;
     }
 
     unfeature(runId: string) {
-        if (this.featured?.runId !== runId) return;
-        const run = this.runs.get(runId) || this.removedRuns.get(runId);
-        this.featured = null;
-        if (run) this.modifyRun(run, this.runs.has(runId));
+        if (this.featured?.runId === runId) this.makeNotFeatured();
     }
 }
 
@@ -179,8 +176,6 @@ export interface AnalyticsCompanions {
     hideAdvertisement: (presetId: PresetId) => void;
     showTicker: (text: string, ttlMs: number, onExpire: (presetId: PresetId) => void) => PresetId;
     hideTicker: (presetId: PresetId) => void;
-    feature: (run: RunInfo, mediaType: string) => AnalyticsMessage['featuredRun'];
-    unfeature: (run: RunInfo) => void;
     /** A comment's companion caption or ticker line changed (for the other Hydro processes). */
     marked?: (messageId: string, commentId: string, field: 'advertisement' | 'tickerMessage', value: Preset | null) => void;
 }
@@ -200,6 +195,15 @@ export class AnalyticsService {
     }
 
     list() { return [...this.messages.values()].sort((a, b) => a.relativeTimeMs - b.relativeTimeMs); }
+
+    remove(ids: string[]) {
+        for (const id of ids) {
+            this.messages.delete(id);
+            this.analyses.delete(id);
+        }
+        const snapshot = { type: 'AnalyticsMessageSnapshot', messages: this.list() };
+        for (const listener of this.listeners) listener(snapshot);
+    }
 
     private store(message: AnalyticsMessage) {
         this.messages.set(message.id, message);
@@ -236,7 +240,7 @@ export class AnalyticsService {
         let template: string;
         const tags: string[] = [];
         if (run.result.type === 'IN_PROGRESS') {
-            template = this.templates.submittedRun;
+            template = this.templates.submittedRun + (run.result.frozen ? '（封榜）' : '');
             tags.push('submission', ...analysis.awards.map((id) => `submission-${id}`));
         } else if (!run.result.verdict.isAccepted) {
             template = this.templates.rejectedRun;
@@ -259,7 +263,7 @@ export class AnalyticsService {
             id: run.id, updateTimeUnixMs: time, timeUnixMs: time, relativeTimeMs: run.time,
             comments: [], teamId: null, runInfo: null, featuredRun: null, tags: [],
         };
-        const tags = new Set(message.tags);
+        const tags = new Set<string>();
         tags.add('submission');
         if (run.result.type === 'ICPC' && run.result.verdict.isAccepted) tags.add('accepted');
         if (run.result.type === 'ICPC' && run.result.isFirstToSolveRun) tags.add('first-to-solved');
@@ -344,19 +348,9 @@ export class AnalyticsService {
         this.mark(messageId, commentId, 'tickerMessage');
     }
 
-    makeFeatured(messageId: string, mediaType: string) {
-        const message = this.messages.get(messageId);
-        if (!message?.runInfo) throw new ApiActionError(`Can't make run featured caused by message ${messageId}`);
-        const featuredRun = this.companions.feature(message.runInfo, mediaType);
-        if (!featuredRun) throw new ApiActionError(`该队伍没有${mediaType === 'camera' ? '摄像头' : mediaType === 'screen' ? '屏幕' : mediaType}画面，无法使用 Featured run`);
-        this.store({ ...message, featuredRun });
-    }
-
-    makeNotFeatured(messageId: string) {
-        const message = this.messages.get(messageId);
-        if (!message?.runInfo) throw new ApiActionError(`Can't make run not featured caused by message ${messageId}`);
-        this.companions.unfeature(message.runInfo);
-        this.store({ ...message, featuredRun: null });
+    setFeatured(runId: string, featuredRun: AnalyticsMessage['featuredRun']) {
+        const message = this.messages.get(runId);
+        if (message) this.store({ ...message, featuredRun });
     }
 }
 

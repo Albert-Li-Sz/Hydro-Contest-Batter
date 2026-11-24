@@ -68,22 +68,6 @@ export function applyScreens(ctx: Context, dependencies: {
         value.catch(() => { if (cache.get(name)?.value === value) cache.delete(name); });
         return value;
     }
-    // Every audience screen polls the same session; build each (session, progress) snapshot once.
-    const spectators = new Map<string, Promise<unknown>>();
-    // The audience screen is the venue's resolver display: it shows the snapshot exactly as the
-    // presenter does, including the identity its creator chose to present.
-    async function spectator(session: Parameters<ResolverSessions['spectator']>[0]) {
-        const name = `${session._id}@${session.revision}`;
-        let value = spectators.get(name);
-        if (!value) {
-            value = sessions.spectator(session);
-            value.catch(() => spectators.delete(name));
-            spectators.set(name, value);
-            while (spectators.size > 16) spectators.delete(spectators.keys().next().value!);
-        }
-        return value as Promise<Record<string, unknown>>;
-    }
-
     async function loadDoc(tdoc: Tdoc, userId?: number) {
         const existing = await collection.findOne({ _id: key(tdoc) });
         if (existing) return { ...existing, config: normalizeScreenConfig(existing.config) };
@@ -166,20 +150,42 @@ export function applyScreens(ctx: Context, dependencies: {
             };
         }
 
-        @param('config', Types.String)
-        async post(_domainId: string, raw: string) {
+        @param('config', Types.String, true)
+        async post(_domainId: string, raw?: string) {
+            // Hydro runs post() before postBindResolver, postUploadPoster and other named actions.
+            if (this.request.body?.operation) return;
+            if (typeof raw !== 'string') throw new ScreenError('缺少大屏配置');
             if (raw.length > 20000) throw new ScreenError('大屏配置内容过大');
             let input: unknown;
             try { input = JSON.parse(raw); } catch { throw new ScreenError('大屏配置必须是有效 JSON'); }
             const doc = (await loadDoc(this.tdoc, this.user._id))!;
             const config = saveScreenConfig(input, doc.config);
-            const { images: _images, ...poster } = config.items.poster;
-            const fields = Object.fromEntries(screenTypes.filter((type) => type !== 'poster').map((type) => [`config.items.${type}`, config.items[type]]));
-            await collection.updateOne({ _id: doc._id }, { $set: { ...fields,
-                ...Object.fromEntries(Object.entries(poster).map(([field, value]) => [`config.items.poster.${field}`, value])),
-                'config.locale': config.locale, updatedAt: new Date(), updatedBy: this.user._id,
-            } });
+            const fields: Record<string, unknown> = {};
+            for (const type of screenTypes) {
+                for (const [field, value] of Object.entries(config.items[type])) {
+                    if (field !== 'images' && Object.hasOwn((input as Partial<ScreenConfig>)?.items?.[type] || {}, field)) {
+                        fields[`config.items.${type}.${field}`] = value;
+                    }
+                }
+            }
+            if (Object.hasOwn(input as object, 'locale')) fields['config.locale'] = config.locale;
+            await collection.updateOne({ _id: doc._id }, { $set: { ...fields, updatedAt: new Date(), updatedBy: this.user._id } });
             this.response.body = { config: (await loadDoc(this.tdoc))!.config };
+        }
+
+        async postResolverSessions() {
+            const doc = (await loadDoc(this.tdoc, this.user._id))!;
+            const scope = { domainId: this.tdoc.domainId, contestId: String(this.tdoc.docId), ownerId: this.user._id };
+            this.response.body = { sessions: await sessions.list(scope), sessionId: doc.config.items.resolver.sessionId };
+        }
+
+        @param('sessionId', Types.String)
+        async postBindResolver(_domainId: string, sessionId: string) {
+            const scope = { domainId: this.tdoc.domainId, contestId: String(this.tdoc.docId), ownerId: this.user._id };
+            await sessions.get(scope, sessionId);
+            const doc = (await loadDoc(this.tdoc, this.user._id))!;
+            await collection.updateOne({ _id: doc._id }, { $set: { 'config.items.resolver.sessionId': sessionId, updatedAt: new Date(), updatedBy: this.user._id } });
+            this.response.body = { sessionId, audienceUrl: `${contestBase(this.tdoc)}/screen/${doc.token}/resolver` };
         }
 
         @param('image', Types.String)
@@ -281,19 +287,18 @@ export function applyScreens(ctx: Context, dependencies: {
     class ScreenDataHandler extends ScreenPublicHandler {
         @param('revision', Types.Int, true)
         @param('session', Types.String, true)
-        async get(_domainId: string, revision?: number, known?: string) {
+        @param('index', Types.Int, true)
+        async get(_domainId: string, revision?: number, known?: string, index?: number) {
             const { locale, items } = this.doc.config;
             const item = items[this.type];
             const base = { type: this.type, locale, serverTime: Date.now() };
             if (this.type === 'resolver') {
                 const session = item.sessionId ? await sessions.find(this.tdoc.domainId, String(this.tdoc.docId), item.sessionId) : null;
                 if (!session) {
-                    this.response.body = { ...base, notice: '等待滚榜开始' };
+                    this.response.body = { ...base, notice: item.sessionId ? '滚榜会话已结束或删除，请重新投屏' : '等待主持人投到观众屏' };
                     return;
                 }
-                this.response.body = session.revision === revision && session._id === known
-                    ? { ...base, session: session._id, playback: sessions.playback(session) }
-                    : { ...base, session: session._id, ...await spectator(session) };
+                this.response.body = { ...base, session: session._id, ...await sessions.audience(session, known, revision, index) };
                 return;
             }
             // Like the public board, standings stay hidden until the contest starts.

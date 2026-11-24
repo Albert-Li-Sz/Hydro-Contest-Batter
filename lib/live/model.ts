@@ -15,6 +15,11 @@ export interface LiveContestTimes {
     unlocked?: boolean;
 }
 
+export function publicRunVerdict(result: RunResult): string {
+    if (result.type === 'ICPC') return result.verdict.shortName;
+    return result.frozen ? 'FROZEN' : 'PENDING';
+}
+
 export interface LiveBoard {
     id: string;
     name: string;
@@ -23,7 +28,7 @@ export interface LiveBoard {
 
 export interface LiveSource {
     contest: LiveContestTimes;
-    /** Public projection of the contest (loadContestData(tdoc, false, identity, false)). */
+    /** Public Live projection with detailed verdicts and the contest freeze applied. */
     data: BoardData;
     boards: LiveBoard[];
     settings: BoardSettings;
@@ -45,23 +50,27 @@ export const defaultQueueSettings = {
 const verdicts: Record<string, Verdict> = {
     CORRECT: { shortName: 'AC', isAccepted: true, isAddingPenalty: false },
     WRONG_ANSWER: { shortName: 'WA', isAccepted: false, isAddingPenalty: true },
-    TIME_LIMIT_EXCEEDED: { shortName: 'TL', isAccepted: false, isAddingPenalty: true },
-    MEMORY_LIMIT_EXCEEDED: { shortName: 'ML', isAccepted: false, isAddingPenalty: true },
+    TIME_LIMIT_EXCEEDED: { shortName: 'TLE', isAccepted: false, isAddingPenalty: true },
+    MEMORY_LIMIT_EXCEEDED: { shortName: 'MLE', isAccepted: false, isAddingPenalty: true },
     RUNTIME_ERROR: { shortName: 'RE', isAccepted: false, isAddingPenalty: true },
-    OUTPUT_LIMIT_EXCEEDED: { shortName: 'OL', isAccepted: false, isAddingPenalty: true },
+    OUTPUT_LIMIT_EXCEEDED: { shortName: 'OLE', isAccepted: false, isAddingPenalty: true },
     HACKED: { shortName: 'HK', isAccepted: false, isAddingPenalty: true },
-    JUDGEMENT_FAILED: { shortName: 'FL', isAccepted: false, isAddingPenalty: true },
-    // The public board shows a wrong answer as "rejected" until the contest ends; Hydro also charges ignored records.
+    JUDGEMENT_FAILED: { shortName: 'SE', isAccepted: false, isAddingPenalty: true },
+    UNKNOWN_ERROR: { shortName: 'UNK', isAccepted: false, isAddingPenalty: true },
+    IGNORED: { shortName: 'IGN', isAccepted: false, isAddingPenalty: true },
+    HACK_SUCCESSFUL: { shortName: 'HACK+', isAccepted: false, isAddingPenalty: true },
+    HACK_UNSUCCESSFUL: { shortName: 'HACK-', isAccepted: false, isAddingPenalty: true },
+    // Older or explicitly grouped input only.
     REJECTED: { shortName: 'RJ', isAccepted: false, isAddingPenalty: true },
     // Exempt from penalty in Hydro's ACM rule.
     COMPILATION_ERROR: { shortName: 'CE', isAccepted: false, isAddingPenalty: false },
-    PRESENTATION_ERROR: { shortName: 'PE', isAccepted: false, isAddingPenalty: false },
-    CANCELED: { shortName: 'IG', isAccepted: false, isAddingPenalty: false },
+    PRESENTATION_ERROR: { shortName: 'FE', isAccepted: false, isAddingPenalty: false },
+    CANCELED: { shortName: 'CANCEL', isAccepted: false, isAddingPenalty: false },
 };
 
 export function verdictFor(status: string): Verdict | null {
     if (status === 'PENDING' || status === 'FROZEN') return null;
-    return verdicts[status] || verdicts.JUDGEMENT_FAILED;
+    return verdicts[status] || verdicts.UNKNOWN_ERROR;
 }
 
 export function contestStatus(contest: LiveContestTimes, now: number): ContestStatus {
@@ -184,7 +193,7 @@ export function buildRuns(source: LiveSource, info: ContestInfo): RunInfo[] {
         const verdict = verdictFor(record.status);
         const result: RunResult = verdict
             ? { type: 'ICPC', verdict, isFirstToSolveRun: false, isAfterFirstOk: false }
-            : { type: 'IN_PROGRESS', testedPart: 0, isAfterFirstOk: false };
+            : { type: 'IN_PROGRESS', testedPart: 0, isAfterFirstOk: false, ...(record.status === 'FROZEN' ? { frozen: true } : {}) };
         return {
             id: record.submission_id, result, problemId: String(record.problem_id), teamId: record.team_id,
             time: record.timestamp, languageId: null, reactionVideos: [], isHidden: false,
@@ -197,19 +206,22 @@ export function buildRuns(source: LiveSource, info: ContestInfo): RunInfo[] {
         else if (run.result.type === 'ICPC' && run.result.verdict.isAccepted) solved.add(key);
     }
     const rules = awardsFor(source.settings, 'all');
-    if (rules.firstSolve) {
-        // As on the board (lib/award-policy.mjs): per problem, the earliest accepted run among
-        // eligible teams; runs accepted at the same moment are all first solves.
-        const outOfContest = new Set(info.teams.filter((team) => team.isOutOfContest).map((team) => team.id));
-        const first = new Map<string, RunInfo[]>();
-        for (const run of runs) {
-            if (run.result.type !== 'ICPC' || !run.result.verdict.isAccepted || run.result.isAfterFirstOk) continue;
-            if (outOfContest.has(run.teamId) && !rules.unofficialFirstSolve) continue;
-            const current = first.get(run.problemId);
-            if (!current || run.time < current[0].time) first.set(run.problemId, [run]);
-            else if (run.time === current[0].time) current.push(run);
-        }
-        for (const list of first.values()) for (const run of list) if (run.result.type === 'ICPC') run.result.isFirstToSolveRun = true;
+    for (const list of firstSolveRuns(runs, info.teams, rules).values()) {
+        for (const run of list) if (run.result.type === 'ICPC') run.result.isFirstToSolveRun = true;
     }
     return runs;
+}
+
+/** Runs are in contest-time order. Include every eligible team tied at the first accepted time. */
+export function firstSolveRuns(runs: RunInfo[], teams: TeamInfo[], rules: { firstSolve: boolean; unofficialFirstSolve: boolean }) {
+    const winners = new Map<string, RunInfo[]>();
+    if (!rules.firstSolve) return winners;
+    const eligible = new Set(teams.filter((team) => !team.isOutOfContest || rules.unofficialFirstSolve).map((team) => team.id));
+    for (const run of runs) {
+        if (!eligible.has(run.teamId) || run.result.type !== 'ICPC' || !run.result.verdict.isAccepted || run.result.isAfterFirstOk) continue;
+        const list = winners.get(run.problemId);
+        if (!list) winners.set(run.problemId, [run]);
+        else if (list[0].time === run.time) list.push(run);
+    }
+    return winners;
 }

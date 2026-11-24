@@ -66,13 +66,22 @@ export class CaptureViewer {
             const id = `s${++viewer.counter}`;
             const pc = new RTCPeerConnection({ iceServers: viewer.iceServers });
             let timer = null;
+            let answered = false;
+            const outbound = [], inbound = [];
+            const sendIce = (candidate) => viewer.send({ type: 'ice', session: id, candidate });
             const session = {
                 handle: async (message) => {
                     if (message.type === 'answer') {
                         clearTimeout(timer);
-                        await pc.setRemoteDescription({ type: 'answer', sdp: message.sdp }).catch((error) => session.fail(`连接失败：${error.message}`));
+                        try {
+                            await pc.setRemoteDescription({ type: 'answer', sdp: message.sdp });
+                            answered = true;
+                            for (const candidate of outbound.splice(0)) sendIce(candidate);
+                            for (const candidate of inbound.splice(0)) await pc.addIceCandidate(candidate).catch(() => {});
+                        } catch (error) { session.fail(`连接失败：${error.message}`); }
                     } else if (message.type === 'ice' && message.candidate) {
-                        await pc.addIceCandidate(message.candidate).catch(() => {});
+                        if (answered) await pc.addIceCandidate(message.candidate).catch(() => {});
+                        else if (inbound.length < 64) inbound.push(message.candidate);
                     } else if (message.type === 'error' || message.type === 'ended') {
                         session.fail(message.message || message.reason || '画面已停止');
                     }
@@ -105,7 +114,11 @@ export class CaptureViewer {
                 video.srcObject = media;
                 video.play?.().catch(() => {});
             };
-            pc.onicecandidate = (event) => viewer.send({ type: 'ice', session: id, candidate: event.candidate ? event.candidate.toJSON() : null });
+            pc.onicecandidate = ({ candidate }) => {
+                const value = candidate?.toJSON() ?? null;
+                if (answered) sendIce(value);
+                else outbound.push(value);
+            };
             pc.onconnectionstatechange = () => {
                 if (pc.connectionState === 'connected') onState('playing');
                 else if (pc.connectionState === 'failed') session.fail('无法建立点对点连接，请检查网络或 STUN/TURN 设置');

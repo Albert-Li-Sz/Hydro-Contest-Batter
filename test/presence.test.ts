@@ -5,19 +5,18 @@ const chrome = (version: number) => `Mozilla/5.0 (Windows NT 10.0; Win64; x64) A
 const beat = (ip: string, visible = true, uid = 7) => ({ contest: 'system/c', uid, member: uid, ip, ua: chrome(131), visible });
 
 describe('reports', () => {
-    it('keeps the first sight, the addresses and when the page went to the background', () => {
+    it('keeps the first sight, the addresses and deduplicates heartbeats across tabs', () => {
         const start = new Date('2026-11-23T08:00:00Z');
         const at = (seconds: number) => new Date(start.getTime() + seconds * 1000);
         let doc = applyBeat(null, beat('10.0.0.1'), start)!;
-        expect(doc).toMatchObject({ _id: 'system/c/7', firstSeen: start, visible: true, hiddenAt: null, ips: [{ ip: '10.0.0.1', first: start, last: start }] });
+        expect(doc).toMatchObject({ _id: 'system/c/7', firstSeen: start, ips: [{ ip: '10.0.0.1', first: start, last: start }] });
         // Nothing new within a few seconds: no write.
         expect(applyBeat(doc, beat('10.0.0.1'), at(5))).toBeNull();
-        doc = applyBeat(doc, beat('10.0.0.1', false), at(5))!;
-        expect(doc.hiddenAt).toEqual(at(5));
+        expect(applyBeat(doc, beat('10.0.0.1', false), at(5))).toBeNull();
         doc = applyBeat(doc, beat('10.0.0.1', false), at(25))!;
-        expect(doc.hiddenAt).toEqual(at(5));
+        expect(doc).not.toHaveProperty('hiddenAt');
         doc = applyBeat(doc, beat('10.0.0.9'), at(45))!;
-        expect(doc).toMatchObject({ ip: '10.0.0.9', visible: true, hiddenAt: null, firstSeen: start });
+        expect(doc).toMatchObject({ ip: '10.0.0.9', firstSeen: start });
         expect(doc.ips.map((entry) => entry.ip)).toEqual(['10.0.0.1', '10.0.0.9']);
         // Back to the first address: it moves to the end, keeping when it was first used.
         doc = applyBeat(doc, beat('10.0.0.1'), at(65))!;
@@ -39,10 +38,10 @@ describe('reports', () => {
     it('turns the last report into a state', () => {
         const now = 1_000_000;
         expect(stateOf(null, now)).toBe('never');
-        expect(stateOf({ lastSeen: new Date(now - 1000), visible: true }, now)).toBe('online');
-        expect(stateOf({ lastSeen: new Date(now - 1000), visible: false }, now)).toBe('background');
-        expect(stateOf({ lastSeen: new Date(now - WEAK_MS), visible: true }, now)).toBe('weak');
-        expect(stateOf({ lastSeen: new Date(now - OFFLINE_MS), visible: true }, now)).toBe('offline');
+        expect(stateOf({ lastSeen: new Date(now - 1000) }, now)).toBe('online');
+        expect(stateOf({ lastSeen: new Date(now - 1000) }, now)).toBe('online');
+        expect(stateOf({ lastSeen: new Date(now - WEAK_MS) }, now)).toBe('weak');
+        expect(stateOf({ lastSeen: new Date(now - OFFLINE_MS) }, now)).toBe('offline');
     });
 });
 
@@ -52,11 +51,11 @@ describe('monitor snapshot', () => {
     const team = (uid: number, seat: string, extra: Partial<PresenceTeam> = {}): PresenceTeam => ({ uid, name: `队伍 ${uid}`, seat, members: [], mapped: [], capture: null, ...extra });
     const seen = (uid: number, ip: string, ago: number, extra: Partial<PresenceDoc> = {}): PresenceDoc => ({
         _id: `c/${uid}`, contest: 'c', uid, member: uid, firstSeen: new Date(now - 7200_000), lastSeen: new Date(now - ago), ip,
-        ips: [{ ip, first: new Date(now - 7200_000), last: new Date(now - ago) }], ua: chrome(131), visible: true, hiddenAt: null, ...extra,
+        ips: [{ ip, first: new Date(now - 7200_000), last: new Date(now - ago) }], ua: chrome(131), ...extra,
     });
     const teams = [
         team(1, 'A-1', { mapped: ['10.0.0.1'] }), team(2, 'A-2', { mapped: ['10.0.0.2'] }), team(3, 'A-10', { mapped: ['10.0.0.3'] }),
-        team(4, 'B-1', { mapped: ['10.0.1.1'], capture: false }), team(5, 'B-2'), team(6, ''),
+        team(4, 'B-1', { mapped: ['10.0.1.1'], capture: 'disconnected' }), team(5, 'B-2'), team(6, ''),
     ];
     const docs = [
         seen(1, '10.0.0.1', 1000),
@@ -69,7 +68,7 @@ describe('monitor snapshot', () => {
     it('finds swapped seats, wrong addresses, silence and old browsers while the contest runs', () => {
         const snapshot = presenceSnapshot(teams, docs, running, now);
         expect(snapshot.phase).toBe('running');
-        expect(snapshot.counts).toEqual({ online: 4, background: 0, weak: 0, offline: 1, never: 1 });
+        expect(snapshot.counts).toEqual({ online: 4, weak: 0, offline: 1, never: 1 });
         expect(snapshot.alerts.map((alert) => `${alert.kind}:${alert.uid}`)).toEqual([
             'sharedIp:2', 'sharedIp:3', 'ipMismatch:2', 'offline:4', 'never:6', 'multiIp:5', 'oldBrowser:5',
         ]);
@@ -80,8 +79,14 @@ describe('monitor snapshot', () => {
         expect(snapshot.zones[0].teams[1].alerts).toEqual(['sharedIp', 'ipMismatch']);
     });
 
+    it('keeps an independently recording device online after the contest tab closes', () => {
+        const snapshot = presenceSnapshot([team(1, 'A-1', { capture: 'recording' }), team(2, 'A-2', { capture: 'connected' })], [], running, now);
+        expect(snapshot.counts.online).toBe(2);
+        expect(snapshot.alerts.map(({ uid, text }) => [uid, text])).toEqual([[2, '已连接未采集屏幕']]);
+    });
+
     it('reports a missing capture only for a computer that is on', () => {
-        const snapshot = presenceSnapshot([team(4, 'B-1', { capture: false })], [seen(4, '10.0.1.1', 1000)], running, now);
+        const snapshot = presenceSnapshot([team(4, 'B-1', { capture: 'disconnected' })], [seen(4, '10.0.1.1', 1000)], running, now);
         expect(snapshot.alerts.map((alert) => alert.kind)).toEqual(['noCapture']);
         expect(snapshot.capture).toBe(true);
     });

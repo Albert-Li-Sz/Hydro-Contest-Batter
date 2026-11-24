@@ -294,7 +294,7 @@ export async function adminApi(hub: LiveHub, store: LiveStore, request: ApiReque
     };
 
     const [head, ...rest] = parts;
-    if (['queue', 'statistics', 'ticker', 'fullScreenClock', 'teamLocator', 'overview'].includes(head)) return single(hub.controllers[head], rest);
+    if (['queue', 'statistics', 'ticker', 'fullScreenClock', 'teamLocator', 'overview', 'firstSolve', 'medalCutoff', 'problemFocus'].includes(head)) return single(hub.controllers[head], rest);
     if (head === 'scoreboard') {
         if (rest[0] === 'regions' && rest.length === 1 && method === 'GET') return json(hub.regions());
         return single(hub.controllers.scoreboard, rest);
@@ -323,9 +323,8 @@ export async function adminApi(hub: LiveHub, store: LiveStore, request: ApiReque
         if (rest[0] === 'contestInfo' && rest.length === 1 && method === 'GET') return json(hub.adminInfo);
         const [messageId, second, third] = rest;
         if (second === 'featuredRun' && rest.length === 2) {
-            // The body names a TeamMediaType; Hydro teams carry no camera or screen media.
-            if (method === 'POST') return action(() => hub.analytics.makeFeatured(messageId, typeof body === 'string' ? body : (body as { mediaType?: string })?.mediaType || 'camera'));
-            if (method === 'DELETE') return action(() => hub.analytics.makeNotFeatured(messageId));
+            if (method === 'POST') return action(() => hub.selectRun(messageId, typeof body === 'string' ? body : (body as { mediaType?: string })?.mediaType || 'camera'));
+            if (method === 'DELETE') return action(() => hub.selectRun(messageId, null));
         }
         if ((third === 'advertisement' || third === 'tickerMessage') && rest.length === 3) {
             if (method === 'POST') {
@@ -430,6 +429,8 @@ export function overlayChannel(subpath: string) {
 export async function overlayApi(hub: LiveHub, subpath: string, visualConfig: string): Promise<ApiResponse | null> {
     if (subpath === 'visualConfig.json') return json(publicVisualConfig(visualConfig));
     if (subpath === 'serverTime') return json({ now: Date.now() });
+    // The native timeline also requests a keystroke series. Hydro collects none.
+    if (/^teamKeylog\/[\w-]{1,64}$/.test(subpath)) return json([]);
     const channel = overlayChannel(subpath);
     if (!channel) return null;
     hub.touch();

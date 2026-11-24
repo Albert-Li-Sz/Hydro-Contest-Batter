@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Context, Tdoc } from 'hydrooj';
 import { awardsFor, defaultSettings } from '../lib/settings';
 import { defaultProfileFields } from '../lib/roster';
+import { verdictFor } from '../lib/live/model';
 import { ResolverSessions } from '../lib/resolver-sessions';
 import { previewDatabase } from '../preview/resolver-memory-db';
 
@@ -119,6 +120,32 @@ beforeEach(() => {
 });
 
 describe('Hydro 数据与权限', () => {
+    it('loads detailed Live verdicts from Hydro journals and keeps scores, identity and frozen runs private', async () => {
+        state.ended = false;
+        state.locked = true;
+        const freeze = state.contest.lockAt.getTime() / 1000;
+        const statuses = [STATUS.STATUS_WRONG_ANSWER, STATUS.STATUS_TIME_LIMIT_EXCEEDED, STATUS.STATUS_MEMORY_LIMIT_EXCEEDED,
+            STATUS.STATUS_OUTPUT_LIMIT_EXCEEDED, STATUS.STATUS_RUNTIME_ERROR, STATUS.STATUS_COMPILE_ERROR, STATUS.STATUS_SYSTEM_ERROR,
+            STATUS.STATUS_IGNORED, STATUS.STATUS_CANCELED, STATUS.STATUS_FORMAT_ERROR, STATUS.STATUS_HACKED, STATUS.STATUS_ETC];
+        const journal = statuses.map((status, index) => ({ ...record(freeze - statuses.length + index + 1, status), score: 83 }));
+        state.entries[0].journal = [...journal, record(freeze + 1), record(freeze + 2, STATUS.STATUS_JUDGING)];
+        const live = () => loadContestData(state.contest, false, false, 'live');
+        const before = await live();
+        expect(before.submissions.slice(0, statuses.length).map((r) => verdictFor(r.status)?.shortName))
+            .toEqual(['WA', 'TLE', 'MLE', 'OLE', 'RE', 'CE', 'SE', 'IGN', 'CANCEL', 'FE', 'HK', 'UNK']);
+        expect(before.submissions.slice(-2).map((r) => r.status)).toEqual(['FROZEN', 'FROZEN']);
+        expect(JSON.stringify(before)).not.toMatch(/"score":|南京晓庄学院/);
+        expect((await loadContestData(state.contest, false)).submissions[0].status).toBe('REJECTED');
+        state.ended = true;
+        expect((await live()).submissions.at(-2)?.status).toBe('FROZEN');
+        state.locked = false;
+        state.entries[0].journal.push({ ...journal[0], status: STATUS.STATUS_ACCEPTED });
+        const after = await live();
+        expect(after.submissions).toHaveLength(before.submissions.length);
+        expect(after.submissions[0]).toMatchObject({ submission_id: journal[0].rid, status: 'CORRECT' });
+        expect(after.submissions.slice(-2).map((r) => r.status)).toEqual(['CORRECT', 'PENDING']);
+    });
+
     it('机位监控：参赛者的页面上报在线，工作人员与未报名者不上报，管理员看到座位图与告警', async () => {
         const now = Date.now();
         state.ended = false;
@@ -151,8 +178,8 @@ describe('Hydro 数据与权限', () => {
         data.user.own = () => true;
         await data.prepare('system', state.contest.docId);
         await data.get();
-        // The last report was from a page in the background (the page view right after it is not written again).
-        expect(data.response.body.counts).toMatchObject({ online: 0, background: 1, never: 1 });
+        // Old clients may still send hidden=true.
+        expect(data.response.body.counts).toMatchObject({ online: 1, never: 1 });
         expect(data.response.body.alerts.map((alert: any) => `${alert.kind}:${alert.uid}`)).toEqual(['never:4']);
         const guest = app.presence('_data');
         await expect(guest.prepare('system', state.contest.docId)).rejects.toThrow('Forbidden');
@@ -708,7 +735,7 @@ describe('Hydro Resolver routes', () => {
         overlay.request.path = `/contest/${tid()}/live-overlay/${token}/api/overlay/runs`;
         await overlay.get('system', tid(), token);
         // Frozen submission: in progress, its result not revealed.
-        expect(JSON.parse(overlay.response.body)).toEqual([expect.objectContaining({ teamId: '1', result: { type: 'IN_PROGRESS', testedPart: 0, isAfterFirstOk: false } })]);
+        expect(JSON.parse(overlay.response.body)).toEqual([expect.objectContaining({ teamId: '1', result: { type: 'IN_PROGRESS', testedPart: 0, isAfterFirstOk: false, frozen: true } })]);
         const screen = app.live('_overlay_api'); screen.request.path = `/contest/${tid()}/live-overlay/${token}/api/overlay/mainScreen`;
         await screen.get('system', tid(), token);
         expect(JSON.parse(screen.response.body).widgets.map((item: any) => item.widget.type)).toEqual(['QueueWidget']);
@@ -946,6 +973,27 @@ describe('Hydro Resolver routes', () => {
         const poll = app.screens('_data'); await poll.prepare('system', tid(), token, 'resolver'); await poll.get('system', playback.revision, sid);
         expect(poll.response.body.game).toBeUndefined();
         expect(poll.response.body.playback).toEqual(playback);
+        // A presenter may cast their own session, and a spectator with the matching baseline gets only new reveals.
+        const presenter = app.screens(); presenter.user.own = () => true;
+        await presenter.prepare('system', tid());
+        presenter.request.body = { operation: 'bind_resolver', sessionId: sid };
+        await presenter.post('system');
+        await presenter.postBindResolver('system', sid);
+        expect(presenter.response.body).toMatchObject({ sessionId: sid, audienceUrl: expect.stringContaining('/resolver') });
+        await expect(admin.postBindResolver('system', sid)).rejects.toThrow('不属于');
+        const dbSession = [...app.resolverTables.get('xcpcio.resolver.sessions')!.values()][0] as any;
+        const next = dbSession.actions.find((index: number) => index > playback.index);
+        const host = app.resolver('_playback'); host.user.own = () => true;
+        host.request.headers['x-resolver-control'] = dbSession.controlToken;
+        await host.prepare('system', tid(), sid); await host.post('system', next, playback.revision);
+        await poll.get('system', playback.revision, sid, playback.index);
+        expect(poll.response.body.game).toBeUndefined();
+        expect(poll.response.body.delta).toMatchObject({ from: playback.index, steps: expect.any(Array) });
+        const delta = poll.response.body.delta;
+        await poll.get('system', playback.revision, sid);
+        expect([...game.steps, ...delta.steps]).toEqual(poll.response.body.game.steps);
+        await poll.get('system', playback.revision, sid, next);
+        expect(poll.response.body.game).toBeDefined();
     });
     it('asks a contestant (not contest staff) to open the capture window while 画面采集 is on and the contest has not ended', async () => {
         const db = previewDatabase();

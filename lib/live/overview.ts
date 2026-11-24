@@ -1,13 +1,13 @@
 /**
  * 赛况总览 for the ICPC Live overlay: the inspection screen's overview (lib/overview.ts) over the
- * live module's own data, which is the public board's (frozen, results masked while the contest
- * runs, the venue's identity rule). Pure, so it is tested without Hydro.
+ * live module's own data, which is the public board's (specific public verdicts, frozen runs, venue identity rule). Pure, so it is tested without Hydro.
  */
-import { contestOverview } from '../overview';
-import type { LiveSource } from './model';
+import { contestOverview, overviewVerdictStatus } from '../overview';
+import { verdictFor, type LiveSource } from './model';
 
 export type LiveOverview = ReturnType<typeof contestOverview> & {
     hidden: false;
+    verdicts: (ReturnType<typeof contestOverview>['verdicts'][number] & { code?: string })[];
     /** Runs after the freeze are still hidden (also after the end, until the board is unfrozen). */
     frozenRuns: number;
 } | {
@@ -29,9 +29,13 @@ export function liveOverview(source: LiveSource): LiveOverview {
     if (source.hidden) return { hidden: true, title: source.contest.title, status: 'before', serverTime: source.now, beginAt, endAt, lockAt };
     const overview = contestOverview({
         title: source.contest.title, beginAt, endAt, lockAt, now: source.now, data: source.data,
-        unofficialFirstSolve: source.settings.unofficialFirstSolve, masked: source.now < endAt,
+        unofficialFirstSolve: source.settings.unofficialFirstSolve, tieBreak: source.settings.tieBreak,
     });
-    return { ...overview, hidden: false, frozenRuns: source.data.submissions.filter((record) => record.status === 'FROZEN').length };
+    const verdicts = overview.verdicts.map((item) => {
+        const status = overviewVerdictStatus.get(item.key);
+        return { ...item, code: status && verdictFor(status)?.shortName };
+    });
+    return { ...overview, verdicts, hidden: false, frozenRuns: source.data.submissions.filter((record) => record.status === 'FROZEN').length };
 }
 
 /** The overview without its clock, to tell whether anything an audience sees has changed. */

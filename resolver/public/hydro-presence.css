@@ -1,7 +1,7 @@
 /* 机位监控 */
 #hydro-presence {
   --presence-line: rgba(127, 127, 127, .28);
-  --presence-online: #2fa84f; --presence-background: #5f9fd6; --presence-weak: #e6a23c; --presence-offline: #e05d44; --presence-never: #9a9a9a;
+  --presence-online: #2fa84f; --presence-weak: #e6a23c; --presence-offline: #e05d44; --presence-never: #9a9a9a;
 }
 #hydro-presence .presence-actions { display: flex; gap: 8px; align-items: center; }
 #hydro-presence .presence-actions .button { margin: 0; }
@@ -14,7 +14,6 @@
 #hydro-presence .presence-count.is-checkin b { font-size: 26px; }
 #hydro-presence .presence-count.is-ended { opacity: .6; }
 #hydro-presence .state-online { --presence-state: var(--presence-online); }
-#hydro-presence .state-background { --presence-state: var(--presence-background); }
 #hydro-presence .state-weak { --presence-state: var(--presence-weak); }
 #hydro-presence .state-offline { --presence-state: var(--presence-offline); }
 #hydro-presence .state-never { --presence-state: var(--presence-never); }
@@ -43,7 +42,6 @@
 #hydro-presence .presence-seat__note { display: flex; gap: 6px; align-items: center; min-height: 16px; font-size: 12px; opacity: .75; }
 #hydro-presence .presence-mark { display: inline-block; min-width: 16px; height: 16px; line-height: 16px; border-radius: 8px; font-size: 11px; text-align: center; }
 #hydro-presence .presence-mark.is-alert { position: absolute; top: 4px; right: 4px; padding: 0 4px; color: #fff; background: var(--presence-offline); opacity: 1; }
-#hydro-presence .presence-mark.is-capture { width: 8px; min-width: 8px; height: 8px; border-radius: 2px; background: var(--presence-weak); }
 #hydro-presence .presence-dialog { width: 460px; max-width: calc(100vw - 32px); }
 #hydro-presence .presence-dialog h2 { font-size: 17px; margin: 0 0 10px; }
 #hydro-presence .presence-dialog dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0 0 14px; }

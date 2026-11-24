@@ -6,6 +6,7 @@
 import type {
     Award, ContestInfo, ICPCProblemResult, OptimismLevel, RunInfo, ScoreboardDiff, ScoreboardRow, SolutionsStatistic, TimeLineRunInfo,
 } from './types';
+import { publicRunVerdict } from './model';
 
 const isJudged = (run: RunInfo) => run.result.type === 'ICPC';
 const isAccepted = (run: RunInfo) => run.result.type === 'ICPC' && run.result.verdict.isAccepted;
@@ -229,11 +230,19 @@ export function scoreboardDiff(state: ScoreboardState, previous?: ScoreboardStat
     return { rows, ...ranking, hydroGroups: groups };
 }
 
-export function statistics(info: ContestInfo, state: ScoreboardState): SolutionsStatistic {
+export function statistics(info: ContestInfo, state: ScoreboardState, runs: Iterable<RunInfo>): SolutionsStatistic {
     const problems = info.problems.filter((problem) => !problem.isHidden);
+    const visible = new Set(problems.map((problem) => problem.id));
+    const verdictCounts: Record<string, number> = {};
+    for (const run of runs) {
+        if (run.isHidden || !visible.has(run.problemId)) continue;
+        const code = publicRunVerdict(run.result);
+        verdictCounts[code] = (verdictCounts[code] ?? 0) + 1;
+    }
     return {
         type: 'ICPC',
         teamsCount: state.ranking.order.length,
+        verdictCounts,
         stats: problems.map((_, index) => {
             let success = 0;
             let wrong = 0;
@@ -256,7 +265,7 @@ export function timeline(runs: RunInfo[]): TimeLineRunInfo[] {
     const result: TimeLineRunInfo[] = [];
     for (const run of runs) {
         if (run.result.type === 'IN_PROGRESS') {
-            result.push({ type: 'IN_PROGRESS', time: run.time, problemId: run.problemId });
+            result.push({ type: 'IN_PROGRESS', time: run.time, problemId: run.problemId, ...(run.result.frozen ? { frozen: true } : {}) });
             continue;
         }
         if (accepted.has(run.problemId)) continue;

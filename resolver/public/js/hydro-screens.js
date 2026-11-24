@@ -5,6 +5,8 @@ const message = $('message');
 let config = structuredClone(runtime.config);
 let linkBase = runtime.linkBase;
 let dirty = false;
+let savedConfig = structuredClone(config);
+let refreshSessions = () => {};
 
 function el(tag, attrs = {}, ...children) {
     const node = document.createElement(tag);
@@ -36,23 +38,34 @@ function changed() {
 }
 
 async function save() {
-    if (saving) { await saving; if (!dirty) return; }
+    if (saving) return (await saving) && (!dirty || await save());
+    if (!dirty) return true;
     const invalid = [...document.querySelectorAll('#screen-panel input, #screen-panel textarea')].find((field) => !field.checkValidity());
-    if (invalid) { $('save-status').textContent = `${runtime.labels[invalid.closest('[data-type]').dataset.type]}：${invalid.validationMessage}`; return; }
+    if (invalid) { $('save-status').textContent = invalid.validationMessage; return false; }
+    const sent = structuredClone(config);
+    const items = {};
+    for (const type of runtime.types) {
+        const changes = Object.entries(sent.items[type]).filter(([field, value]) => field !== 'images' && savedConfig.items[type][field] !== value);
+        if (changes.length) items[type] = Object.fromEntries(changes);
+    }
+    const patch = { items, ...sent.locale !== savedConfig.locale ? { locale: sent.locale } : {} };
     message.hidden = true;
     dirty = false;
     $('save-status').textContent = '正在保存…';
-    saving = (async () => {
-        try {
-            const saved = (await request({ config: JSON.stringify(config) })).config;
-            config.locale = saved.locale;
-            for (const type of runtime.types) Object.assign(config.items[type], saved.items[type]);
-            refreshPosters();
-            $('save-status').textContent = dirty ? '' : '已保存';
-        } catch (error) { dirty = true; $('save-status').textContent = ''; showError(error); }
-    })();
-    await saving;
-    saving = null;
+    saving = request({ config: JSON.stringify(patch) }).then(({ config: saved }) => {
+        for (const [type, fields] of Object.entries(items)) {
+            for (const field of Object.keys(fields)) {
+                savedConfig.items[type][field] = saved.items[type][field];
+                if (config.items[type][field] === sent.items[type][field]) config.items[type][field] = saved.items[type][field];
+            }
+        }
+        if ('locale' in patch) savedConfig.locale = saved.locale;
+        $('save-status').textContent = dirty ? '' : '已保存';
+        return true;
+    }).catch((error) => {
+        dirty = true; $('save-status').textContent = ''; showError(error); return false;
+    }).finally(() => { saving = null; });
+    return (await saving) && (!dirty || await save());
 }
 
 const toLocalInput = (iso) => {
@@ -145,24 +158,55 @@ function card(type) {
         fields.append(el('label', { text: '公告文字' }, text));
     }
     if (type === 'resolver') {
-        const options = [['', '不显示（等待滚榜）'], ...runtime.sessions.map((session) => [session.id,
-            `${session.board} · ${session.rehearsal ? '彩排' : '正式'} · ${new Date(session.createdAt).toLocaleString('zh-CN')}`])];
-        if (item.sessionId && !runtime.sessions.some((session) => session.id === item.sessionId)) options.push([item.sessionId, '其他管理员的会话或已删除的会话']);
-        fields.append(el('label', { text: '跟随的滚榜会话' }, select(options, item.sessionId, (value) => { item.sessionId = value; })));
+        const field = select([], item.sessionId, (value) => { item.sessionId = value; });
+        const populate = (sessions) => {
+            field.replaceChildren(new Option('等待主持人投屏', ''));
+            for (const session of sessions) field.add(new Option(
+                `${session.board} · ${session.rehearsal ? '彩排' : '正式'} · ${new Date(session.createdAt).toLocaleString('zh-CN')}`, session.id));
+            if (item.sessionId && !sessions.some((session) => session.id === item.sessionId)) field.add(new Option('其他管理员的会话或已删除的会话', item.sessionId));
+            field.value = item.sessionId;
+        };
+        let refreshId = 0;
+        refreshSessions = async () => {
+            const id = ++refreshId;
+            const selected = item.sessionId;
+            try {
+                const data = await request({ operation: 'resolver_sessions' });
+                if (id !== refreshId) return;
+                if (!saving && item.sessionId === selected && item.sessionId === savedConfig.items.resolver.sessionId) {
+                    item.sessionId = savedConfig.items.resolver.sessionId = data.sessionId;
+                }
+                populate(data.sessions.map((row) => ({ ...row, rehearsal: row.config.rehearsal,
+                    board: runtime.boards.find((board) => board.id === row.config.boardId)?.name || row.config.boardId })));
+            } catch (error) { showError(error); }
+        };
+        populate(runtime.sessions);
+        fields.append(el('label', { text: '跟随的滚榜会话' }, field));
+        addEventListener('focus', () => { if (location.hash === '#screen-resolver') refreshSessions(); });
     }
     const link = el('input', { class: 'textbox', readonly: '', 'aria-label': `${runtime.labels[type]}链接` });
     link.value = linkFor(type);
     link.dataset.type = type;
     const copy = el('button', { class: 'button', type: 'button', text: '复制链接' });
     copy.addEventListener('click', async () => {
+        if ((dirty || saving) && !await save()) return;
         try { await navigator.clipboard.writeText(link.value); copy.textContent = '已复制'; } catch { link.select(); copy.textContent = '请手动复制'; }
         setTimeout(() => { copy.textContent = '复制链接'; }, 2000);
     });
     const open = el('a', { class: 'button', target: '_blank', rel: 'noopener', text: '新窗口打开', href: link.value });
     open.dataset.type = type;
+    open.addEventListener('click', async (event) => {
+        if (!dirty && !saving) return;
+        event.preventDefault();
+        const tab = window.open('about:blank', '_blank');
+        if (tab) tab.opener = null;
+        if (await save()) { if (tab) tab.location.replace(linkFor(type)); }
+        else tab?.close();
+    });
     const preview = el('button', { class: 'button', type: 'button', text: '预览' });
     preview.addEventListener('click', async () => {
-        if (dirty) { clearTimeout(saveTimer); await save(); }
+        clearTimeout(saveTimer);
+        if (!await save()) return;
         $('preview-title').textContent = runtime.labels[type];
         $('screen-preview-frame').src = linkFor(type);
         $('screen-preview').showModal();
@@ -214,6 +258,7 @@ function choose(type, focus = false) {
         link.classList.toggle('active', key === type);
         if (key === type) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
     }
+    if (type === 'resolver') refreshSessions();
     if (location.hash !== `#screen-${type}`) history.replaceState(null, '', `#screen-${type}`);
     if (focus && matchMedia('(max-width: 1024px)').matches) $('screen-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
     // Keep the chosen entry visible inside the (scrolling) side menu without moving the page.

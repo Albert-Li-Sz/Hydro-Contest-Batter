@@ -23,6 +23,7 @@ export interface ResolverSession extends ResolverScope {
     revision: number;
     actions: number[];
     chunks: number;
+    previousIndex?: number;
 }
 
 interface ResolverChunk {
@@ -45,6 +46,19 @@ export const resolverChunkBytes = 3 * 1024 * 1024;
 export class ResolverSessions {
     private sessions;
     private chunks;
+    // Immutable game only. Every public request still rechecks the link, binding and session.
+    private games = new Map<string, Promise<ResolverPayload['game']>>();
+    private game(session: ResolverSession) {
+        let game = this.games.get(session._id);
+        if (game) return game;
+        game = this.read(session).then((payload) => payload.game);
+        if (session.chunks <= 4) {
+            this.games.set(session._id, game);
+            while (this.games.size > 4) this.games.delete(this.games.keys().next().value!);
+            game.catch(() => { if (this.games.get(session._id) === game) this.games.delete(session._id); });
+        }
+        return game;
+    }
 
     constructor(db: Context['db']) {
         this.sessions = db.collection('xcpcio.resolver.sessions');
@@ -154,7 +168,7 @@ export class ResolverSessions {
         }
         const result = await this.sessions.updateOne(
             { _id: session._id, ready: true, revision },
-            { $set: { index, updatedAt: new Date() }, $inc: { revision: 1 } },
+            { $set: { index, previousIndex: session.index, updatedAt: new Date() }, $inc: { revision: 1 } },
         );
         if (result.matchedCount) return { status: 200, playback: this.playback({ ...session, index, revision: revision + 1 }) };
         const current = await this.get(session, session._id);
@@ -171,22 +185,37 @@ export class ResolverSessions {
      * What an audience may see: the steps up to the current one, with no future steps and no award
      * recipients beyond the team being shown. Follows Resolver-Web server/lib/sessions.js snapshot().
      */
-    async spectator(session: ResolverSession) {
-        const { game } = await this.read(session);
-        const { autoStopTeamId: _hidden, ...meta } = game.meta;
-        const steps = game.steps.slice(0, session.index + 1).map((step) => {
+    private revealed(game: ResolverPayload['game'], start: number, end: number) {
+        return game.steps.slice(start, end + 1).map((step) => {
             if (!step.teamId || !Array.isArray(step.awards)) return step;
             return { ...step, awards: (step.awards as { teamIds: string[] }[]).map((award) => ({
                 ...award, teamIds: award.teamIds.filter((teamId) => teamId === step.teamId),
             })) };
         });
+    }
+
+    async spectator(session: ResolverSession) {
+        const game = await this.game(session);
+        const { autoStopTeamId: _hidden, ...meta } = game.meta;
         return {
-            game: { ...game, meta, contest: { ...game.contest, awards: [] }, steps },
+            game: { ...game, meta, contest: { ...game.contest, awards: [] }, steps: this.revealed(game, 0, session.index) },
             playback: this.playback(session),
         };
     }
 
+    async audience(session: ResolverSession, known?: string, revision?: number, index?: number) {
+        const playback = this.playback(session);
+        if (known === session._id && revision === session.revision && (index === undefined || index === session.index)) return { playback };
+        if (known === session._id && revision === session.revision - 1 && index !== undefined
+            && index === session.previousIndex && index >= 0 && index < session.index) {
+            const steps = this.revealed(await this.game(session), index + 1, session.index);
+            return { playback, delta: { from: index, steps } };
+        }
+        return this.spectator(session);
+    }
+
     async remove(session: ResolverSession) {
+        this.games.delete(session._id);
         await this.sessions.updateOne({ _id: session._id }, { $set: { ready: false, deleting: true } });
         await this.chunks.deleteMany({ sessionId: session._id });
         await this.sessions.deleteOne({ _id: session._id });

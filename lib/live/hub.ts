@@ -2,7 +2,9 @@
  * One contest's ICPC Live backend: the DataBus, services and controllers of ICPC Live v3
  * (backend Application.kt / ServiceRoot.kt / Controllers.kt, MIT) in one Node object.
  */
-import { buildContestInfo, buildRuns, type LiveSource } from './model';
+import { FirstSolveBulletin, medalCutoff, problemFocus } from './broadcast';
+import { awardsFor } from '../settings';
+import { buildContestInfo, buildRuns, firstSolveRuns, type LiveSource } from './model';
 import { liveOverview, overviewKey, type LiveOverview } from './overview';
 import {
     computeScoreboard, runsByTeam, scoreboardDiff, standingsAtRuns, statistics, timeline, type ScoreboardState,
@@ -15,7 +17,7 @@ import {
     WidgetController, WidgetManager,
 } from './widgets';
 import * as S from './widget-settings';
-import { stateEntries, type LiveState, type LiveStateEntries, type LiveStatePatch } from './state';
+import { stateEntries, type FeaturedSelection, type LiveState, type LiveStateEntries, type LiveStatePatch } from './state';
 export type { LiveState } from './state';
 
 type Listener = (payload: unknown) => void;
@@ -72,9 +74,12 @@ export class LiveHub {
     info: ContestInfo | null = null;
     /** What the director sees: always the full team list, so views can be prepared before the start. */
     adminInfo: ContestInfo | null = null;
+    private firstSolves = new FirstSolveBulletin();
     private infoJson = '';
     private adminInfoJson = '';
     private runs = new Map<string, RunInfo>();
+    private featuredRun: FeaturedSelection | null = null;
+    private displayedFeature: { id: string; signature: string } | null = null;
     private byTeam = new Map<string, RunInfo[]>();
     private scoreboards = new Map<OptimismLevel, ScoreboardState>();
     private statisticsJson = '';
@@ -100,6 +105,7 @@ export class LiveHub {
     readonly title: PresetsController<ReturnType<typeof S.titleSettings>, Widget>;
     readonly tickerMessage: PresetsController<ReturnType<typeof S.tickerMessageSettings>, TickerMessage>;
 
+    private broadcastScope = '';
     private timer: NodeJS.Timeout | null = null;
     private cleaner: NodeJS.Timeout | null = null;
     private spotlightTimer: NodeJS.Timeout | null = null;
@@ -131,6 +137,19 @@ export class LiveHub {
         single('scoreboard', S.scoreboardSettings({}), S.scoreboardSettings, fixed('ScoreboardWidget', 'scoreboard'));
         single('fullScreenClock', S.clockSettings({}), S.clockSettings, fixed('FullScreenClockWidget', 'fullScreenClock'));
         single('overview', S.overviewSettings({}), S.overviewSettings, fixed('ContestOverviewWidget', 'overview'));
+        single('firstSolve', {}, S.emptySettings, () => {
+            const items = this.firstSolves.items(Date.now());
+            return items.length ? { ...fixed('FirstSolveWidget', 'firstSolve')({}), items } : null;
+        }, true);
+        single('medalCutoff', S.medalCutoffSettings({}), S.medalCutoffSettings, (settings) => {
+            const board = this.scoreboards.get('normal');
+            return this.info && this.info.status.type !== 'before' && board
+                ? { ...fixed('MedalCutoffWidget', 'medalCutoff')(settings), data: medalCutoff(this.info, board, settings.group, settings.medal) } : null;
+        }, true);
+        single('problemFocus', S.problemFocusSettings({}), S.problemFocusSettings, (settings) => {
+            const data = this.info && this.info.status.type !== 'before' && problemFocus(this.info, this.runs.values(), settings.problemId, this.controllers.scoreboard.status().settings.group);
+            return data ? { ...fixed('ProblemFocusWidget', 'problemFocus')(settings), data } : null;
+        }, true);
         single('teamLocator', S.locatorSettings({}), S.locatorSettings, (settings) => {
             const teams = new Set(this.info?.teams.map((team) => team.id) || []);
             return fixed('TeamLocatorWidget', 'teamLocator')({
@@ -176,11 +195,6 @@ export class LiveHub {
                 return id;
             },
             hideTicker: (id) => { try { this.tickerMessage.hide(id); } catch { /* already gone */ } },
-            feature: (run, mediaType) => {
-                const media = this.info?.teams.find((team) => team.id === run.teamId)?.medias[mediaType] || [];
-                return media.length ? this.queueService.feature(run.id, media) : null;
-            },
-            unfeature: (run) => this.queueService.unfeature(run.id),
             marked: (messageId, commentId, field, value) => this.deps.announce?.('mark', { messageId, commentId, field, value }),
         });
         this.queueService.subscribe((event) => this.publish('queue', event));
@@ -196,6 +210,7 @@ export class LiveHub {
     }
 
     private async restore(state: LiveState) {
+        this.featuredRun = state.featuredRun ?? null;
         const titles = Array.isArray(state.presets?.title) ? state.presets!.title : [];
         for (const item of titles) {
             const name = (item?.settings as { preset?: unknown } | undefined)?.preset;
@@ -242,7 +257,11 @@ export class LiveHub {
             if (change.revision <= (this.versions.get(key) ?? this.baseRevision)) continue;
             const before = this.observed[key];
             let uri = '';
-            if (key.startsWith('controller/')) {
+            if (key === 'featuredRun') {
+                this.featuredRun = change.value?.settings as FeaturedSelection ?? null;
+                this.syncFeatured();
+                uri = '/api/admin/analytics';
+            } else if (key.startsWith('controller/')) {
                 const name = key.slice(11);
                 this.controllers[name]?.load(change.value);
                 uri = `/api/admin/${adminPath(name)}`;
@@ -370,6 +389,7 @@ export class LiveHub {
 
     state(): LiveState {
         return {
+            featuredRun: this.featuredRun,
             controllers: Object.fromEntries(Object.entries(this.controllers).map(([name, controller]) => [name, controller.persistentState])),
             presets: {
                 advertisement: this.advertisement.persistentState,
@@ -410,7 +430,7 @@ export class LiveHub {
         case 'admin': return argument === 'contestInfo' ? this.adminInfo : null;
         case 'runs': return [...this.runs.values()].sort((a, b) => a.time - b.time);
         case 'teamRuns': return timeline(this.byTeam.get(argument) || []);
-        case 'statistics': return this.info && this.scoreboards.get('normal') ? statistics(this.info, this.scoreboards.get('normal')!) : { type: 'ICPC', teamsCount: 0, stats: [] };
+        case 'statistics': return this.info && this.scoreboards.get('normal') ? statistics(this.info, this.scoreboards.get('normal')!, this.runs.values()) : { type: 'ICPC', teamsCount: 0, stats: [], verdictCounts: {} };
         case 'overview': return this.overview;
         case 'scoreboard': {
             const state = this.scoreboards.get(argument as OptimismLevel);
@@ -458,6 +478,41 @@ export class LiveHub {
     }
 
     private subscribers = 0;
+
+    private mediaFor(runId: string, mediaType: string) {
+        const run = this.runs.get(runId);
+        if (!run || run.isHidden) return [];
+        return this.info?.teams.find((team) => team.id === run.teamId)?.medias[mediaType] ?? [];
+    }
+
+    selectRun(runId: string, mediaType: string | null) {
+        if (!this.runs.has(runId)) throw new ApiActionError(`Unknown submission ${runId}`);
+        if (mediaType === null && this.featuredRun?.runId !== runId) return;
+        if (mediaType !== null && !this.mediaFor(runId, mediaType).length) {
+            throw new ApiActionError(`该队伍没有${mediaType === 'camera' ? '摄像头' : mediaType === 'screen' ? '屏幕' : mediaType}画面，无法使用 Featured run`);
+        }
+        this.featuredRun = mediaType === null ? null : {
+            runId, mediaType, expiresAt: Date.now() + this.info!.queueSettings.featuredRunWaitTimeSeconds * 1000,
+        };
+        this.syncFeatured();
+        this.changed();
+    }
+
+    private syncFeatured() {
+        const selection = this.featuredRun;
+        const media = selection && selection.expiresAt > Date.now() ? this.mediaFor(selection.runId, selection.mediaType) : [];
+        const signature = media.length ? JSON.stringify([selection, media]) : '';
+        if (signature === (this.displayedFeature?.signature ?? '')) return;
+        if (this.displayedFeature) {
+            this.queueService.unfeature(this.displayedFeature.id);
+            this.analytics.setFeatured(this.displayedFeature.id, null);
+            this.displayedFeature = null;
+        }
+        if (selection && media.length && this.queueService.feature(selection.runId, media)) {
+            this.analytics.setFeatured(selection.runId, { expirationTimeUnixMs: selection.expiresAt, mediaType: media });
+            this.displayedFeature = { id: selection.runId, signature };
+        }
+    }
 
     /** How long nobody has watched or used this contest's live module. */
     idleFor(now = Date.now()) { return this.subscribers ? 0 : now - this.lastActivity; }
@@ -511,7 +566,11 @@ export class LiveHub {
         this.timer = setTimeout(tick, 0);
         this.timer.unref?.();
         if (!this.cleaner) {
-            this.cleaner = setInterval(() => this.queueService.clean(this.info), 1000);
+            this.cleaner = setInterval(() => {
+                this.syncFeatured();
+                this.queueService.clean(this.info);
+                if (this.controllers.firstSolve.shown) this.controllers.firstSolve.sync();
+            }, 1000);
             this.cleaner.unref?.();
         }
         if (!this.spotlightTimer) {
@@ -599,7 +658,12 @@ export class LiveHub {
         const removed = [...this.runs.values()].filter((run) => !next.has(run.id)).map((run) => ({ ...run, isHidden: true }));
         this.runs = next;
         this.byTeam = runsByTeam(runs);
-        if (!changed.length && !removed.length && !infoChanged && this.scoreboards.size) return;
+        const group = this.controllers.scoreboard.status().settings.group as string;
+        const rules = awardsFor(source.settings, group);
+        const scope = JSON.stringify([group, rules.firstSolve, rules.unofficialFirstSolve]);
+        const newScope = scope !== this.broadcastScope;
+        this.broadcastScope = scope;
+        if (!changed.length && !removed.length && !infoChanged && !newScope && this.scoreboards.size) return;
         for (const level of optimismLevels) {
             const previous = this.scoreboards.get(level);
             const state = computeScoreboard(info, this.byTeam, level);
@@ -610,13 +674,18 @@ export class LiveHub {
             }
         }
         const normal = this.scoreboards.get('normal')!;
+        const field = group === 'all' ? info.teams : info.teams.filter((team) => team.groups.includes(group));
+        this.firstSolves.update(info, firstSolveRuns(runs, field, rules), this.controllers.firstSolve.shown, newScope, Date.now());
+        if (!infoChanged) for (const id of ['firstSolve', 'medalCutoff', 'problemFocus']) this.controllers[id].sync();
+        if (removed.length) this.analytics.remove(removed.map((run) => run.id));
         const history = standingsAtRuns(info, runs, new Set(changed.map((run) => run.id)));
         for (const run of [...removed, ...changed]) {
             this.queueService.onRun(run, info);
             this.spotlight.onRun(run, info);
             if (!run.isHidden) this.analytics.onRun(run, info, normal.ranking, history.get(run.id));
         }
-        const stats = statistics(info, normal);
+        const stats = statistics(info, normal, runs);
+        this.syncFeatured();
         const statsJson = JSON.stringify(stats);
         if (statsJson !== this.statisticsJson) {
             this.statisticsJson = statsJson;

@@ -63,7 +63,7 @@ const sameSecret = (given: string, expected: string) => {
 
 export function applyLive(ctx: Context, dependencies: {
     loadSettings: (tdoc: Tdoc) => Promise<BoardSettings>;
-    loadData: (tdoc: Tdoc, realtime: boolean, identity: boolean, staffResults: boolean) => Promise<BoardData>;
+    loadData: (tdoc: Tdoc, identity: boolean) => Promise<BoardData>;
     intervalMs?: number;
     /** 画面采集 (plugin setting): off, its pages and sockets are not offered and teams have no video. */
     capture?: boolean;
@@ -166,8 +166,8 @@ export function applyLive(ctx: Context, dependencies: {
                         const current = await ContestModel.get(domainId, docId);
                         if (!current) return null;
                         const settings = await dependencies.loadSettings(current);
-                        // Same data as the public board and the screens: frozen, with the venue's identity rule.
-                        const data = await dependencies.loadData(current, false, settings.showIdentity, false);
+                        // Live shows specific public verdicts while respecting the freeze and venue identity rule.
+                        const data = await dependencies.loadData(current, settings.showIdentity);
                         return {
                             contest: current, data, settings, identity: settings.showIdentity, logoNames, now: Date.now(),
                             boards: resolverBoards(data, settings, settings.showIdentity),

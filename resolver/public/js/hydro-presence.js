@@ -16,7 +16,8 @@ function el(tag, attrs = {}, ...children) {
     return node;
 }
 
-const labels = { online: '在线', background: '后台', weak: '可能离线', offline: '离线', never: '未登录' };
+const captureLabels = { recording: '采集中', connected: '已连接未采集', disconnected: '未连接' };
+const labels = { online: '在线', weak: '可能离线', offline: '离线', never: '未登录' };
 const loud = new Set(['sharedIp', 'ipMismatch', 'offline']);
 
 const ago = (ms) => {
@@ -66,7 +67,7 @@ let last = null;
 function counts(data) {
     const chips = [];
     if (data.phase === 'before') chips.push(el('span', { class: 'presence-count is-checkin' }, el('b', { text: `${data.checkedIn} / ${data.total}` }), '签到'));
-    for (const state of ['online', 'background', 'weak', 'offline', 'never']) {
+    for (const state of ['online', 'weak', 'offline', 'never']) {
         if (!data.counts[state] && state !== 'online') continue;
         chips.push(el('span', { class: `presence-count state-${state}` }, el('i'), el('b', { text: data.counts[state] }), data.phase === 'before' && state === 'never' ? '未签到' : labels[state]));
     }
@@ -75,8 +76,8 @@ function counts(data) {
 }
 
 function note(team, now) {
+    if (team.capture) return captureLabels[team.capture];
     if (team.state === 'online') return '';
-    if (team.state === 'background') return team.hiddenAt ? `后台 ${ago(now - team.hiddenAt)}` : '后台';
     if (team.state === 'never') return '';
     return `${ago(now - team.lastSeen)}前`;
 }
@@ -87,12 +88,11 @@ function tile(team, now, phase) {
     if (phase === 'before' && team.state === 'never') classes.push('is-missing');
     return el('button', {
         type: 'button', class: classes.join(' '), 'data-uid': team.uid,
-        'aria-label': `${team.seat || '无座位'} ${team.name} ${labels[team.state]}`, onclick: () => details(team.uid),
+        'aria-label': [team.seat || '无座位', team.name, team.capture ? captureLabels[team.capture] : labels[team.state]].join(' '), onclick: () => details(team.uid),
     },
     el('span', { class: 'presence-seat__seat', text: team.seat || '—' }),
     el('span', { class: 'presence-seat__name', text: team.name }),
     el('span', { class: 'presence-seat__note' }, note(team, now),
-        team.capture === false && team.state !== 'never' ? el('span', { class: 'presence-mark is-capture', title: '画面采集未连接' }) : null,
         team.alerts.length ? el('span', { class: 'presence-mark is-alert', text: team.alerts.length }) : null));
 }
 
@@ -123,7 +123,7 @@ function details(uid) {
         team.recent.length > 1 ? ['10 分钟内', team.recent.join('、')] : null,
         team.browser?.name ? ['浏览器', `${team.browser.name} ${team.browser.version}`] : null,
         team.firstSeen ? ['首次上线', new Date(team.firstSeen).toLocaleString('zh-CN', { hour12: false })] : null,
-        team.capture === null ? null : ['画面采集', team.capture ? '已连接' : '未连接'],
+        team.capture === null ? null : ['画面采集', captureLabels[team.capture]],
     ].filter(Boolean);
     const issues = (last.alerts || []).filter((alert) => alert.uid === uid);
     const dialog = el('dialog', { class: 'presence-dialog' }, el('form', { method: 'dialog' },

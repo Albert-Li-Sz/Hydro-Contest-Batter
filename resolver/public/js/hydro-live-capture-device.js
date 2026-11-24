@@ -39,7 +39,7 @@ function render() {
     // The tab and the window title say it too, so it is not closed by mistake.
     document.title = recording ? `● 正在录制 · 请勿关闭 · ${pageTitle}` : pageTitle;
     $('recording').hidden = !recording;
-    $('recording-what').textContent = state.webcam ? '● 正在录制屏幕和摄像头' : '● 正在录制屏幕';
+    $('recording-what').textContent = state.screen && state.webcam ? '● 正在录制屏幕和摄像头' : state.screen ? '● 正在录制屏幕' : '● 正在录制摄像头';
     document.body.dataset.recording = String(recording);
     announce();
     $('screen-video').srcObject = state.screen;
@@ -67,7 +67,9 @@ function send(message) {
     if (state.socket?.readyState === WebSocket.OPEN) state.socket.send(JSON.stringify(message));
 }
 
+let lastReportedAt = 0;
 function reportStatus() {
+    lastReportedAt = Date.now();
     const settings = state.screen?.getVideoTracks()[0]?.getSettings();
     send({
         type: 'status',
@@ -97,6 +99,8 @@ async function capture(fromClick = false) {
                 throw Object.assign(new Error('请选择“整个屏幕”，不要只共享窗口或标签页'), { name: 'WrongSurface' });
             }
             state.screen = stream;
+            render();
+            reportStatus();
             state.screen.getVideoTracks()[0].addEventListener('ended', () => {
                 state.screen = null;
                 for (const session of [...state.sessions.values()]) if (session.stream === 'screen') session.end('选手机停止了屏幕共享');
@@ -116,6 +120,15 @@ async function capture(fromClick = false) {
             state.webcam = await mediaDevices.getUserMedia({
                 video: { width: { ideal: webcam.width }, height: { ideal: webcam.height }, frameRate: { ideal: webcam.frameRate } },
                 audio: webcam.audio,
+            });
+            const stream = state.webcam;
+            stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+                if (state.webcam !== stream) return;
+                for (const track of stream.getTracks()) track.stop();
+                state.webcam = null;
+                for (const session of [...state.sessions.values()]) if (session.stream === 'webcam') session.end('摄像头采集已停止');
+                render();
+                reportStatus();
             });
         } catch (error) {
             problems.push(error.name === 'NotFoundError' ? '没有找到摄像头' : `摄像头：${error.message || error.name}`);
@@ -150,7 +163,7 @@ async function answer(message) {
     }
     const pc = new RTCPeerConnection({ iceServers: iceServers() });
     const session = {
-        stream: message.stream, pc,
+        stream: message.stream, pc, incomingIce: [],
         end: (reason) => {
             if (!state.sessions.has(message.session)) return;
             state.sessions.delete(message.session);
@@ -167,6 +180,7 @@ async function answer(message) {
     };
     try {
         await pc.setRemoteDescription({ type: 'offer', sdp: message.sdp });
+        for (const candidate of session.incomingIce.splice(0)) await pc.addIceCandidate(candidate).catch(() => {});
         for (const transceiver of pc.getTransceivers()) {
             const kind = transceiver.receiver.track?.kind;
             const track = kind === 'audio' ? source.getAudioTracks()[0] : source.getVideoTracks()[0];
@@ -203,6 +217,7 @@ function connect() {
         if (event.data === 'pong') return;
         let message;
         try { message = JSON.parse(event.data); } catch { return; }
+        if (message.type === 'requestStatus') { reportStatus(); return; }
         if (message.type === 'config') {
             // On connecting (with the device's name), and again whenever a manager changes the settings.
             const previous = state.profile;
@@ -214,7 +229,9 @@ function connect() {
         } else if (message.type === 'offer') {
             await answer(message);
         } else if (message.type === 'ice' && message.candidate) {
-            await state.sessions.get(message.session)?.pc.addIceCandidate(message.candidate).catch(() => {});
+            const peer = state.sessions.get(message.session);
+            if (peer?.pc.remoteDescription) await peer.pc.addIceCandidate(message.candidate).catch(() => {});
+            else if (peer && peer.incomingIce.length < 64) peer.incomingIce.push(message.candidate);
         } else if (message.type === 'stop') {
             const session = state.sessions.get(message.session);
             if (session) { state.sessions.delete(message.session); session.pc.close(); render(); }
@@ -249,7 +266,9 @@ if (blocked) {
 } else {
     $('start').addEventListener('click', () => capture(true));
     setInterval(() => {
-        if (state.socket?.readyState === WebSocket.OPEN) { state.socket.send('ping'); reportStatus(); }
+        if (state.socket?.readyState !== WebSocket.OPEN) return;
+        state.socket.send('ping');
+        if (Date.now() - lastReportedAt >= 20_000) reportStatus();
     }, 15000);
     // The browser asks before closing the window while it is recording.
     window.addEventListener('beforeunload', (event) => {

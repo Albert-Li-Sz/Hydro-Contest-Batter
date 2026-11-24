@@ -52,6 +52,20 @@ function applyResolver(data) {
         return;
     }
     state = null;
+    if (data.delta) {
+        const { from, steps } = data.delta;
+        if (!resolver || resolver.session !== data.session || from !== resolver.playback.index ||
+            data.playback.revision !== resolver.playback.revision + 1 || steps.length !== data.playback.index - from) {
+            throw new Error('观众进度不同步');
+        }
+        // A long forward seek can skip hundreds of frames. Rebuild once in that case.
+        for (const step of steps) resolver.steps.push(step);
+        if (data.playback.currentAction === resolver.playback.currentAction + 1) {
+            for (const step of steps) resolver.view.applyStep(step);
+        } else resolver.view.seek(resolver.steps, data.playback.index);
+        resolver.playback = data.playback;
+        return;
+    }
     if (!data.game) {          // unchanged since the last poll
         if (resolver) resolver.playback = data.playback;
         return;
@@ -79,6 +93,7 @@ async function poll() {
         if (isResolver && resolver) {
             url.searchParams.set('revision', resolver.playback.revision);
             url.searchParams.set('session', resolver.session);
+            url.searchParams.set('index', resolver.playback.index);
         }
         const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(10000) });
         if (response.status === 404) {
@@ -92,7 +107,15 @@ async function poll() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         offset = data.serverTime - Date.now();
-        if (isResolver) applyResolver(data);
+        if (isResolver) {
+            try { applyResolver(data); }
+            catch {
+                resolver?.view.dispose?.();
+                resolver = null;
+                status('正在重新同步滚榜画面');
+                return;
+            }
+        }
         else state = data.notice ? { item: noticeItem(data.notice), data: null, locale: data.locale } : data;
         const key = JSON.stringify([state?.item, state?.type === 'announce' ? state.data?.[0]?.id : undefined]);
         if (key !== itemKey) { itemKey = key; itemStartedAt = performance.now(); }
@@ -110,12 +133,22 @@ async function poll() {
 function frame(now) {
     const dt = Math.min(64, Math.max(0, now - lastFrame));
     lastFrame = now;
+    requestAnimationFrame(frame);
     size();
     if (resolver && !state) {
         canvas.hidden = false;
         content.hidden = true;
-        resolver.view.update(dt);
-        resolver.view.render(now);
+        try {
+            resolver.view.update(dt);
+            resolver.view.render(now);
+            canvas.dataset.session = resolver.session;
+            canvas.dataset.revision = String(resolver.playback.revision);
+            canvas.dataset.index = String(resolver.playback.index);
+        } catch {
+            resolver.view.dispose?.();
+            resolver = null;
+            status('画面绘制失败，正在重新同步');
+        }
     } else if (state) {
         // A frame's timestamp can precede a poll that has just restarted the item's clock.
         const elapsed = Math.max(0, now - itemStartedAt);
@@ -127,7 +160,7 @@ function frame(now) {
             canvas.hidden = custom;
             if (custom && !failures) status('');
         }
-        if (canvas.hidden) { requestAnimationFrame(frame); return; }
+        if (canvas.hidden) return;
         presentation ||= new PresentationView();
         const ctx = canvas.getContext('2d');
         // render() returns false until the fonts (including the large Chinese font) have loaded.
@@ -137,7 +170,6 @@ function frame(now) {
         });
         if (drawn !== loaded) { loaded = drawn; if (!failures) status(drawn ? '' : '正在加载字体…'); }
     }
-    requestAnimationFrame(frame);
 }
 
 // Browsers only allow fullscreen from a user action, so a screen cannot enter it on its own:

@@ -110,7 +110,7 @@
       "source": "public/js/play.js",
       "destination": "resolver/public/js/play.js",
       "sha256": "f567d13c8cf76352d046dbe9a3e98ddd0c097c2e46b093c25da3f719fd09f65f",
-      "modifiedSha256": "ab6c2169b85f98bbe8b3f89b28447e2555f900731b123c0928021826a83fea4b"
+      "modifiedSha256": "cb3993e74ac2922284ebf458c02c0a71f3374af9091bdedcb36a3dc1e375e5b6"
     },
     {
       "source": "public/js/playback-model.js",
@@ -170,7 +170,7 @@
       "source": "public/play.html",
       "destination": "templates/xcpcio_resolver_play.html",
       "sha256": "b99524cc2d9c548b978de1bb6d6efd39b12f5debf907bf5e693cd3a8683b30b7",
-      "modifiedSha256": "5edc5769fa75f457f9ef1e0a4e29870dfc101bbc2a018d67598aa078413b30d3"
+      "modifiedSha256": "c829ef91e78518d53d6a9b8d15d47ff89a756787da02fbdecb60a634d2fc7c97"
     },
     {
       "source": "server/lib/engine.js",

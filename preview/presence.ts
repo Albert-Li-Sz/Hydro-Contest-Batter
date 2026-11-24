@@ -25,11 +25,11 @@ export function createPresencePreview(env: Environment, version: string, demo: (
             uid: 1000 + index, name: index < data.teams.length ? source.name : `${source.name} ${Math.floor(index / data.teams.length) + 1}`, seat,
             members: [`队员 ${index * 3 + 1}`, `队员 ${index * 3 + 2}`, `队员 ${index * 3 + 3}`],
             mapped: index === 30 ? [] : [`10.${Math.floor(index / 12) + 1}.0.${(index % 12) + 11}`],
-            capture: index === 8 ? false : true,
+            capture: [5, 8, 17, 35].includes(index) || index % 7 === 3 ? 'disconnected' : index === 11 ? 'connected' : 'recording',
         };
     });
     // Without a seat: listed apart.
-    teams.push({ uid: 1100, name: '临时加入的队伍', seat: '', members: [], mapped: [], capture: false });
+    teams.push({ uid: 1100, name: '临时加入的队伍', seat: '', members: [], mapped: [], capture: 'disconnected' });
 
     function docs(now: number, before: boolean) {
         const list: PresenceDoc[] = [];
@@ -38,16 +38,15 @@ export function createPresencePreview(env: Environment, version: string, demo: (
             // B-03 sits on B-02's computer; B-09 is on an address no seat has; C-03 changed computers.
             const ip = index === 14 ? '10.2.0.12' : index === 20 ? '10.2.0.99' : team.mapped[0] || '10.3.0.200';
             let doc: PresenceDoc | null = null;
-            const beat = (at: number, address = ip, visible = true, ua = chrome) => {
-                doc = applyBeat(doc, { contest: 'system/demo', uid: team.uid, member: team.uid, ip: address, ua, visible }, new Date(at)) || doc;
+            const beat = (at: number, address = ip, ua = chrome) => {
+                doc = applyBeat(doc, { contest: 'system/demo', uid: team.uid, member: team.uid, ip: address, ua }, new Date(at)) || doc;
             };
             beat(now - 50 * 60_000 - index * 7_000);
             if (index === 26) beat(now - 6 * 60_000, '10.3.0.250');
             const lastSeen = index === 5 ? now - 70_000 : index === 17 ? now - 7 * 60_000 : now - (index % 4) * 4_000 - 1_000;
-            beat(lastSeen, ip, index !== 11 && index !== 23, index === 29 ? oldChrome : chrome);
+            beat(lastSeen, ip, index === 29 ? oldChrome : chrome);
             if (!doc) return;
             const record = doc as PresenceDoc;
-            if (record.hiddenAt) record.hiddenAt = new Date(now - 3 * 60_000);
             list.push(record);
         });
         return list;

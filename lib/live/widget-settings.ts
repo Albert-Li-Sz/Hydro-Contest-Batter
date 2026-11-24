@@ -63,6 +63,12 @@ export const scoreboardSettings = (value: unknown) => {
     };
 };
 
+export const medalCutoffSettings = (value: unknown) => {
+    const input = object(value);
+    return { group: text(input, 'group', 'all', 100), medal: choice(input, 'medal', ['gold', 'silver', 'bronze'] as const, 'gold') };
+};
+export const problemFocusSettings = (value: unknown) => ({ problemId: text(object(value), 'problemId', '0', 32) });
+
 export const clockSettings = (value: unknown) => {
     const input = object(value);
     const timeZone = optionalText(input, 'timeZone', 64);

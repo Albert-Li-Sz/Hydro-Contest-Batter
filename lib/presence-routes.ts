@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { ContestModel, Context, Handler, NotFoundError, ObjectId, param, PERM, PRIV, Tdoc, Types, UserModel } from 'hydrooj';
-import { isCaptureOnline } from './live/capture';
+import { type CaptureDevice, isCaptureOnline } from './live/capture';
 import { applyBeat, BEAT_MS, type PresenceDoc, presenceSnapshot, type PresenceTeam } from './presence';
 import { seatOf } from './print';
 import { resolverCodeBase } from './resolver-data';
@@ -55,10 +55,10 @@ export function applyPresence(ctx: Context) {
     // Writes from page views are spread out: one per team every few seconds is plenty.
     const lastWrite = new Map<string, number>();
 
-    async function record(tdoc: Tdoc, team: number, member: number, ip: string, ua: string, visible: boolean) {
+    async function record(tdoc: Tdoc, team: number, member: number, ip: string, ua: string) {
         const key = `${contestKey(tdoc)}/${team}`;
         const prev = await records.findOne({ _id: key });
-        const next = applyBeat(prev, { contest: contestKey(tdoc), uid: team, member, ip, ua, visible }, new Date());
+        const next = applyBeat(prev, { contest: contestKey(tdoc), uid: team, member, ip, ua }, new Date());
         if (next) {
             const { _id, ...fields } = next;
             await records.updateOne({ _id }, { $set: fields }, { upsert: true });
@@ -80,7 +80,7 @@ export function applyPresence(ctx: Context) {
             if (Date.now() - (lastWrite.get(key) || 0) > 5000) {
                 if (lastWrite.size > 20000) lastWrite.clear();
                 lastWrite.set(key, Date.now());
-                record(tdoc, team, handler.user._id, handler.request.ip, String(handler.request.headers['user-agent'] || ''), true).catch(() => null);
+                record(tdoc, team, handler.user._id, handler.request.ip, String(handler.request.headers['user-agent'] || '')).catch(() => null);
             }
         } catch { /* the contest page works without it */ }
     });
@@ -89,10 +89,8 @@ export function applyPresence(ctx: Context) {
         noCheckPermView = true;
         notUsage = true;
 
-        // `hidden` only when the page is in the background, so a missing value means visible.
         @param('tid', Types.ObjectId)
-        @param('hidden', (value: unknown) => Types.Boolean[0](value), true)
-        async post(domainId: string, tid: ObjectId, hidden = false) {
+        async post(domainId: string, tid: ObjectId) {
             this.response.addHeader('Cache-Control', 'no-store');
             const tdoc = await ContestModel.get(domainId, tid);
             const now = Date.now();
@@ -103,7 +101,7 @@ export function applyPresence(ctx: Context) {
             const team = await participation(tdoc, this.user._id);
             if (team === null) { this.response.body = { ok: false }; return; }
             await this.limitRate('xcpcio_presence_beat', 60, 30, '{{user}}');
-            await record(tdoc, team, this.user._id, this.request.ip, String(this.request.headers['user-agent'] || ''), !hidden);
+            await record(tdoc, team, this.user._id, this.request.ip, String(this.request.headers['user-agent'] || ''));
             this.response.body = { ok: true, interval: BEAT_MS };
         }
     }
@@ -111,13 +109,14 @@ export function applyPresence(ctx: Context) {
     async function captureStatus(tdoc: Tdoc, seatOfTeam: Map<number, string>, now: number) {
         const config = await raw('xcpcio.live.capture.config').findOne({ _id: contestKey(tdoc) });
         if (!config?.settings?.enabled) return null;
-        const devices: { teamUid: number | null; seat: string; connection: string | null; lastSeen: Date | null }[] = await raw('xcpcio.live.capture')
-            .find({ contestKey: contestKey(tdoc) }).project({ teamUid: 1, seat: 1, connection: 1, lastSeen: 1 }).toArray();
+        const devices: Pick<CaptureDevice, 'teamUid' | 'seat' | 'connection' | 'lastSeen' | 'streams'>[] = await raw('xcpcio.live.capture')
+            .find({ contestKey: contestKey(tdoc) }).project({ teamUid: 1, seat: 1, connection: 1, lastSeen: 1, streams: 1 }).toArray();
         const bySeat = new Map([...seatOfTeam].filter(([, seat]) => seat).map(([uid, seat]) => [seat.toLowerCase(), uid]));
-        const online = new Map<number, boolean>();
+        const online = new Map<number, 'recording' | 'connected'>();
         for (const device of devices) {
             const uid = device.teamUid ?? bySeat.get(String(device.seat || '').toLowerCase());
-            if (uid !== undefined) online.set(uid, online.get(uid) || isCaptureOnline(device, now));
+            if (uid === undefined || !isCaptureOnline(device, now) || online.get(uid) === 'recording') continue;
+            online.set(uid, device.streams?.includes('screen') ? 'recording' : 'connected');
         }
         return online;
     }
@@ -143,7 +142,7 @@ export function applyPresence(ctx: Context) {
             return [{
                 uid: entry.uid, name: team.name, seat: seatOfTeam.get(entry.uid) || '', members: team.members || [],
                 mapped: [...new Set(accounts.flatMap((uid) => mapped.get(uid) || []))],
-                capture: capture ? capture.get(entry.uid) ?? false : null,
+                capture: capture ? capture.get(entry.uid) ?? 'disconnected' : null,
             }];
         });
         return presenceSnapshot(list, docs, tdoc, now);

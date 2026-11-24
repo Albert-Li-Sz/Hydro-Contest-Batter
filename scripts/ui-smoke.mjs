@@ -12,6 +12,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { captureContinuity } from './capture-continuity-check.mjs';
+import { resolverAudience } from './resolver-audience-check.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const contest = '/contest/demo';
@@ -97,6 +99,66 @@ async function sweep(browser, base) {
     for (const url of screens) await visit(url, 1920, 1080, 'light', { tall: true });
 }
 
+async function broadcastStyles(browser, base) {
+    const context = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+    try {
+        const controls = await open(context, base, contest + '/live/admin/controls', 'broadcast controls');
+        const output = await open(context, base, contest + '/live/preview?noStatus', 'broadcast overlay');
+        for (const name of ['评测队列', '首解快报', '奖牌线追踪', '单题战况']) {
+            const group = controls.getByRole('heading', { name: '显示 ' + name, exact: true });
+            await group.getByRole('button', { name: '显示', exact: true }).click();
+        }
+        await output.getByRole('heading', { name: /奖牌线追踪/ }).waitFor();
+        await output.getByRole('heading', { name: /单题战况/ }).waitFor();
+        const headerStyle = (node) => {
+            const css = getComputedStyle(node);
+            return [css.fontFamily, css.fontSize, css.fontWeight, css.lineHeight].join(' ');
+        };
+        const original = await output.getByRole('heading', { name: '评测队列', exact: true }).evaluate(headerStyle);
+        const medal = await output.getByRole('heading', { name: /奖牌线追踪/ }).evaluate(headerStyle);
+        if (original !== medal) fail('broadcast overlay', 'medal line and original queue use different heading styles');
+        const boxes = await output.locator('section[aria-label]').evaluateAll((items) => items.map((node) => {
+            const r = node.getBoundingClientRect();
+            return { left: r.left, right: r.right, bottom: r.bottom, height: node.clientHeight, scroll: node.scrollHeight };
+        }).sort((a, b) => a.left - b.left));
+        if (boxes.length !== 2 || boxes[0].right > boxes[1].left || boxes.some((r) => r.bottom > 1080 || r.scroll > r.height + 1)) {
+            fail('broadcast overlay', 'broadcast graphics overlap or clip at 1920×1080');
+        }
+        await controls.getByRole('button', { name: '隐藏 单题战况' }).last().click();
+        const problem = controls.getByRole('combobox', { name: '题目' });
+        await problem.click();
+        await controls.getByRole('option', { name: 'B', exact: true }).click();
+        await output.getByRole('heading', { name: '单题战况 · B' }).waitFor();
+        const api = base + contest + '/live/api/admin/';
+        const change = async (path, data = {}) => {
+            const response = await context.request.post(api + path, { data });
+            if (!response.ok()) throw Error(path + ' returned ' + response.status());
+        };
+        const teams = await (await context.request.get(api + 'teamView/teams')).json();
+        await change('teamView/SINGLE/show_with_settings', { teamId: teams[0].id, mediaTypes: [], showTimeLine: true });
+        await output.waitForFunction(() => {
+            const team = document.querySelector('.TeamViewContainer')?.getBoundingClientRect();
+            const card = document.querySelector('section[aria-label="单题战况"]')?.getBoundingClientRect();
+            return team?.height > 0 && card && team.bottom <= card.top + 1;
+        });
+        await change('teamView/hide');
+        await controls.getByRole('heading', { name: '隐藏 单题战况', exact: true }).getByRole('button', { name: '隐藏', exact: true }).click();
+        await output.getByRole('region', { name: '单题战况' }).waitFor({ state: 'hidden' });
+        await change('statistics/show');
+        const stats = await (await context.request.get(base + contest + '/live/api/overlay/statistics')).json();
+        const code = Object.keys(stats.verdictCounts).find((key) => !['PENDING', 'FROZEN'].includes(key));
+        if (!code) throw Error('expected judged submissions in the statistics fixture');
+        await output.getByText(code + ' ' + stats.verdictCounts[code], { exact: true }).first().waitFor();
+        await change('statistics/hide');
+        await change('overview/show');
+        const overview = await (await context.request.get(base + contest + '/live/api/overlay/overview')).json();
+        const judged = overview.verdicts?.find((v) => v.count > 0 && v.code);
+        if (!judged) throw Error('the public overview has no detailed verdict for the judged fixture');
+        await output.getByText(judged.code, { exact: true }).and(output.locator('[title]')).first().waitFor();
+        await change('overview/hide');
+    } finally { await context.close(); }
+}
+
 async function interactions(browser, base) {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, permissions: ['camera', 'microphone'] });
     const check = (where, ok, message) => { if (!ok) fail(where, message); };
@@ -161,6 +223,14 @@ async function interactions(browser, base) {
                 null, { timeout: 20000 }).then(() => true, () => false);
             check(where, playing, 'preview shows no video');
         }
+        const contestantPage = await open(context, base, contest + '/problems?as=1', 'contestant heartbeat');
+        const captureState = async () => {
+            const r = await context.request.get(base + contest + '/live/api/admin/capture');
+            const info = await r.json();
+            const seat = info.devices.find((d) => d.teamId === '1');
+            return !seat?.online ? 'disconnected' : seat.streams.includes('screen') ? 'recording' : 'connected';
+        };
+        await captureContinuity(device, contestantPage, captureState);
         // Screens save themselves.
         where = 'screens';
         const screensPage = await open(context, base, `${contest}/screens#screen-message`, where);
@@ -374,8 +444,12 @@ try {
         args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--auto-select-desktop-capture-source=Entire screen'],
     });
     // UI_SMOKE=interactions skips the page sweep while working on an interaction.
-    if (process.env.UI_SMOKE !== 'interactions') await sweep(browser, base);
-    await interactions(browser, base);
+    const mode = process.env.UI_SMOKE;
+    if (!mode) await sweep(browser, base);
+    if (!mode || mode === 'resolver') console.log('Resolver audience', JSON.stringify(await resolverAudience(browser, base)));
+    if (!mode || mode === 'live') await broadcastStyles(browser, base);
+    if (!mode || mode === 'interactions') await interactions(browser, base);
+    if (process.env.BASELINE_PREVIEW) console.log('Resolver v1.18.0', JSON.stringify(await resolverAudience(browser, process.env.BASELINE_PREVIEW, true)));
 } finally {
     await browser?.close();
     preview.kill();
@@ -386,4 +460,4 @@ if (failures.length) {
     console.error(`\n${failures.length} UI check(s) failed`);
     process.exit(1);
 }
-console.log(`UI smoke test passed: ${themed.length * 4 + plain.length * 2 + screens.length} page views and the main interactions`);
+console.log(process.env.UI_SMOKE === 'resolver' ? 'Resolver audience checks passed' : process.env.UI_SMOKE ? 'UI interactions passed' : `UI smoke test passed: ${themed.length * 4 + plain.length * 2 + screens.length} page views and the main interactions`);

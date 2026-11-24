@@ -299,6 +299,7 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
         deviceId = '';
         endpoint?: Parameters<CaptureRelay['attachDevice']>[1];
         recheck?: NodeJS.Timeout;
+        statusTimer?: NodeJS.Timeout;
         /** The last status report's streams and screen size, to tell staff only about changes. */
         reported = '';
 
@@ -322,6 +323,9 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
             await devices.updateOne({ _id: doc._id }, { $set: { connection, lastSeen: new Date(), streams: [], client: { agent, ip: String(this.request.ip || ''), screen: '' } } });
             relay.devicesChanged(contestKey);
             this.send({ type: 'config', name: doc.name, seat: doc.seat, ...captureProfile(settings), stunPort });
+            // An incoming socket event also works while the browser throttles background timers.
+            this.statusTimer = setInterval(() => this.send({ type: 'requestStatus' }), 15_000);
+            this.statusTimer.unref?.();
             // Also for deployments whose processes do not share Hydro's broadcast bus.
             this.recheck = setInterval(async () => {
                 const current = await devices.findOne({ _id: doc._id }).catch(() => null) as CaptureDevice | null;
@@ -350,6 +354,7 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
 
         async cleanup() {
             if (this.recheck) clearInterval(this.recheck);
+            if (this.statusTimer) clearInterval(this.statusTimer);
             if (!this.endpoint) return;
             relay.detachDevice(this.deviceId, this.endpoint);
             await devices.updateOne({ _id: this.deviceId, connection: this.endpoint.connection }, { $set: { connection: null, streams: [] } }).catch(() => null);

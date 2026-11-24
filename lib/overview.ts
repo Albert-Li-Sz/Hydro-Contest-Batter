@@ -29,13 +29,26 @@ const exempt = new Set(['CORRECT', 'COMPILATION_ERROR', 'PRESENTATION_ERROR', 'C
 const pendingStatuses = new Set(['PENDING', 'FROZEN']);
 const verdictGroups: [string, string, string[]][] = [
     ['ok', '通过', ['CORRECT']],
-    ['wa', '答案错误', ['WRONG_ANSWER', 'REJECTED']],
+    ['wa', '答案错误', ['WRONG_ANSWER']],
+    ['rejected', '未通过', ['REJECTED']],
     ['tle', '超时', ['TIME_LIMIT_EXCEEDED']],
-    ['mle', '内存超限', ['MEMORY_LIMIT_EXCEEDED', 'OUTPUT_LIMIT_EXCEEDED']],
+    ['mle', '内存超限', ['MEMORY_LIMIT_EXCEEDED']],
+    ['ole', '输出超限', ['OUTPUT_LIMIT_EXCEEDED']],
+    ['fe', '格式错误', ['PRESENTATION_ERROR']],
+    ['se', '系统错误', ['JUDGEMENT_FAILED']],
+    ['ignored', '已忽略', ['IGNORED']],
+    ['canceled', '已取消', ['CANCELED']],
+    ['unknown', '未知错误', ['UNKNOWN_ERROR']],
+    ['hk', '被 Hack', ['HACKED']],
+    ['hackOk', 'Hack 成功', ['HACK_SUCCESSFUL']],
+    ['hackFail', 'Hack 失败', ['HACK_UNSUCCESSFUL']],
     ['re', '运行错误', ['RUNTIME_ERROR']],
     ['ce', '编译错误', ['COMPILATION_ERROR']],
-    ['pending', '评测中', ['PENDING', 'FROZEN']],
+    ['frozen', '封榜', ['FROZEN']],
+    ['pending', '评测中', ['PENDING']],
 ];
+export const overviewVerdictStatus = new Map(verdictGroups.map(([key, , [status]]) => [key, status]));
+
 // What a masked (public, running) board can still tell apart.
 const maskedVerdictGroups: [string, string, string[]][] = [
     ['ok', '通过', ['CORRECT']],

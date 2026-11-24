@@ -62,11 +62,15 @@ const status = new Map<number, string>([
     // Hydro exempts only accepted, compile error, format error and canceled; ignored records are charged.
     [STATUS.STATUS_IGNORED, 'REJECTED'], [STATUS.STATUS_CANCELED, 'CANCELED'],
 ]);
+const liveStatuses = new Map<number, string>([
+    ...status, [STATUS.STATUS_IGNORED, 'IGNORED'], [STATUS.STATUS_ETC, 'UNKNOWN_ERROR'],
+    [STATUS.STATUS_HACK_SUCCESSFUL, 'HACK_SUCCESSFUL'], [STATUS.STATUS_HACK_UNSUCCESSFUL, 'HACK_UNSUCCESSFUL'],
+]);
 const maskedResults = ['WRONG_ANSWER', 'TIME_LIMIT_EXCEEDED', 'MEMORY_LIMIT_EXCEEDED', 'RUNTIME_ERROR', 'OUTPUT_LIMIT_EXCEEDED', 'HACKED'];
 const boardStatus = (code: number) => status.get(code) || 'JUDGEMENT_FAILED';
 
 /** `identity` adds the display name and school, which Hydro treats as private user information. */
-export async function loadContestData(tdoc: Tdoc, realtime: boolean, identity = false, staffResults = false): Promise<BoardData> {
+export async function loadContestData(tdoc: Tdoc, realtime: boolean, identity = false, results: boolean | 'live' = false): Promise<BoardData> {
     const entries = await ContestModel.getMultiStatus(tdoc.domainId, { docId: tdoc.docId }).toArray();
     // Team contests (Hydro 5.1): load the members along with the teams.
     const users = await UserModel.getList(tdoc.domainId, [...entries.map((entry) => entry.uid), ...memberIds(tdoc, entries as TeamEntry[])]);
@@ -98,8 +102,8 @@ export async function loadContestData(tdoc: Tdoc, realtime: boolean, identity = 
             const timestamp = submitted - start;
             const problemId = tdoc.pids.indexOf(record.pid);
             if (problemId < 0 || timestamp < 0 || timestamp >= limit) continue;
-            let result = boardStatus(record.status);
-            if (!staffResults && !ended && maskedResults.includes(result)) {
+            let result = results === 'live' ? liveStatuses.get(record.status) || 'UNKNOWN_ERROR' : boardStatus(record.status);
+            if (!results && !ended && maskedResults.includes(result)) {
                 result = 'REJECTED';
             }
             // Strictly after the freeze, as in Hydro: a submission in the freeze second itself stays visible.
@@ -107,7 +111,7 @@ export async function loadContestData(tdoc: Tdoc, realtime: boolean, identity = 
             submissions.push({
                 submission_id: `${record.rid}`, team_id: `${entry.uid}`, problem_id: problemId,
                 timestamp, status: result,
-                ...staffResults && typeof record.score === 'number' ? { score: record.score } : {},
+                ...results === true && typeof record.score === 'number' ? { score: record.score } : {},
             });
         }
     }
@@ -313,7 +317,7 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     applyPresence(ctx);
     applyPrintServers(ctx, { receipts: balloons.receipts });
     const live = config.live !== false
-        ? applyLive(ctx, { loadSettings, loadData: loadContestData, capture: config.liveCapture !== false, captureStunPort: config.liveCaptureStunPort ?? 3478, links })
+        ? applyLive(ctx, { loadSettings, loadData: (tdoc, identity) => loadContestData(tdoc, false, identity, 'live'), capture: config.liveCapture !== false, captureStunPort: config.liveCaptureStunPort ?? 3478, links })
         : null;
     applyClarificationDesk(ctx, { links, liveTicker: live?.announceOnTicker });
     ctx.Route('contest_xcpcio_plus_public', '/contest/:tid/xcpcio-public', PublicBoardHandler);

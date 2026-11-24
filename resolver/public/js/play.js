@@ -8,6 +8,21 @@ const runtime = JSON.parse(document.getElementById('resolver-runtime').textConte
 const gameId = runtime.id;
 const isPreview = false;
 const controlToken = runtime.controlToken;
+const cast = document.getElementById('btn-cast');
+cast.addEventListener('click', async () => {
+  cast.disabled = true;
+  try {
+    const response = await fetch(runtime.screensUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ operation: 'bind_resolver', sessionId: gameId }) });
+    const data = await readJSONResponse(response, '投屏失败，请检查登录状态');
+    if (!data.audienceUrl) throw new Error('投屏失败，请检查登录状态');
+    const link = document.getElementById('audience-link');
+    link.href = data.audienceUrl;
+    link.hidden = false;
+    toast('当前会话已投到观众屏');
+  } catch (error) { toast(error.message); }
+  finally { cast.disabled = false; }
+});
 let revision = 0;
 let transitioning = false;
 let connected = true;

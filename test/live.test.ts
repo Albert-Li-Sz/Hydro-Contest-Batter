@@ -70,7 +70,7 @@ describe('live contest model', () => {
         const live = source({}, data);
         const built = buildRuns(live, buildContestInfo(live));
         expect(built.map((run) => run.result.type === 'ICPC' ? [run.result.verdict.shortName, run.result.verdict.isAddingPenalty] : run.result.type))
-            .toEqual([['CE', false], ['RJ', true], 'IN_PROGRESS', ['IG', false]]);
+            .toEqual([['CE', false], ['RJ', true], 'IN_PROGRESS', ['CANCEL', false]]);
     });
 
     it('marks first solves by the board rules: earliest accepted run among eligible teams', () => {
@@ -175,7 +175,7 @@ describe('live scoreboard', () => {
         const after = computeScoreboard(info, runsByTeam([...runs, extra]), 'normal');
         expect(Object.keys(scoreboardDiff(before).rows)).toHaveLength(info.teams.length);
         expect(Object.keys(scoreboardDiff(after, before).rows)).toEqual(['8']);
-        expect(statistics(info, after).stats[2]).toEqual({ success: 6, wrong: 0, pending: 0 });
+        expect(statistics(info, after, [...runs, extra]).stats[2]).toEqual({ success: 6, wrong: 0, pending: 0 });
         expect(timeline([extra, { ...extra, id: 'y', time: 9_100_000 }])).toHaveLength(1);
         expect(ranking(info, after.rows).order).toEqual(after.ranking.order);
     });
@@ -232,6 +232,72 @@ const request = (method: string, subpath: string, body: unknown = {}, query: Rec
 describe('live hub and admin api', () => {
     afterEach(() => { vi.useRealTimers(); });
 
+    it('switches problem counts and first-solve eligibility with the selected broadcast group', async () => {
+        const { hub } = makeHub();
+        try {
+            await hub.ready;
+            const data = withSubmissions([
+                { submission_id: 'outside', team_id: '1', problem_id: 0, timestamp: minute, status: 'CORRECT' },
+                { submission_id: 'inside', team_id: '2', problem_id: 0, timestamp: 2 * minute, status: 'WRONG_ANSWER' },
+            ]);
+            const settings = normalizeSettings({ ...defaultSettings, firstSolve: true,
+                manualBoards: [{ id: 'stage', name: '赛区', teamIds: ['2'] }] });
+            const refresh = () => hub.apply(source({}, data, settings));
+            refresh();
+            hub.controllers.firstSolve.show();
+            hub.controllers.problemFocus.show();
+            hub.controllers.scoreboard.setSettings({ group: 'manual-stage' });
+            refresh();
+            const snapshot = (): any[] => {
+                let widgets: any[] = [];
+                hub.widgets.subscribe((event: any) => { widgets = event.widgets?.map((entry: any) => entry.widget) || []; })();
+                return widgets;
+            };
+            expect(snapshot().find((w) => w.type === 'ProblemFocusWidget').data).toMatchObject({ attempted: 1, solved: 0 });
+            expect(snapshot().some((w) => w.type === 'FirstSolveWidget')).toBe(false);
+            data.submissions[1].status = 'CORRECT'; refresh();
+            expect(snapshot().find((w) => w.type === 'FirstSolveWidget').items[0].teams).toEqual(['周宁']);
+            expect(snapshot().find((w) => w.type === 'ProblemFocusWidget').data.solved).toBe(1);
+        } finally { hub.dispose(); }
+    });
+
+    it('sends the three broadcast graphics through mainScreen and corrects a rejudged first solve', async () => {
+        const { hub } = makeHub();
+        try {
+            await hub.ready;
+            const runs = [
+                { submission_id: 'a', team_id: '1', problem_id: 0, timestamp: minute, status: 'WRONG_ANSWER' },
+                { submission_id: 'b', team_id: '2', problem_id: 0, timestamp: 2 * minute, status: 'FROZEN' },
+            ];
+            const refresh = () => hub.apply(source({}, withSubmissions(runs), { ...defaultSettings, firstSolve: true }));
+            refresh();
+            for (const id of ['firstSolve', 'problemFocus', 'medalCutoff']) {
+                expect(hub.controllers[id].shown).toBe(false);
+                hub.controllers[id].show();
+            }
+            const events: any[] = [];
+            const close = hub.widgets.subscribe((event) => events.push(event));
+            expect(events[0].widgets.map((w: any) => w.widget.type).sort()).toEqual(['MedalCutoffWidget', 'ProblemFocusWidget']);
+            expect(events[0].widgets.find((w: any) => w.widget.type === 'ProblemFocusWidget').widget.data.verdicts).toEqual({ WA: 1, FROZEN: 1 });
+            expect(hub.current('statistics')).toMatchObject({ verdictCounts: { WA: 1, FROZEN: 1 } });
+            runs[1].status = 'CORRECT'; refresh();
+            const last = (type: string) => events.filter((e) => e.widget?.type === type).at(-1)?.widget;
+            expect(last('FirstSolveWidget').items[0]).toMatchObject({ problem: 'A', teams: ['周宁'] });
+            expect(last('ProblemFocusWidget').data).toMatchObject({ attempted: 2, solved: 1, submissions: 2, verdicts: { WA: 1, AC: 1 } });
+            expect(last('MedalCutoffWidget').data.inside.name).toBe('周宁');
+            const expiration = last('FirstSolveWidget').items[0].expires;
+            const snapshots: any[] = [];
+            hub.widgets.subscribe((msg) => snapshots.push(msg))();
+            expect(snapshots[0].widgets.find((w: any) => w.widget.type === 'FirstSolveWidget').widget.items[0].expires).toBe(expiration);
+            runs[0].status = 'CORRECT'; refresh();
+            expect(last('FirstSolveWidget').items[0].teams).toEqual(['林澈']);
+            expect(last('ProblemFocusWidget').data.verdicts).toEqual({ AC: 2 });
+            expect((hub.current('statistics') as { verdictCounts: object }).verdictCounts).toEqual({ AC: 2 });
+            expect(last('MedalCutoffWidget').data).toMatchObject({ inside: { name: '林澈' }, outside: { name: '周宁' } });
+            expect(hub.analytics.list().find((msg) => msg.id === 'b')!.tags).not.toContain('accepted-first-to-solve');
+            close();
+        } finally { await hub.dispose(); }
+    });
     it('shows and hides widgets on the main screen and tells every console', async () => {
         const { hub } = makeHub();
         await hub.ready;
@@ -587,6 +653,38 @@ describe('live fixes', () => {
         await hub.dispose();
     });
 
+    it('restores the selected submission on a second output, clears the old selection and respects its original expiry', async () => {
+        vi.useFakeTimers();
+        const { hub } = makeHub();
+        const other = makeHub().hub;
+        try {
+            await Promise.all([hub.ready, other.ready]);
+            const data = source({ medias: { '1': { camera: [{ type: 'video', url: '/camera' }] } } });
+            hub.apply(data);
+            const [one, two] = hub.analytics.list().filter((m) => m.teamId === '1');
+            hub.selectRun(one.id, 'camera');
+            await other.reload(stateEntries(hub.state()), 1);
+            other.apply(data);
+            const feature = (id: string) => other.analytics.list().find((m) => m.id === id)!.featuredRun;
+            expect(feature(one.id)).toEqual(hub.analytics.list().find((m) => m.id === one.id)!.featuredRun);
+            hub.selectRun(two.id, 'camera');
+            await other.reload(stateEntries(hub.state()), 2);
+            expect(feature(one.id)).toBeNull();
+            expect(feature(two.id)?.mediaType[0].url).toBe('/camera');
+            hub.selectRun(two.id, null);
+            await other.reload({ featuredRun: null }, 3);
+            expect(feature(two.id)).toBeNull();
+            hub.selectRun(one.id, 'camera');
+            const saved = stateEntries(hub.state());
+            vi.setSystemTime(Date.now() + 61000);
+            await other.reload(saved, 4);
+            expect(feature(one.id)).toBeNull();
+        } finally {
+            await Promise.all([hub.dispose(), other.dispose()]);
+            vi.useRealTimers();
+        }
+    });
+
     it('returns the missing camera message for object-form Featured run requests', async () => {
         const { hub } = makeHub(); await hub.refresh();
         const message = hub.analytics.list()[0];
@@ -695,7 +793,7 @@ describe('live sub-boards and processes', () => {
 });
 
 describe('live contest overview (赛况总览)', () => {
-    it('summarises the public board: masked verdicts while running, frozen runs counted, nothing before the board is public', () => {
+    it('summarises the public board: public verdicts while running, frozen runs counted, nothing before the board is public', () => {
         const data = withSubmissions([
             { submission_id: 'a', team_id: '1', problem_id: 0, timestamp: 10 * minute, status: 'CORRECT' },
             { submission_id: 'b', team_id: '2', problem_id: 0, timestamp: 20 * minute, status: 'REJECTED' },
@@ -705,7 +803,7 @@ describe('live contest overview (赛况总览)', () => {
         const running = liveOverview(source({ now: begin.getTime() + 260 * minute }, data));
         if (running.hidden) throw new Error('expected the overview');
         expect(running).toMatchObject({ status: 'frozen', submissions: 4, accepted: 1, frozenRuns: 1, solvedTeams: 1 });
-        expect(running.verdicts.map((verdict) => [verdict.key, verdict.count])).toEqual([['ok', 1], ['rejected', 1], ['ce', 1], ['other', 0], ['pending', 1]]);
+        expect(running.verdicts.filter((verdict) => verdict.count).map((verdict) => [verdict.key, verdict.count])).toEqual([['ok', 1], ['rejected', 1], ['ce', 1], ['frozen', 1]]);
         expect(running.topTeams[0]).toMatchObject({ rank: 1, name: '林澈', solved: 1 });
         // After the end Hydro shows every verdict, so the breakdown is the full one again.
         const ended = liveOverview(source({ now: end.getTime() + minute }, data));

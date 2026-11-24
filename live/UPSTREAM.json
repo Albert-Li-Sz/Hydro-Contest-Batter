@@ -24,6 +24,6 @@
     "src/cds/core scoreboard calculators, FirstToSolve/AfterFirstOk adapters -> lib/live/scoreboard.ts, model.ts",
     "src/backend-api settings and widgets -> lib/live/widget-settings.ts, types.ts"
   ],
-  "patchSha256": "2af2c858af25907f7cc205e30a24f7a95c98693209160f766a579af057b6eaf0",
-  "builtAt": "2026-11-19T18:13:35.438Z"
+  "patchSha256": "e6b1cda9b6637c9679074963cd6b6f2d1264802d5579d1077088f33c6444abd9",
+  "builtAt": "2026-11-23T22:28:43.262Z"
 }

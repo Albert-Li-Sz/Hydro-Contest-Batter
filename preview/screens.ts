@@ -33,7 +33,15 @@ export function createScreensPreview(env: Environment, logoNames: Record<string,
                         if (text.length > 3_000_000) throw new ScreenError('请求内容过大');
                     }
                     const body = JSON.parse(text || '{}');
-                    if (body.operation === 'reset_token') {
+                    if (body.operation === 'resolver_sessions' || body.operation === 'bind_resolver') {
+                        const scope = { domainId: 'system', contestId: 'demo', ownerId: 1 };
+                        if (body.operation === 'resolver_sessions') json({ sessions: await sessions.list(scope), sessionId: config.items.resolver.sessionId });
+                        else {
+                            await sessions.get(scope, body.sessionId);
+                            config.items.resolver.sessionId = body.sessionId;
+                            json({ sessionId: body.sessionId, audienceUrl: `${base}/screen/${token}/resolver` });
+                        }
+                    } else if (body.operation === 'reset_token') {
                         token = `preview${Date.now().toString(16).padStart(41, '0')}`;
                         json({ linkBase: `${base}/screen/${token}` });
                     } else if (body.operation === 'upload_poster') {
@@ -91,10 +99,11 @@ export function createScreensPreview(env: Environment, logoNames: Record<string,
             }
             if (type === 'resolver') {
                 const session = item.sessionId ? await sessions.find('system', 'demo', item.sessionId) : null;
-                if (!session) json({ ...head, notice: '等待滚榜开始' });
-                else if (session.revision === Number(url.searchParams.get('revision')) && session._id === url.searchParams.get('session')) {
-                    json({ ...head, session: session._id, playback: sessions.playback(session) });
-                } else json({ ...head, session: session._id, ...await sessions.spectator(session) });
+                if (!session) json({ ...head, notice: item.sessionId ? '滚榜会话已结束或删除，请重新投屏' : '等待主持人投到观众屏' });
+                else {
+                    const number = (key: string) => url.searchParams.has(key) ? Number(url.searchParams.get(key)) : undefined;
+                    json({ ...head, session: session._id, ...await sessions.audience(session, url.searchParams.get('session') || undefined, number('revision'), number('index')) });
+                }
                 return true;
             }
             const boardId = standingsTypes.has(type) ? item.boardId : 'all';

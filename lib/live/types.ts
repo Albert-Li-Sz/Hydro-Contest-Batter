@@ -123,7 +123,7 @@ export interface Verdict {
 
 export type RunResult =
     | { type: 'ICPC'; verdict: Verdict; isFirstToSolveRun: boolean; isAfterFirstOk: boolean }
-    | { type: 'IN_PROGRESS'; testedPart: number; isAfterFirstOk: boolean };
+    | { type: 'IN_PROGRESS'; frozen?: true; testedPart: number; isAfterFirstOk: boolean };
 
 export interface RunInfo {
     id: string;
@@ -180,10 +180,11 @@ export interface QueueRunInfo {
 
 export type TimeLineRunInfo =
     | { type: 'ICPC'; time: number; problemId: string; isAccepted: boolean; shortName: string }
-    | { type: 'IN_PROGRESS'; time: number; problemId: string };
+    | { type: 'IN_PROGRESS'; frozen?: true; time: number; problemId: string };
 
 export interface SolutionsStatistic {
     type: 'ICPC';
     teamsCount: number;
+    verdictCounts: Record<string, number>;
     stats: { success: number; wrong: number; pending: number }[];
 }

@@ -143,7 +143,7 @@ export function applyResolver(ctx: Context, dependencies: {
                 tdoc: this.tdoc, codeBase,
                 configUrl: this.base,
                 runtimeJson: toScriptJson({
-                    id: session._id, controlToken: session.controlToken,
+                    id: session._id, controlToken: session.controlToken, screensUrl: `/d/${encodeURIComponent(this.tdoc.domainId)}/contest/${this.tdoc.docId}/screens`,
                     base: `${this.base}/sessions/${session._id}`, rehearsal: session.config.rehearsal,
                 }),
             };

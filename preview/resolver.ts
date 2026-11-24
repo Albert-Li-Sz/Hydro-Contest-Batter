@@ -67,7 +67,7 @@ export function createResolverPreview(env: Environment, logoNames: Record<string
                 if (!operation && request.method === 'GET') {
                     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(env.render('xcpcio_resolver_play.html', {
                         tdoc: { title: session.overview.title }, codeBase, configUrl: base, runtimeJson: toScriptJson({
-                            id: session._id, controlToken: session.controlToken,
+                            id: session._id, controlToken: session.controlToken, screensUrl: '/contest/demo/screens',
                             base: `${base}/sessions/${session._id}`, rehearsal: session.config.rehearsal,
                         }),
                     }));

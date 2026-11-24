@@ -9,11 +9,11 @@ Hydro OJ 的 ACM 比赛榜单、滚榜、大屏与直播插件，集成 XCPCIO �
 - 特别奖支持指定分榜名次、最后一个通过、有过题的最后一名和手动指定，获奖名单可在增强榜、滚榜、CCS API 和成绩导出中查看。
 - 支持封榜展示、实时榜和可配置的公开访问。
 - 支持只滚所选榜单，或将所选分榜设为正式参赛、其余选手设为非正式参赛。
-- 每位管理员可独立创建滚榜会话，进度保存至 MongoDB，支持刷新恢复，默认永久保留。
+- 每位管理员可独立创建滚榜会话，从主持页一键投到观众屏。进度保存至 MongoDB，观众可中途加入、刷新恢复并跟随逐步揭晓。
 - 高清校徽、字体与图标随包提供，运行时从本地加载；榜单使用缩略图，滚榜使用原图。
 - 大屏：23 种比赛画面，涵盖榜单、统计图表、队伍与学校展示、场馆、气球、评测机、海报和公告。每种画面有一个免登录投屏链接，支持预览与全屏。
-- 直播：集成 ICPC Live v3 的 OBS 直播画面与导播台，后端改写为 Node.js 运行在 Hydro 内，无需 Java；榜单、评测队列、统计、赛况总览、滚动字幕、队伍画面、标题字幕、图片与自动解说，数据与公开榜一致；导播台中英双语，默认中文；选手屏幕与摄像头由 Hydro 统一管理采集，免装中继服务器。
-- 机位监控：比赛管理员按考场查看每支队伍的电脑是否在线（在线、后台、可能离线、离线、未登录），开赛前用作签到；告警两队同一 IP、IP 与座位绑定不符、离线、换 IP、画面采集未连接和浏览器过旧，可开启提示音。
+- 直播：集成 ICPC Live v3 的 OBS 直播画面与导播台，后端改写为 Node.js 运行在 Hydro 内，无需 Java；榜单、评测队列、统计、赛况总览、滚动字幕、队伍画面、标题字幕、图片、自动解说、首解快报、奖牌线追踪与单题战况，赛中显示可公开提交的具体判题；导播台中英双语，默认中文；选手屏幕与摄像头由 Hydro 统一管理采集，免装中继服务器。
+- 机位监控：比赛管理员按考场查看每支队伍的电脑是否在线（在线、可能离线、离线、未登录），开赛前用作签到；告警两队同一 IP、IP 与座位绑定不符、离线、换 IP、屏幕采集中断和浏览器过旧，可开启提示音。独立窗口持续共享屏幕时，选手切换标签页或最小化均保持“采集中”。
 - 答疑台：集中处理 Hydro 原生提问，支持按题目分派、认领、标准回复、响应统计和封榜提醒。公开公告可上大屏和直播滚动条。
 - 评测监控：比赛管理员实时查看每台评测机的连接状态、并发占用、评测速度与用时、通过率、系统错误和 CPU、内存、温度，以及各评测机上正在评测的任务和最新评测结果、本场待评测提交，异常时页面告警。
 - 赛况总览：供来宾视察的全屏大屏，一屏显示比赛时间、八项核心指标、实时排名前十、各题通过与首解、学校情况、最近通过、提交趋势、过题数分布、评测结果分布，以及服务器与评测机的 CPU、内存压力，实时数据，仅比赛管理员可打开。
@@ -26,11 +26,11 @@ Hydro OJ 的 ACM 比赛榜单、滚榜、大屏与直播插件，集成 XCPCIO �
 
 需要 Node.js 22+ 和 Hydro 5.x（已对 5.0.7 与 5.1.0 检查）。请使用运行 Hydro 的系统用户，在主服务所在环境执行。
 
-下载完整安装包 `hydro-scoreboard-xcpcio-plus-1.18.0.tgz`，解压到固定目录，注册 addon 后重启。安装包包含预构建页面、字体和完整校徽。
+下载完整安装包 `hydro-scoreboard-xcpcio-plus-1.19.0.tgz`，解压到固定目录，注册 addon 后重启。安装包包含预构建页面、字体和完整校徽。
 
 ```bash
 mkdir -p "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
-tar -xzf hydro-scoreboard-xcpcio-plus-1.18.0.tgz \
+tar -xzf hydro-scoreboard-xcpcio-plus-1.19.0.tgz \
   -C "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus" --strip-components=1
 hydrooj addon add "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 pm2 restart hydrooj
@@ -44,7 +44,7 @@ pm2 restart hydrooj
 
 ```bash
 mkdir -p xcpcio-update
-tar -xzf hydro-scoreboard-xcpcio-plus-1.18.0.tgz -C xcpcio-update
+tar -xzf hydro-scoreboard-xcpcio-plus-1.19.0.tgz -C xcpcio-update
 bash xcpcio-update/package/install.sh install
 
 # 升级时下载并解压新包，运行新包中的脚本

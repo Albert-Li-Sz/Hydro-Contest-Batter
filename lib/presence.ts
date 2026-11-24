@@ -27,9 +27,6 @@ export interface PresenceDoc {
     ip: string;
     ips: { ip: string; first: Date; last: Date }[];
     ua: string;
-    visible: boolean;
-    /** Since when the page has been in the background. */
-    hiddenAt: Date | null;
 }
 
 export interface Beat {
@@ -38,14 +35,13 @@ export interface Beat {
     member: number;
     ip: string;
     ua: string;
-    visible: boolean;
 }
 
 const time = (value: Date | string | number) => new Date(value).getTime();
 
 /** The record after a report, or null when it would change nothing worth a write. */
 export function applyBeat(prev: PresenceDoc | null, beat: Beat, now: Date): PresenceDoc | null {
-    if (prev && prev.ip === beat.ip && prev.visible === beat.visible && prev.member === beat.member && now.getTime() - time(prev.lastSeen) < REWRITE_MS) return null;
+    if (prev && prev.ip === beat.ip && prev.member === beat.member && now.getTime() - time(prev.lastSeen) < REWRITE_MS) return null;
     const ips = (prev?.ips || []).filter((entry) => entry.ip !== beat.ip);
     const same = prev?.ips.find((entry) => entry.ip === beat.ip);
     ips.push({ ip: beat.ip, first: same?.first || now, last: now });
@@ -53,8 +49,7 @@ export function applyBeat(prev: PresenceDoc | null, beat: Beat, now: Date): Pres
         _id: `${beat.contest}/${beat.uid}`, contest: beat.contest, uid: beat.uid, member: beat.member,
         firstSeen: prev?.firstSeen || now, lastSeen: now, ip: beat.ip,
         ips: ips.sort((a, b) => time(a.last) - time(b.last)).slice(-IPS_KEPT),
-        ua: beat.ua.slice(0, 400), visible: beat.visible,
-        hiddenAt: beat.visible ? null : prev && !prev.visible && prev.hiddenAt ? prev.hiddenAt : now,
+        ua: beat.ua.slice(0, 400),
     };
 }
 
@@ -75,15 +70,15 @@ export function browserOf(ua: string): BrowserInfo {
     return { name: '', version: 0, old: false };
 }
 
-export type PresenceState = 'online' | 'background' | 'weak' | 'offline' | 'never';
-export const presenceStates: PresenceState[] = ['online', 'background', 'weak', 'offline', 'never'];
+export type PresenceState = 'online' | 'weak' | 'offline' | 'never';
+export const presenceStates: PresenceState[] = ['online', 'weak', 'offline', 'never'];
 
-export function stateOf(doc: Pick<PresenceDoc, 'lastSeen' | 'visible'> | null, now: number): PresenceState {
+export function stateOf(doc: Pick<PresenceDoc, 'lastSeen'> | null, now: number): PresenceState {
     if (!doc) return 'never';
     const age = now - time(doc.lastSeen);
     if (age >= OFFLINE_MS) return 'offline';
     if (age >= WEAK_MS) return 'weak';
-    return doc.visible ? 'online' : 'background';
+    return 'online';
 }
 
 export interface PresenceTeam {
@@ -94,7 +89,7 @@ export interface PresenceTeam {
     /** IP login (onsite-toolkit) addresses of the team and its members. */
     mapped: string[];
     /** The capture device's connection, or null when the contest does not capture. */
-    capture: boolean | null;
+    capture: 'recording' | 'connected' | 'disconnected' | null;
 }
 
 export type AlertKind = 'sharedIp' | 'ipMismatch' | 'offline' | 'never' | 'multiIp' | 'noCapture' | 'oldBrowser';
@@ -123,12 +118,12 @@ export function presenceSnapshot(teams: PresenceTeam[], docs: PresenceDoc[], tim
     const records = new Map(docs.map((doc) => [doc.uid, doc]));
     const rows = teams.map((team) => {
         const doc = records.get(team.uid) || null;
-        const state = stateOf(doc, now);
+        const state = team.capture === 'recording' || team.capture === 'connected' ? 'online' : stateOf(doc, now);
         const recent = (doc?.ips || []).filter((entry) => now - time(entry.last) < IP_WINDOW_MS).map((entry) => entry.ip);
         return {
             ...team, zone: zoneOf(team.seat), state, doc,
             lastSeen: doc ? time(doc.lastSeen) : null, firstSeen: doc ? time(doc.firstSeen) : null,
-            hiddenAt: doc?.hiddenAt ? time(doc.hiddenAt) : null, ip: doc?.ip || '', recent,
+            ip: doc?.ip || '', recent,
             browser: doc ? browserOf(doc.ua) : null,
             checkedIn: !!doc && time(doc.firstSeen) < time(times.beginAt),
         };
@@ -136,7 +131,7 @@ export function presenceSnapshot(teams: PresenceTeam[], docs: PresenceDoc[], tim
     const alerts: PresenceAlert[] = [];
     const add = (row: typeof rows[number], kind: AlertKind, text: string, since: number | null) => alerts.push({ kind, uid: row.uid, seat: row.seat, name: row.name, text, since });
     // Computers in use now, by address: two teams on one address is a swapped or shared seat.
-    const active = rows.filter((row) => row.state === 'online' || row.state === 'background' || row.state === 'weak');
+    const active = rows.filter((row) => row.state === 'online' || row.state === 'weak');
     const byIp = new Map<string, typeof rows>();
     for (const row of active) if (row.ip) byIp.set(row.ip, [...byIp.get(row.ip) || [], row]);
     for (const row of rows) {
@@ -147,7 +142,7 @@ export function presenceSnapshot(teams: PresenceTeam[], docs: PresenceDoc[], tim
         if (phase === 'running' && row.state === 'offline') add(row, 'offline', '离线', row.lastSeen);
         if (phase === 'running' && row.state === 'never') add(row, 'never', '未登录', time(times.beginAt));
         if (row.recent.length > 1) add(row, 'multiIp', `10 分钟内 ${row.recent.length} 个 IP：${row.recent.join('、')}`, null);
-        if (phase === 'running' && live && row.capture === false) add(row, 'noCapture', '画面采集未连接', null);
+        if (phase === 'running' && live && row.capture && row.capture !== 'recording') add(row, 'noCapture', row.capture === 'connected' ? '已连接未采集屏幕' : '画面采集未连接', null);
         if (row.browser?.old) add(row, 'oldBrowser', `${row.browser.name} ${row.browser.version}`, null);
     }
     alerts.sort((a, b) => severity.indexOf(a.kind) - severity.indexOf(b.kind) || collator.compare(a.seat || '~', b.seat || '~') || a.uid - b.uid);

@@ -236,6 +236,7 @@ export function createCapturePreview(env: Environment, options: {
                 Object.assign(device, { connection, lastSeen: new Date(), streams: [], client: { agent: String(request.headers['user-agent'] || ''), ip: '127.0.0.1', screen: '' } });
                 relay.devicesChanged(contestKey);
                 ws.send(JSON.stringify({ type: 'config', name: device.name, seat: device.seat, ...captureProfile(settings), stunPort }));
+                const statusTimer = setInterval(() => endpoint.send({ type: 'requestStatus' }), 15_000);
                 let reported = '';
                 keepAlive(ws, (message) => {
                     const input = message as Record<string, unknown>;
@@ -252,6 +253,7 @@ export function createCapturePreview(env: Environment, options: {
                     relay.fromDevice(device._id, message);
                 });
                 ws.on('close', () => {
+                    clearInterval(statusTimer);
                     relay.detachDevice(device._id, endpoint);
                     if (device.connection === connection) Object.assign(device, { connection: null, streams: [] });
                     relay.devicesChanged(contestKey);

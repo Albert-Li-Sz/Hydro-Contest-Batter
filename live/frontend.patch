@@ -2542,10 +2542,29 @@ index 0000000..37ce59d
 +
 +export default CapturePage;
 diff --git a/src/frontend/admin-overlay/src/components/pages/ControlsPage.tsx b/src/frontend/admin-overlay/src/components/pages/ControlsPage.tsx
-index c07d134..3925fe8 100644
+index c07d134..7a56f68 100644
 --- a/src/frontend/admin-overlay/src/components/pages/ControlsPage.tsx
 +++ b/src/frontend/admin-overlay/src/components/pages/ControlsPage.tsx
-@@ -20,6 +20,11 @@ import ScoreboardManager, {
+@@ -1,13 +1,17 @@
+ import {
+     Accordion,
+     AccordionDetails,
++    TextField, MenuItem, Stack,
+     AccordionSummary,
+     Container,
+     Typography,
+ } from "@mui/material";
+ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+ import ShowPresetButton from "@admin/components/controls/ShowPresetButton.tsx";
+-import { ReactNode, useState } from "react";
++import { BASE_URL_BACKEND } from "@admin/config";
++import { createApiGet } from "@shared/utils.ts";
++import type { ContestInfo } from "@shared/api.ts";
++import { ReactNode, useEffect, useState } from "react";
+ import {
+     useServiceLoadStatus,
+     useSingleWidgetService,
+@@ -20,6 +24,11 @@ import ScoreboardManager, {
  import FullScreenClockManager, {
      DEFAULT_FULL_SCREEN_CLOCK_SETTINGS,
  } from "@admin/components/managers/FullScreenClockManager.tsx";
@@ -2557,7 +2576,7 @@ index c07d134..3925fe8 100644
  
  type WidgetGroupProp = {
      title: string;
-@@ -89,7 +94,7 @@ const ScoreboardWidgetGroup = () => {
+@@ -89,7 +98,7 @@ const ScoreboardWidgetGroup = () => {
  
      return (
          <WidgetGroup
@@ -2566,7 +2585,7 @@ index c07d134..3925fe8 100644
              isShown={isShown}
              onClickShow={(s) => (s ? service.show() : service.hide())}
          >
-@@ -113,7 +118,7 @@ const FullScreenClockWidgetGroup = () => {
+@@ -113,7 +122,7 @@ const FullScreenClockWidgetGroup = () => {
  
      return (
          <WidgetGroup
@@ -2575,7 +2594,7 @@ index c07d134..3925fe8 100644
              isShown={isShown}
              onClickShow={(s) => (s ? service.show() : service.hide())}
          >
-@@ -127,14 +132,39 @@ const FullScreenClockWidgetGroup = () => {
+@@ -127,14 +136,73 @@ const FullScreenClockWidgetGroup = () => {
      );
  };
  
@@ -2603,7 +2622,38 @@ index c07d134..3925fe8 100644
 +    );
 +};
 +
++const getContest = createApiGet(BASE_URL_BACKEND);
++type CardSettings = { group?: string; medal?: string; problemId?: string };
++function BroadcastControl({ kind, info }: { kind: "medalCutoff" | "problemFocus"; info: ContestInfo | null }) {
++    const medals = kind === "medalCutoff";
++    const service = useSingleWidgetService<CardSettings>("/" + kind);
++    const { isShown, settings, setSettings } = useServiceLoadStatus(service, medals ? { group: "all", medal: "gold" } : { problemId: "0" } as CardSettings);
++    const change = (patch: CardSettings) => {
++        const next = { ...settings, ...patch };
++        setSettings(next);
++        service.setSettings(next);
++    };
++    return <WidgetGroup title={t(medals ? "Medal cutoff" : "Problem focus")} isShown={isShown}
++        onClickShow={(show) => show ? service.showWithSettings(settings) : service.hide()}>
++        <Stack direction="row" spacing={2} sx={{ py: 1 }}>
++        {medals ? <>
++            <TextField select size="small" label={t("Group")} value={settings.group} onChange={(event) => change({ group: event.target.value })}>
++                <MenuItem value="all">{t("All teams")}</MenuItem>
++                {info?.groups.filter((g) => !g.isHidden && !g.isOutOfContest).map((g) => <MenuItem key={g.id} value={g.id}>{g.displayName}</MenuItem>)}
++            </TextField>
++            <TextField select size="small" label={t("Medal")} value={settings.medal} onChange={(event) => change({ medal: event.target.value })}>
++                {["gold", "silver", "bronze"].map((m) => <MenuItem key={m} value={m}>{t(m + " medal")}</MenuItem>)}
++            </TextField>
++        </> : <TextField select size="small" label={t("Problem")} value={settings.problemId} onChange={(event) => change({ problemId: event.target.value })}>
++            {info?.problems.map((p) => <MenuItem key={p.id} value={p.id}>{p.letter}</MenuItem>)}
++        </TextField>}</Stack>
++    </WidgetGroup>;
++}
  const ControlsPage = () => {
++    const [info, setInfo] = useState<ContestInfo | null>(null);
++    useEffect(() => { let active = true; getContest("/contestInfo").then((data) => { if (active) setInfo(data as ContestInfo); }).catch(console.error);
++        return () => { active = false; };
++    }, []);
      return (
          <Container maxWidth="md" sx={{ pt: 2 }} className="Controls">
              <ScoreboardWidgetGroup />
@@ -2615,6 +2665,9 @@ index c07d134..3925fe8 100644
 +            <SimpleWidgetGroup title={t("Ticker")} apiPath={"/ticker"} />
              <FullScreenClockWidgetGroup />
 +            <ContestOverviewWidgetGroup />
++            <SimpleWidgetGroup title={t("First solve flash")} apiPath="/firstSolve" />
++            <BroadcastControl kind="medalCutoff" info={info} />
++            <BroadcastControl kind="problemFocus" info={info} />
          </Container>
      );
  };
@@ -2967,7 +3020,7 @@ index 7ddf644..4f0d437 100644
          apiPost("/" + messageId + "/featuredRun", undefined, "DELETE");
  
 diff --git a/src/frontend/admin-overlay/src/services/controlsWidget.ts b/src/frontend/admin-overlay/src/services/controlsWidget.ts
-index 99cc341..c039454 100644
+index 99cc341..a06ab21 100644
 --- a/src/frontend/admin-overlay/src/services/controlsWidget.ts
 +++ b/src/frontend/admin-overlay/src/services/controlsWidget.ts
 @@ -2,7 +2,10 @@ import { useMemo } from "react";
@@ -2982,7 +3035,7 @@ index 99cc341..c039454 100644
  
  interface ControlElement {
      text: string;
-@@ -24,11 +27,12 @@ interface LoadOneResponse {
+@@ -24,11 +27,15 @@ interface LoadOneResponse {
  }
  
  const CONTROL_ELEMENTS: readonly ControlElement[] = [
@@ -2997,10 +3050,13 @@ index 99cc341..c039454 100644
 +    { text: t("Ticker"), id: "ticker" },
 +    { text: t("Full screen clock"), id: "fullScreenClock" },
 +    { text: t("Contest overview"), id: "overview" },
++    { text: t("First solve flash"), id: "firstSolve" },
++    { text: t("Medal cutoff"), id: "medalCutoff" },
++    { text: t("Problem focus"), id: "problemFocus" },
  ] as const;
  
  export class ControlsWidgetService extends AbstractWidgetImpl<ControlElementSettings> {
-@@ -46,14 +50,14 @@ export class ControlsWidgetService extends AbstractWidgetImpl<ControlElementSett
+@@ -46,14 +53,14 @@ export class ControlsWidgetService extends AbstractWidgetImpl<ControlElementSett
          try {
              return await this.apiGet(`/${elementId}`);
          } catch (error) {
@@ -3477,10 +3533,10 @@ index 799a87c..79851ad 100644
      };
 diff --git a/src/frontend/common/src/i18n.ts b/src/frontend/common/src/i18n.ts
 new file mode 100644
-index 0000000..00c967f
+index 0000000..770db8e
 --- /dev/null
 +++ b/src/frontend/common/src/i18n.ts
-@@ -0,0 +1,347 @@
+@@ -0,0 +1,367 @@
 +// Hydro: the director's console in Chinese (default) or English. Texts are written in English in
 +// the source and looked up here; text that arrives in Chinese (from Hydro) is looked up the other
 +// way for English. The choice is kept in this browser, and switching reloads the page.
@@ -3591,6 +3647,26 @@ index 0000000..00c967f
 +    "Hide preview": "关闭预览",
 +
 +    // 赛况总览
++    "First solve flash": "首解快报",
++    "Medal cutoff": "奖牌线追踪",
++    "Problem focus": "单题战况",
++    "First solve withdrawn": "首解已撤销",
++    "All teams": "所有队伍",
++    "solved": "题",
++    "Score gap": "解题差",
++    "Penalty difference": "罚时差",
++    "No next eligible team": "线外暂无符合条件的队伍",
++    "No medal cutoff yet": "暂无奖牌线",
++    "Attempted teams": "尝试队数",
++    "Solved teams": "通过队数",
++    "Submissions": "提交",
++    "gold medal": "金牌",
++    "silver medal": "银牌",
++    "bronze medal": "铜牌",
++    "Group": "分榜",
++    "Medal": "奖牌",
++    "Pending": "评测中",
++    "Frozen": "封榜",
 +    "Contest overview": "赛况总览",
 +    "Screen language": "画面语言",
 +    Chinese: "中文",
@@ -3841,11 +3917,76 @@ index e0c89a5..4fb8075 100644
                  }
                  return response;
              });
+diff --git a/src/frontend/generated/api.ts b/src/frontend/generated/api.ts
+index 0154daa..cfa3167 100644
+--- a/src/frontend/generated/api.ts
++++ b/src/frontend/generated/api.ts
+@@ -456,6 +456,7 @@ export namespace RunResult {
+   }
+   
+   export interface IN_PROGRESS {
++    frozen?: boolean;
+     type: RunResult.Type.IN_PROGRESS;
+     testedPart: number;
+     isAfterFirstOk: boolean;
+@@ -952,6 +953,7 @@ export namespace SolutionsStatistic {
+     type: SolutionsStatistic.Type.ICPC;
+     teamsCount: number;
+     stats: ICPCProblemSolutionsStatistic[];
++    verdictCounts?: Record<string, number>;
+   }
+   
+   export interface IOI {
+@@ -1041,6 +1043,7 @@ export namespace TimeLineRunInfo {
+   }
+   
+   export interface IN_PROGRESS {
++    frozen?: boolean;
+     type: TimeLineRunInfo.Type.IN_PROGRESS;
+     time: number;
+     problemId: ProblemId;
+diff --git a/src/frontend/overlay/src/components/atoms/ContestLabels.tsx b/src/frontend/overlay/src/components/atoms/ContestLabels.tsx
+index 4fa3a57..01ebcde 100644
+--- a/src/frontend/overlay/src/components/atoms/ContestLabels.tsx
++++ b/src/frontend/overlay/src/components/atoms/ContestLabels.tsx
+@@ -1,4 +1,5 @@
+ import React from "react";
++import { t } from "@shared/src/i18n";
+ import styled from "styled-components";
+ import c from "../../config";
+ import { isShouldUseDarkColor } from "../../utils/colors";
+@@ -16,7 +17,7 @@ import { conditionalShimmerStyles } from "../../utils/shimmerStyles";
+ import { RunInfo, ProblemResult, QueueRunInfo } from "@shared/api";
+ import { AwardEffect } from "@/utils/awards";
+ 
+-const VerdictLabel = styled(ShrinkingBox)<{ color: string }>`
++export const VerdictLabel = styled(ShrinkingBox)<{ color: string }>`
+     display: flex;
+     align-items: center;
+     justify-content: center;
+@@ -211,7 +212,10 @@ export const RunStatusLabel = ({
+                     fontSize={fontSize}
+                 />
+             )}
+-            {runInfo.result.type === "IN_PROGRESS" && (
++            {runInfo.result.type === "IN_PROGRESS" && runInfo.result.frozen && (
++                <VerdictLabel text={t("Frozen")} className={className} color={c.VERDICT_UNKNOWN} fontSize={fontSize} />
++            )}
++            {runInfo.result.type === "IN_PROGRESS" && !runInfo.result.frozen && (
+                 <VerdictCellInProgress2
+                     percentage={runInfo.result.testedPart}
+                     className={className}
 diff --git a/src/frontend/overlay/src/components/layouts/MainLayout.tsx b/src/frontend/overlay/src/components/layouts/MainLayout.tsx
-index 739bcfa..b871d67 100644
+index 739bcfa..e293dee 100644
 --- a/src/frontend/overlay/src/components/layouts/MainLayout.tsx
 +++ b/src/frontend/overlay/src/components/layouts/MainLayout.tsx
-@@ -19,6 +19,7 @@ import Videos from "../organisms/widgets/Videos";
+@@ -1,4 +1,5 @@
+ import React from "react";
++import { FirstSolveCard, MedalCard, ProblemCard } from "../organisms/widgets/BroadcastCards";
+ import { useTransition } from "react-transition-state";
+ import styled, { Keyframes, keyframes } from "styled-components";
+ import bg from "../../assets/images/bg.png";
+@@ -19,6 +20,7 @@ import Videos from "../organisms/widgets/Videos";
  // import PVP from "../organisms/widgets/PVP";
  import FullScreenClock from "../organisms/widgets/FullScreenClock";
  import Locator from "../organisms/widgets/Locator";
@@ -3853,14 +3994,95 @@ index 739bcfa..b871d67 100644
  import { Widget } from "@shared/api";
  import { LocationRectangle } from "@/utils/location-rectangle";
  
-@@ -100,6 +101,7 @@ const WIDGETS = {
+@@ -47,19 +49,22 @@ type WidgetWrapProps = {
+     top: number | string;
+     width: number | string;
+     height: number | string;
++    scale: number;
+     shouldCrop?: boolean;
+     zIndex: number;
+     animation: Keyframes;
+ };
+ 
+ const WidgetWrap = styled.div.attrs<WidgetWrapProps>(
+-    ({ left, top, width, height }) => {
++    ({ left, top, width, height, scale }) => {
+         return {
+             style: {
+                 left: left + "px",
+                 top: top + "px",
+                 width: width + "px",
+                 height: height + "px",
++                transform: scale === 1 ? undefined : `scale(${scale})`,
++                transformOrigin: "top left",
+             },
+         };
+     },
+@@ -100,6 +105,8 @@ const WIDGETS = {
      // TeamPVPWidget: PVP, // Not actually a widget in backend.
      FullScreenClockWidget: FullScreenClock,
      TeamLocatorWidget: Locator,
 +    ContestOverviewWidget: ContestOverview,
++    FirstSolveWidget: FirstSolveCard, MedalCutoffWidget: MedalCard, ProblemFocusWidget: ProblemCard,
  };
  
  const useWidgets = () => {
+@@ -120,14 +127,17 @@ const useWidgets = () => {
+ const WidgetWithTransition: React.FC<{
+     obj: Widget;
+     params: URLSearchParams;
+-}> = ({ obj, params }) => {
++    teamScale: number;
++}> = ({ obj, params, teamScale }) => {
+     const WidgetComponent = WIDGETS[obj.type];
+     const location = c.WIDGET_POSITIONS[
+         obj.widgetLocationId
+     ] as LocationRectangle;
+ 
++    const scale = obj.type === "TeamViewWidget" ? teamScale : 1;
++    const stage = c.WIDGET_POSITIONS.teamViewSingle;
+     const [transition, toggle] = useTransition({
+-        timeout: WidgetComponent.overrideTimeout ?? c.WIDGET_TRANSITION_TIME,
++        timeout: WidgetComponent?.overrideTimeout ?? c.WIDGET_TRANSITION_TIME,
+         mountOnEnter: true,
+         unmountOnExit: true,
+         enter: true,
+@@ -166,8 +176,9 @@ const WidgetWithTransition: React.FC<{
+ 
+     return (
+         <WidgetWrap
+-            left={location.positionX}
+-            top={location.positionY}
++            left={scale === 1 ? location.positionX : stage.positionX + (location.positionX - stage.positionX) * scale + stage.sizeX * (1 - scale) / 2}
++            top={scale === 1 ? location.positionY : stage.positionY + (location.positionY - stage.positionY) * scale}
++            scale={scale}
+             width={location.sizeX}
+             height={location.sizeY}
+             shouldCrop={WidgetComponent.shouldCrop}
+@@ -186,6 +197,15 @@ const WidgetWithTransition: React.FC<{
+ export const MainLayout = () => {
+     const widgets = useWidgets();
+     const params = useQueryParams();
++    const only = params.get("onlyWidgets")?.split(",");
++    const stage = c.WIDGET_POSITIONS.teamViewSingle;
++    // Keep the native camera grid and its timeline together above the two lower thirds.
++    const lowerThirds = Object.values(widgets)
++        .filter((w) => (w.type === "MedalCutoffWidget" || w.type === "ProblemFocusWidget") && (!only || only.includes(w.widgetId)))
++        .map((w) => c.WIDGET_POSITIONS[w.widgetLocationId] as LocationRectangle)
++        .filter((r) => r.positionX < stage.positionX + stage.sizeX && r.positionX + r.sizeX > stage.positionX
++            && r.positionY > stage.positionY && r.positionY < stage.positionY + stage.sizeY);
++    const teamScale = lowerThirds.reduce((scale, r) => Math.min(scale, (r.positionY - stage.positionY) / stage.sizeY), 1);
+     return (
+         <MainLayoutWrap>
+             <StatusLightBulbs compact={true} />
+@@ -194,6 +214,7 @@ export const MainLayout = () => {
+                     key={obj.widgetId}
+                     obj={obj}
+                     params={params}
++                    teamScale={teamScale}
+                 />
+             ))}
+         </MainLayoutWrap>
 diff --git a/src/frontend/overlay/src/components/molecules/info/SubmissionRow.tsx b/src/frontend/overlay/src/components/molecules/info/SubmissionRow.tsx
 index 6b68bc1..f1da671 100644
 --- a/src/frontend/overlay/src/components/molecules/info/SubmissionRow.tsx
@@ -3954,18 +4176,129 @@ index 9c41933..77c653b 100644
      switch (media.type) {
          case MediaType.Type.Image:
              return (
+diff --git a/src/frontend/overlay/src/components/organisms/holder/TimeLine.tsx b/src/frontend/overlay/src/components/organisms/holder/TimeLine.tsx
+index 8df0e0d..4839fef 100644
+--- a/src/frontend/overlay/src/components/organisms/holder/TimeLine.tsx
++++ b/src/frontend/overlay/src/components/organisms/holder/TimeLine.tsx
+@@ -362,7 +362,7 @@ function Problem({
+                 </AnimatedText>
+             );
+         }
+-        return <StaticText>{problemLetter}</StaticText>;
++        return <StaticText>{problemLetter}{problemResult.type === TimeLineRunInfo.Type.IN_PROGRESS && problemResult.frozen ? " ❄" : ""}</StaticText>;
+     }
+ 
+     function renderScoreOrVerdict() {
+diff --git a/src/frontend/overlay/src/components/organisms/widgets/BroadcastCards.tsx b/src/frontend/overlay/src/components/organisms/widgets/BroadcastCards.tsx
+new file mode 100644
+index 0000000..72922f9
+--- /dev/null
++++ b/src/frontend/overlay/src/components/organisms/widgets/BroadcastCards.tsx
+@@ -0,0 +1,89 @@
++import { useEffect, useState } from "react";
++import styled from "styled-components";
++import { Settings } from "luxon";
++import { t } from "@shared/src/i18n";
++import c from "@/config";
++import { useAppSelector } from "@/redux/hooks";
++import { useFormatPenalty } from "@/services/displayUtils";
++import { VerdictLabel } from "../../atoms/ContestLabels";
++import { QueueWrap } from "./queue/QueueContainer";
++import { QueueHeader } from "./queue/QueueHeader";
++import { StyledQueueRow, QueueTeamNameLabel, QueueProblemLabel } from "./queue/QueueRow";
++import { ScoreboardRankLabel, ScoreboardRowName, ScoreboardRowWrap } from "./scoreboard/ScoreboardRow";
++import { StatisticsWrap, Header, Title, Caption } from "./Statistics";
++
++const QueuePanel = styled(QueueWrap).attrs({ variant: "vertical" as const, hasFeatured: false })`
++    height: auto; max-height: 100%; overflow: hidden; color: ${c.GLOBAL_TEXT_COLOR};
++`;
++const CutoffRow = styled(ScoreboardRowWrap).attrs({ needPenalty: true, nProblems: 0 })`
++    color: ${c.SCOREBOARD_TEXT_COLOR};
++    grid-template-columns: ${c.SCOREBOARD_CELL_PLACE_SIZE} minmax(0, 1fr) ${c.SCOREBOARD_CELL_POINTS_SIZE} auto;
++`;
++const Detail = styled.div`
++    color: ${c.GLOBAL_TEXT_COLOR};
++    display: flex; flex-wrap: wrap; align-items: center; gap: ${c.QUEUE_GAP};
++    font-family: ${c.GLOBAL_DEFAULT_FONT_FAMILY}; font-size: ${c.QUEUE_ROW_FONT_SIZE};
++`;
++const ResultCell = styled(VerdictLabel).attrs({ align: "center", fontSize: c.QUEUE_ROW_FONT_SIZE })`
++    width: ${c.QUEUE_ROW_STATUS_LABEL_WIDTH}; align-self: stretch; flex-shrink: 0;
++`;
++function BodyRow({ name, time, problem, code }: { name: string; time: number | null; problem: string; code?: string }) {
++    const info = useAppSelector((state) => state.contestInfo.info?.problems.find((p) => p.letter === problem));
++    return <StyledQueueRow>
++        <QueueTeamNameLabel text={name} />
++        {time !== null && <span>{Math.floor(time / 60000)}′</span>}
++        <QueueProblemLabel letter={problem} problemColor={info?.color} isFts={!code} />
++        {code && <ResultCell text={verdictName(code)} color={code === "AC" ? c.VERDICT_OK :
++            code === "FROZEN" || code === "PENDING" ? c.VERDICT_UNKNOWN : c.VERDICT_NOK} />}
++    </StyledQueueRow>;
++}
++interface News { problem: string; teams: string[]; time: number | null; expires: number }
++export function FirstSolveCard({ widgetData }: { widgetData: { items: News[] } }) {
++    const [now, setNow] = useState(Settings.now());
++    useEffect(() => {
++        const timer = setInterval(() => setNow(Settings.now()), 500);
++        return () => clearInterval(timer);
++    }, []);
++    const items = widgetData.items.filter((item) => item.expires > now);
++    if (!items.length) return null;
++    const offset = Math.floor(now / 3000) % Math.ceil(items.length / 3) * 3;
++    return <QueuePanel as="section" aria-label={t("First solve flash")}>
++        <QueueHeader title={t("First solve flash")} caption="" />
++        {items.slice(offset, offset + 3).map((item) => <BodyRow key={item.problem} problem={item.problem}
++            name={item.teams.join(" · ") || t("First solve withdrawn")} time={item.time} />)}
++    </QueuePanel>;
++}
++interface LineTeam { rank: number; name: string; solved: number; penalty: number }
++interface Medal { group: string; medal: string; citation?: string; inside: LineTeam | null; outside: LineTeam | null }
++export function MedalCard({ widgetData: { data } }: { widgetData: { data: Medal } }) {
++    const { inside, outside } = data;
++    const formatPenalty = useFormatPenalty();
++    const effect = c.AWARD_EFFECTS[data.medal + "-medal"];
++    const title = t("Medal cutoff") + " · " + (data.citation || t(data.medal + " medal"));
++    return <QueuePanel as="section" aria-label={t("Medal cutoff")}>
++        <QueueHeader title={title} caption="" />
++        <Detail>{data.group === "all" ? t("All teams") : data.group}</Detail>
++        {[inside, outside].map((team, i) => team && <CutoffRow key={i}>
++            <ScoreboardRankLabel rank={team.rank} effects={!i && effect ? [effect] : []} />
++            <ScoreboardRowName text={team.name} />
++            <span>{team.solved}</span><span>{formatPenalty(team.penalty)}</span>
++        </CutoffRow>)}
++        <Detail>{inside && outside
++            ? t("Score gap") + " " + (inside.solved - outside.solved) + " · " + t("Penalty difference") + " " +
++                (outside.penalty >= inside.penalty ? "+" : "−") + formatPenalty(Math.abs(outside.penalty - inside.penalty))
++            : inside ? t("No next eligible team") : t("No medal cutoff yet")}</Detail>
++    </QueuePanel>;
++}
++interface Focus { problem: string; solved: number; attempted: number; submissions: number; verdicts: Record<string, number>;
++    recent: { team: string; verdict: string; time: number }[] }
++const verdictName = (code: string) => code === "FROZEN" ? t("Frozen") : code === "PENDING" ? t("Pending") : code;
++export function ProblemCard({ widgetData: { data } }: { widgetData: { data: Focus } }) {
++    return <StatisticsWrap as="section" aria-label={t("Problem focus")}>
++        <Header><Title role="heading" aria-level={2}>{t("Problem focus")} · {data.problem}</Title><Caption /></Header>
++        <Detail><span>{t("Attempted teams")} {data.attempted}</span><span>{t("Solved teams")} {data.solved}</span>
++            <span>{t("Submissions")} {data.submissions}</span></Detail>
++        <Detail>{Object.entries(data.verdicts).map(([code, count]) => <span key={code}>{verdictName(code)} {count}</span>)}</Detail>
++        {data.recent.map((run, index) => <BodyRow key={index} problem={data.problem} name={run.team} time={run.time} code={run.verdict} />)}
++    </StatisticsWrap>;
++}
++FirstSolveCard.zIndex = MedalCard.zIndex = ProblemCard.zIndex = 4;
 diff --git a/src/frontend/overlay/src/components/organisms/widgets/ContestOverview.tsx b/src/frontend/overlay/src/components/organisms/widgets/ContestOverview.tsx
 new file mode 100644
-index 0000000..4346465
+index 0000000..fe39e57
 --- /dev/null
 +++ b/src/frontend/overlay/src/components/organisms/widgets/ContestOverview.tsx
-@@ -0,0 +1,634 @@
+@@ -0,0 +1,601 @@
 +// Hydro: 赛况总览, the contest at a glance for the audience. The data is Hydro's public board
-+// (frozen, rejected results masked while the contest runs), streamed on /overview.
++// with the public freeze applied and each visible verdict retained, streamed on /overview.
 +import React, { useEffect, useState } from "react";
 +import styled from "styled-components";
 +import { Settings } from "luxon";
 +import c from "../../../config";
++import { Header, StatisticsWrap, Title as StatisticsTitle } from "./Statistics";
++import { ScoreboardRankLabel } from "./scoreboard/ScoreboardRow";
++import { QueueProblemLabel } from "./queue/QueueRow";
 +
 +type Language = "zh" | "en";
 +
@@ -4015,7 +4348,7 @@ index 0000000..4346465
 +    problemStats?: ProblemStat[];
 +    schoolStats?: { name: string; teams: number; solvedTeams: number; solved: number; bestRank: number | null }[];
 +    histogram?: { solved: number; teams: number }[];
-+    verdicts?: { key: string; label: string; count: number }[];
++    verdicts?: { key: string; label: string; code?: string; count: number }[];
 +    recentAccepts?: { minute: number; team: string; school: string; problem: string; color: string | null; firstSolve: boolean; unofficial: boolean }[];
 +    trend?: { minute: number; submissions: number; accepted: number }[];
 +}
@@ -4039,14 +4372,12 @@ index 0000000..4346465
 +        schoolTable: "Schools", recent: "Recent accepts", noRecent: "No accepts yet", trend: "Submissions and accepts", histogram: "Problems solved",
 +        verdicts: "Verdicts", solved: "", penalty: "pen.", minute: "min", unofficial: "star", teamsUnit: "teams",
 +        teamsWithUnofficial: "Teams ({n} unofficial)", schoolBest: "best", waiting: "Connecting…",
-+        verdict: { ok: "Accepted", rejected: "Rejected", wa: "Wrong answer", tle: "Time limit", mle: "Memory limit", re: "Run-time error", ce: "Compile error", other: "Other", pending: "Pending" } as Record<string, string>,
++        verdict: { frozen: "Frozen", ole: "Output limit", fe: "Format error", se: "System error", ignored: "Ignored", canceled: "Cancelled", unknown: "Unknown error", hk: "Hacked", hackOk: "Hack successful", hackFail: "Hack unsuccessful", ok: "Accepted", rejected: "Rejected", wa: "Wrong answer", tle: "Time limit", mle: "Memory limit", re: "Run-time error", ce: "Compile error", other: "Other", pending: "Pending" } as Record<string, string>,
 +    },
 +};
 +
-+const verdictColors: Record<string, string> = {
-+    ok: c.VERDICT_OK, rejected: c.VERDICT_NOK, wa: c.VERDICT_NOK, tle: "#d9822b", mle: "#b05fd6", re: "#e05d8f",
-+    ce: "#7a8796", other: "#56606b", pending: c.VERDICT_UNKNOWN,
-+};
++const verdictColor = (key: string) => key === "ok" ? c.VERDICT_OK :
++    ["pending", "frozen", "other", "unknown"].includes(key) ? c.VERDICT_UNKNOWN : c.VERDICT_NOK;
 +
 +const now = () => Settings.now();
 +
@@ -4089,43 +4420,22 @@ index 0000000..4346465
 +}
 +const percent = (value: number | undefined) => `${(value ?? 0).toFixed(1)}%`;
 +
-+// Readable text on a problem's balloon colour.
-+function textOn(background: string | null) {
-+    const match = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})/i.exec(background || "");
-+    if (!match) return "#fff";
-+    const [r, g, b] = match.slice(1).map((part) => parseInt(part, 16));
-+    return (r * 299 + g * 587 + b * 114) / 1000 > 150 ? "#111" : "#fff";
-+}
-+
-+const Wrap = styled.div`
-+    box-sizing: border-box;
-+    display: flex;
-+    flex-direction: column;
-+    gap: 14px;
-+    width: 100%;
-+    height: 100%;
-+    padding: 20px 24px;
++const Wrap = styled(StatisticsWrap)`
++    gap: ${c.SCOREBOARD_GAP};
 +    overflow: hidden;
-+
-+    font-family: ${c.GLOBAL_DEFAULT_FONT_FAMILY};
-+    font-size: 22px;
-+    color: ${c.GLOBAL_TEXT_COLOR};
-+
-+    background: ${c.GLOBAL_BACKGROUND_COLOR};
-+    border-radius: ${c.GLOBAL_BORDER_RADIUS};
++    font: ${c.GLOBAL_DEFAULT_FONT};
++    color: ${c.SCOREBOARD_TEXT_COLOR};
++    background: ${c.SCOREBOARD_BACKGROUND_COLOR};
 +`;
 +
-+const Head = styled.div`
-+    display: flex;
-+    gap: 20px;
++const Head = styled(Header)`
 +    align-items: center;
 +`;
 +
-+const Title = styled.div`
-+    overflow: hidden;
++const Title = styled(StatisticsTitle)`
 +    flex: 1;
-+    font-size: 36px;
-+    font-weight: ${c.GLOBAL_DEFAULT_FONT_WEIGHT_BOLD};
++    min-width: 0;
++    overflow: hidden;
 +    text-overflow: ellipsis;
 +    white-space: nowrap;
 +`;
@@ -4135,7 +4445,7 @@ index 0000000..4346465
 +    font-size: 22px;
 +    font-weight: ${c.GLOBAL_DEFAULT_FONT_WEIGHT_BOLD};
 +    background: ${({ $tone }) => $tone};
-+    border-radius: 999px;
++    border-radius: ${c.GLOBAL_BORDER_RADIUS};
 +`;
 +
 +const Clock = styled.div`
@@ -4175,7 +4485,7 @@ index 0000000..4346465
 +    right: 0;
 +    bottom: 0;
 +    left: ${({ $left }) => $left}%;
-+    background: repeating-linear-gradient(135deg, rgb(110 180 255 / 35%) 0 6px, transparent 6px 12px);
++    background: ${c.VERDICT_UNKNOWN};
 +`;
 +
 +const Kpis = styled.div`
@@ -4188,7 +4498,7 @@ index 0000000..4346465
 +const Kpi = styled.div`
 +    padding: 10px 14px;
 +    background: rgb(255 255 255 / 6%);
-+    border-radius: 10px;
++    border-radius: ${c.GLOBAL_BORDER_RADIUS};
 +
 +    b {
 +        display: block;
@@ -4207,7 +4517,7 @@ index 0000000..4346465
 +    display: grid;
 +    flex: 1;
 +    grid-template-columns: ${({ $columns }) => $columns};
-+    gap: 14px;
++    gap: ${c.SCOREBOARD_GAP};
 +    min-height: 0;
 +`;
 +
@@ -4217,9 +4527,9 @@ index 0000000..4346465
 +    gap: 8px;
 +    min-width: 0;
 +    min-height: 0;
-+    padding: 12px 16px;
-+    background: rgb(255 255 255 / 5%);
-+    border-radius: 10px;
++    padding: ${c.STATISTICS_PADDING_VERTICAL} ${c.STATISTICS_PADDING_HORIZONTAL};
++    background: ${c.SCOREBOARD_HEADER_BACKGROUND_COLOR};
++    border-radius: ${c.GLOBAL_BORDER_RADIUS};
 +`;
 +
 +const PanelHead = styled.div`
@@ -4254,7 +4564,7 @@ index 0000000..4346465
 +    min-width: 0;
 +    padding: 5px 8px;
 +    font-size: 20px;
-+    background: rgb(255 255 255 / 4%);
++    background: ${c.QUEUE_ROW_BACKGROUND};
 +    border-radius: 6px;
 +`;
 +
@@ -4290,21 +4600,8 @@ index 0000000..4346465
 +    gap: 10px;
 +    align-items: center;
 +    padding: 6px 8px;
-+    background: rgb(255 255 255 / 4%);
++    background: ${c.QUEUE_ROW_BACKGROUND};
 +    border-radius: 6px;
-+`;
-+
-+const Balloon = styled.div<{ $color: string | null }>`
-+    display: flex;
-+    align-items: center;
-+    justify-content: center;
-+    width: 44px;
-+    height: 44px;
-+    font-size: 24px;
-+    font-weight: ${c.GLOBAL_DEFAULT_FONT_WEIGHT_BOLD};
-+    color: ${({ $color }) => textOn($color)};
-+    background: ${({ $color }) => $color || "#556"};
-+    border-radius: 8px;
 +`;
 +
 +const Meter = styled.div<{ $width: number }>`
@@ -4327,7 +4624,7 @@ index 0000000..4346465
 +const Side = styled.div`
 +    display: flex;
 +    flex-direction: column;
-+    gap: 14px;
++    gap: ${c.SCOREBOARD_GAP};
 +    min-width: 0;
 +    min-height: 0;
 +`;
@@ -4335,7 +4632,7 @@ index 0000000..4346465
 +const Charts = styled.div`
 +    display: grid;
 +    grid-template-columns: 1.4fr 1fr 1fr;
-+    gap: 14px;
++    gap: ${c.SCOREBOARD_GAP};
 +    height: 210px;
 +`;
 +
@@ -4400,14 +4697,14 @@ index 0000000..4346465
 +        <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1, minHeight: 0 }}>
 +            <div style={{ display: "flex", height: 16, overflow: "hidden", borderRadius: 8, background: "rgb(255 255 255 / 8%)" }}>
 +                {shown.map((verdict) => (
-+                    <div key={verdict.key} style={{ width: `${(verdict.count / Math.max(1, total)) * 100}%`, background: verdictColors[verdict.key] || "#666" }} />
++                    <div key={verdict.key} style={{ width: `${(verdict.count / Math.max(1, total)) * 100}%`, background: verdictColor(verdict.key) }} />
 +                ))}
 +            </div>
 +            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px", fontSize: 16 }}>
 +                {shown.map((verdict) => (
 +                    <div key={verdict.key} style={{ display: "flex", gap: 6, alignItems: "center", minWidth: 0 }}>
-+                        <i style={{ width: 10, height: 10, borderRadius: 5, background: verdictColors[verdict.key] || "#666", flex: "none" }} />
-+                        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{names[verdict.key] || verdict.label}</span>
++                        <i style={{ width: 10, height: 10, borderRadius: 5, background: verdictColor(verdict.key), flex: "none" }} />
++                        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={names[verdict.key] || verdict.label}>{verdict.code || names[verdict.key] || verdict.label}</span>
 +                        <b style={{ fontVariantNumeric: "tabular-nums" }}>{verdict.count}</b>
 +                    </div>
 +                ))}
@@ -4433,7 +4730,7 @@ index 0000000..4346465
 +    const ended = time >= overview.endAt;
 +    const frozenAfterEnd = ended && (overview.frozenRuns ?? 0) > 0;
 +    const status = before ? "before" : ended ? "ended" : overview.lockAt !== null && time >= overview.lockAt ? "frozen" : "running";
-+    const tone = { before: "#6b7280", running: c.VERDICT_OK, frozen: "#3b82c4", ended: "#8b5cf6" }[status];
++    const tone = { before: c.CONTEST_COLOR, running: c.VERDICT_OK, frozen: c.VERDICT_UNKNOWN, ended: c.CONTEST_COLOR }[status];
 +    const statusText = status === "ended" && frozenAfterEnd ? t.endedFrozen : t[status];
 +    const clock = before
 +        ? <Clock><small>{t.startsIn}</small><b>{duration(overview.beginAt - time)}</b></Clock>
@@ -4500,7 +4797,7 @@ index 0000000..4346465
 +                        <Rows>
 +                            {teams.map((team) => (
 +                                <Row key={`${team.rank}-${team.name}`} $columns="40px minmax(0, 1fr) 44px 64px">
-+                                    <Num style={{ fontWeight: 700, textAlign: "center" }}>{team.rank}</Num>
++                                    <ScoreboardRankLabel rank={team.rank} effects={[]} />
 +                                    <Cut>{team.name}{team.school && <small>{team.school}</small>}</Cut>
 +                                    <Num style={{ fontWeight: 700 }}>{team.solved}</Num>
 +                                    <Num style={{ opacity: 0.7 }}>{team.penaltyMinutes}</Num>
@@ -4515,7 +4812,7 @@ index 0000000..4346465
 +                        <Problems $count={problems.length}>
 +                            {problems.map((problem) => (
 +                                <ProblemTile key={problem.label}>
-+                                    <Balloon $color={problem.color}>{problem.label}</Balloon>
++                                    <QueueProblemLabel letter={problem.label} problemColor={problem.color} isFts={false} />
 +                                    <div style={{ minWidth: 0 }}>
 +                                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 19 }}>
 +                                            <b style={{ fontVariantNumeric: "tabular-nums" }}>{problem.solvedTeams} / {problem.attemptedTeams}</b>
@@ -4553,7 +4850,7 @@ index 0000000..4346465
 +                                <Rows>
 +                                    {(overview.recentAccepts ?? []).length ? (overview.recentAccepts ?? []).slice(0, schools.length ? 5 : 9).map((run, index) => (
 +                                        <Row key={`${run.minute}-${run.team}-${run.problem}-${index}`} $columns="34px minmax(0, 1fr) auto">
-+                                            <Balloon $color={run.color} style={{ width: 32, height: 32, fontSize: 18 }}>{run.problem}</Balloon>
++                                            <QueueProblemLabel letter={run.problem} problemColor={run.color} isFts={run.firstSolve} />
 +                                            <Cut>
 +                                                {run.team}
 +                                                {run.firstSolve && <small style={{ color: "#ffd75e", opacity: 1 }}>{t.firstSolve}</small>}
@@ -4594,6 +4891,189 @@ index 0000000..4346465
 +ContestOverview.overrideTimeout = c.SVG_APPEAR_TIME;
 +
 +export default ContestOverview;
+diff --git a/src/frontend/overlay/src/components/organisms/widgets/Statistics.tsx b/src/frontend/overlay/src/components/organisms/widgets/Statistics.tsx
+index 959e6cf..9b15790 100644
+--- a/src/frontend/overlay/src/components/organisms/widgets/Statistics.tsx
++++ b/src/frontend/overlay/src/components/organisms/widgets/Statistics.tsx
+@@ -1,13 +1,14 @@
+ import styled from "styled-components";
+ import c from "../../../config";
+ import { stackedBarsData } from "../../../statistics/barData";
+-import { StatisticsLegend } from "../../molecules/statistics/StatisticsLegend";
++import { LegendCard, StatisticsLegend } from "../../molecules/statistics/StatisticsLegend";
++import { t } from "@shared/src/i18n";
+ import { StackedBars } from "../../molecules/statistics/StackedBars";
+ import { useResizeObserver } from "usehooks-ts";
+ import { useAppSelector } from "@/redux/hooks";
+ import { useRef } from "react";
+ 
+-const StatisticsWrap = styled.div`
++export const StatisticsWrap = styled.div`
+     position: relative;
+ 
+     display: flex;
+@@ -24,7 +25,7 @@ const StatisticsWrap = styled.div`
+     border-radius: ${c.GLOBAL_BORDER_RADIUS};
+ `;
+ 
+-const Header = styled.div`
++export const Header = styled.div`
+     display: flex;
+     flex-flow: row;
+     gap: ${c.STATISTICS_HEADER_GAP};
+@@ -35,18 +36,33 @@ const Header = styled.div`
+     line-height: ${c.STATISTICS_HEADER_LINE_HEIGHT};
+     color: white;
+ `;
+-const Title = styled.div`
++export const Title = styled.div`
+     font-weight: ${c.GLOBAL_DEFAULT_FONT_WEIGHT_BOLD};
+ `;
+ 
+-const Caption = styled.div`
++export const Caption = styled.div`
+     flex-grow: 1;
+ `;
+ 
++const StatisticsHead = styled.div`
++    display: grid;
++    gap: ${c.STATISTICS_CONTENT_GAP};
++`;
++const VerdictLegend = styled.div`
++    display: flex;
++    flex-wrap: wrap;
++    align-items: center;
++    gap: ${c.STATISTICS_BAR_GAP};
++    color: ${c.GLOBAL_TEXT_COLOR};
++    font-family: ${c.GLOBAL_DEFAULT_FONT_FAMILY};
++    font-size: ${c.GLOBAL_DEFAULT_FONT_SIZE};
++`;
++
+ export const Statistics = () => {
+     const statistics = useAppSelector((state) => state.statistics.statistics);
+     const tasks = useAppSelector((state) => state.contestInfo?.info?.problems);
+     const data = stackedBarsData(tasks, statistics);
++    const counts = Object.entries(statistics?.type === "ICPC" ? statistics.verdictCounts ?? {} : {});
+ 
+     const componentRef = useRef<HTMLDivElement>(null);
+     const headerRef = useRef<HTMLDivElement>(null);
+@@ -56,19 +72,28 @@ export const Statistics = () => {
+ 
+     return (
+         <StatisticsWrap ref={componentRef}>
+-            <Header ref={headerRef}>
+-                <Title>{c.STATISTICS_TITLE}</Title>
+-                <Caption>{c.STATISTICS_CAPTION}</Caption>
+-                <StatisticsLegend legend={data.legend}></StatisticsLegend>
+-            </Header>
++            <StatisticsHead ref={headerRef}>
++                <Header>
++                    <Title>{c.STATISTICS_TITLE}</Title>
++                    <Caption>{c.STATISTICS_CAPTION}</Caption>
++                    <StatisticsLegend legend={data.legend} />
++                </Header>
++                {counts.length > 0 && <VerdictLegend aria-label={t("Submissions")}>
++                    <span>{t("Submissions")}</span>
++                    {counts.map(([code, count]) => <span key={code}>
++                        <LegendCard color={code === "AC" ? c.VERDICT_OK : code === "PENDING" || code === "FROZEN" ? c.VERDICT_UNKNOWN : c.VERDICT_NOK}
++                            caption={(code === "FROZEN" ? t("Frozen") : code === "PENDING" ? t("Pending") : code) + " " + count} />
++                    </span>)}
++                </VerdictLegend>}
++            </StatisticsHead>
+ 
+             {data.data && data.data.length > 0 && (
+                 <StackedBars
+                     data={data.data}
+                     height={
+-                        height -
++                        Math.max(0, height -
+                         headerHeight -
+-                        parseInt(c.STATISTICS_CONTENT_GAP)
++                        parseInt(c.STATISTICS_CONTENT_GAP))
+                     }
+                 />
+             )}
+diff --git a/src/frontend/overlay/src/components/organisms/widgets/TeamView.tsx b/src/frontend/overlay/src/components/organisms/widgets/TeamView.tsx
+index 352cbda..9a3f997 100644
+--- a/src/frontend/overlay/src/components/organisms/widgets/TeamView.tsx
++++ b/src/frontend/overlay/src/components/organisms/widgets/TeamView.tsx
+@@ -462,7 +462,7 @@ export const TeamView: OverlayWidgetC<Widget.TeamViewWidget> = ({
+             {/** Current */}
+             <TeamViewSingleContent
+                 key={curSettings?.teamId}
+-                widgetData={{ ...widgetData, settings: curSettings }}
++                widgetData={{ ...widgetData, settings: widgetData.settings.teamId === curSettings.teamId ? widgetData.settings : curSettings }}
+                 transitionState={transitionState}
+             />
+             {/** Next */}
+diff --git a/src/frontend/overlay/src/components/organisms/widgets/queue/QueueContainer.tsx b/src/frontend/overlay/src/components/organisms/widgets/queue/QueueContainer.tsx
+index 25c9e33..4895764 100644
+--- a/src/frontend/overlay/src/components/organisms/widgets/queue/QueueContainer.tsx
++++ b/src/frontend/overlay/src/components/organisms/widgets/queue/QueueContainer.tsx
+@@ -13,7 +13,7 @@ import { useQueueLayout } from "./hooks/useQueueLayout";
+ 
+ type QueueWidget = Widget.QueueWidget;
+ 
+-const QueueWrap = styled.div<{
++export const QueueWrap = styled.div<{
+     hasFeatured: boolean;
+     variant: "vertical" | "horizontal";
+ }>`
+diff --git a/src/frontend/overlay/src/components/organisms/widgets/queue/QueueHeader.tsx b/src/frontend/overlay/src/components/organisms/widgets/queue/QueueHeader.tsx
+index c2bbdd3..521f6c5 100644
+--- a/src/frontend/overlay/src/components/organisms/widgets/queue/QueueHeader.tsx
++++ b/src/frontend/overlay/src/components/organisms/widgets/queue/QueueHeader.tsx
+@@ -20,14 +20,16 @@ const Title = styled.div`
+ const Caption = styled.div``;
+ 
+ interface QueueHeaderProps {
++    title?: string;
++    caption?: string;
+     onRef?: (el: HTMLElement | null) => void;
+ }
+ 
+-export const QueueHeader = ({ onRef }: QueueHeaderProps) => {
++export const QueueHeader = ({ onRef, title = c.QUEUE_TITLE, caption = c.QUEUE_CAPTION }: QueueHeaderProps) => {
+     return (
+         <QueueHeaderWrap ref={onRef}>
+-            <Title>{c.QUEUE_TITLE}</Title>
+-            <Caption>{c.QUEUE_CAPTION}</Caption>
++            <Title role="heading" aria-level={2}>{title}</Title>
++            <Caption>{caption}</Caption>
+         </QueueHeaderWrap>
+     );
+ };
+diff --git a/src/frontend/overlay/src/components/organisms/widgets/queue/QueueRow.tsx b/src/frontend/overlay/src/components/organisms/widgets/queue/QueueRow.tsx
+index 74d88fe..85ad644 100644
+--- a/src/frontend/overlay/src/components/organisms/widgets/queue/QueueRow.tsx
++++ b/src/frontend/overlay/src/components/organisms/widgets/queue/QueueRow.tsx
+@@ -62,7 +62,7 @@ const QueueRankLabel = styled(RankLabel).attrs({
+     flex-shrink: 0;
+ `;
+ 
+-const QueueTeamNameLabel = styled(ShrinkingBox).attrs({
++export const QueueTeamNameLabel = styled(ShrinkingBox).attrs({
+     fontSize: c.QUEUE_ROW_FONT_SIZE,
+ })`
+     flex-grow: 1;
+@@ -75,7 +75,7 @@ const QueueRunStatusLabel = styled(RunStatusLabel).attrs({
+     flex-shrink: 0;
+ `;
+ 
+-const StyledQueueRow = styled.div`
++export const StyledQueueRow = styled.div`
+     width: 100%;
+     height: ${c.QUEUE_ROW_HEIGHT}px;
+     display: flex;
+@@ -97,7 +97,7 @@ const QueueScoreLabel = styled(ShrinkingBox).attrs({
+     flex-direction: row-reverse;
+ `;
+ 
+-const QueueProblemLabel = styled(ProblemLabel)`
++export const QueueProblemLabel = styled(ProblemLabel)`
+     width: ${c.QUEUE_ROW_PROBLEM_LABEL_WIDTH}px;
+     height: ${c.QUEUE_ROW_HEIGHT}px;
+     font-size: ${c.QUEUE_PROBLEM_LABEL_FONT_SIZE};
 diff --git a/src/frontend/overlay/src/components/organisms/widgets/scoreboard/ScoreboardContainer.tsx b/src/frontend/overlay/src/components/organisms/widgets/scoreboard/ScoreboardContainer.tsx
 index 79cee2c..9f77f8f 100644
 --- a/src/frontend/overlay/src/components/organisms/widgets/scoreboard/ScoreboardContainer.tsx
@@ -4629,20 +5109,52 @@ index 79cee2c..9f77f8f 100644
                      contestData={contestData}
                  />
              ))}
+diff --git a/src/frontend/overlay/src/components/organisms/widgets/scoreboard/ScoreboardRow.tsx b/src/frontend/overlay/src/components/organisms/widgets/scoreboard/ScoreboardRow.tsx
+index fe2dd81..d891418 100644
+--- a/src/frontend/overlay/src/components/organisms/widgets/scoreboard/ScoreboardRow.tsx
++++ b/src/frontend/overlay/src/components/organisms/widgets/scoreboard/ScoreboardRow.tsx
+@@ -46,7 +46,7 @@ const ScoreboardTableRowWrap = styled.div<{
+     background-color: ${c.SCOREBOARD_BACKGROUND_COLOR};
+ `;
+ 
+-const ScoreboardRowWrap = styled(ScoreboardTableRowWrap)`
++export const ScoreboardRowWrap = styled(ScoreboardTableRowWrap)`
+     overflow: hidden;
+     align-items: center;
+ 
+@@ -62,13 +62,13 @@ const ScoreboardRowWrap = styled(ScoreboardTableRowWrap)`
+     border-bottom: ${c.SCOREBOARD_ROWS_DIVIDER_COLOR} solid 1px;
+ `;
+ 
+-const ScoreboardRowName = styled(ShrinkingBox).attrs({
++export const ScoreboardRowName = styled(ShrinkingBox).attrs({
+     fontSize: c.SCOREBOARD_ROW_FONT_SIZE,
+ })`
+     padding: 0 ${c.SCOREBOARD_CELL_PADDING};
+ `;
+ 
+-const ScoreboardRankLabel = styled(RankLabel).attrs({
++export const ScoreboardRankLabel = styled(RankLabel).attrs({
+     fontSize: c.SCOREBOARD_ROW_FONT_SIZE,
+ })`
+     display: flex;
 diff --git a/src/frontend/overlay/src/config.interface.ts b/src/frontend/overlay/src/config.interface.ts
-index b8f7a07..a5ef73d 100644
+index b8f7a07..faeb3fa 100644
 --- a/src/frontend/overlay/src/config.interface.ts
 +++ b/src/frontend/overlay/src/config.interface.ts
-@@ -374,6 +374,7 @@ export interface OverlayConfig {
+@@ -374,6 +374,10 @@ export interface OverlayConfig {
          statistics: LocationRectangle;
          ticker: LocationRectangle;
          fullScreenClock: LocationRectangle;
 +        overview: LocationRectangle;
++        firstSolve: LocationRectangle;
++        medalCutoff: LocationRectangle;
++        problemFocus: LocationRectangle;
          teamLocator: LocationRectangle;
          teamViewSingle: LocationRectangle;
          teamViewPvpTop: LocationRectangle;
 diff --git a/src/frontend/overlay/src/config.ts b/src/frontend/overlay/src/config.ts
-index ce030a2..5f2121b 100644
+index ce030a2..5e1ecbd 100644
 --- a/src/frontend/overlay/src/config.ts
 +++ b/src/frontend/overlay/src/config.ts
 @@ -4,14 +4,13 @@ import { faviconTemplate } from "@/consts";
@@ -4688,12 +5200,15 @@ index ce030a2..5f2121b 100644
  
          // Non Styling configs
          WEBSOCKET_RECONNECT_TIME: 5000, // ms
-@@ -449,6 +437,8 @@ function getDefaultConfig(): EvaluatableTo<OverlayConfig> {
+@@ -449,6 +437,11 @@ function getDefaultConfig(): EvaluatableTo<OverlayConfig> {
              statistics: Location(16, 662, 1488, 338),
              ticker: Location(16, 1016, 1888, 48),
              fullScreenClock: Location(16, 16, 1488, 984),
 +            // Hydro: 赛况总览, in the scoreboard's place beside the queue.
 +            overview: Location(16, 16, 1488, 984),
++            firstSolve: Location(16, 16, 820, 180),
++            medalCutoff: Location(16, 662, 668, 338),
++            problemFocus: Location(700, 662, 804, 338),
              teamLocator: Location(0, 0, 1920, 1080),
              teamViewSingle: Location(16, 16, 1488, 984),
              teamViewPvpTop: Location(16, 16, 1488, 984 / 2 + 16),
@@ -4762,10 +5277,10 @@ index d8fd89d..46a0040 100644
              });
 diff --git a/src/frontend/overlay/src/utils/hydroCapture.ts b/src/frontend/overlay/src/utils/hydroCapture.ts
 new file mode 100644
-index 0000000..ca8c189
+index 0000000..ae53817
 --- /dev/null
 +++ b/src/frontend/overlay/src/utils/hydroCapture.ts
-@@ -0,0 +1,158 @@
+@@ -0,0 +1,171 @@
 +// Hydro: 画面采集. A contestant computer's screen or webcam over WebRTC; Hydro passes the
 +// handshake (lib/live/capture.ts in the plugin) and the video comes straight from that computer.
 +// One websocket per page, shared by every media holder. Mirrors the plugin's
@@ -4845,13 +5360,22 @@ index 0000000..ca8c189
 +            const id = `o${++this.counter}`;
 +            const pc = new RTCPeerConnection({ iceServers: this.iceServers });
 +            let timer: ReturnType<typeof setTimeout> | null = null;
++            let answered = false;
++            const outbound: (RTCIceCandidateInit | null)[] = [];
++            const inbound: RTCIceCandidateInit[] = [];
++            const sendIce = (candidate: RTCIceCandidateInit | null) => this.send({ type: "ice", session: id, candidate });
 +            const session: Session = {
 +                handle: (message) => {
 +                    if (message.type === "answer" && message.sdp) {
 +                        if (timer) clearTimeout(timer);
-+                        pc.setRemoteDescription({ type: "answer", sdp: message.sdp }).catch(() => session.fail("bad answer"));
++                        pc.setRemoteDescription({ type: "answer", sdp: message.sdp }).then(async () => {
++                            answered = true;
++                            for (const candidate of outbound.splice(0)) sendIce(candidate);
++                            for (const candidate of inbound.splice(0)) await pc.addIceCandidate(candidate).catch(() => {});
++                        }).catch(() => session.fail("bad answer"));
 +                    } else if (message.type === "ice" && message.candidate) {
-+                        pc.addIceCandidate(message.candidate).catch(() => {});
++                        if (answered) pc.addIceCandidate(message.candidate).catch(() => {});
++                        else if (inbound.length < 64) inbound.push(message.candidate);
 +                    } else if (message.type === "error" || message.type === "ended") {
 +                        console.warn(`HydroCapture ${device}/${stream}: ${message.message || message.reason}`);
 +                        session.fail(message.message || message.reason || "ended");
@@ -4883,7 +5407,11 @@ index 0000000..ca8c189
 +                video.srcObject = media;
 +                video.play().catch(() => {});
 +            };
-+            pc.onicecandidate = (event) => this.send({ type: "ice", session: id, candidate: event.candidate ? event.candidate.toJSON() : null });
++            pc.onicecandidate = ({ candidate }) => {
++                const value = candidate?.toJSON() ?? null;
++                if (answered) sendIce(value);
++                else outbound.push(value);
++            };
 +            pc.onconnectionstatechange = () => {
 +                if (pc.connectionState === "connected") onPlaying();
 +                else if (pc.connectionState === "failed") session.fail("failed");

@@ -1,8 +1,11 @@
 import type { PresetId, PresetState, WidgetState } from './widgets';
 
+export interface FeaturedSelection { runId: string; mediaType: string; expiresAt: number }
+
 export interface LiveState {
     controllers?: Record<string, WidgetState<unknown>>;
     presets?: Record<string, PresetState<unknown>[]>;
+    featuredRun?: FeaturedSelection | null;
 }
 
 /** One MongoDB field per controller or preset. Null in a patch means deletion. */
@@ -11,6 +14,7 @@ export type LiveStatePatch = Record<string, LiveStateEntries[string] | null>;
 
 export function stateEntries(state: LiveState): LiveStateEntries {
     const entries: LiveStateEntries = {};
+    if (state.featuredRun) entries.featuredRun = { settings: state.featuredRun, showOrder: null };
     for (const [name, value] of Object.entries(state.controllers || {})) entries[`controller/${name}`] = value;
     for (const [name, presets] of Object.entries(state.presets || {})) {
         // Before 0.8.0 some presets had no ID. Assign the same legacy IDs in every process.
@@ -28,9 +32,10 @@ export function stateEntries(state: LiveState): LiveStateEntries {
 }
 
 export function stateFromEntries(entries: LiveStateEntries): LiveState {
-    const state: Required<LiveState> = { controllers: {}, presets: {} };
+    const state: Required<LiveState> = { controllers: {}, presets: {}, featuredRun: null };
     for (const [key, value] of Object.entries(entries)) {
-        if (key.startsWith('controller/')) state.controllers[key.slice(11)] = value;
+        if (key === 'featuredRun') state.featuredRun = value.settings as FeaturedSelection;
+        else if (key.startsWith('controller/')) state.controllers[key.slice(11)] = value;
         else if (key.startsWith('preset/')) (state.presets[key.split('/')[1]] ||= []).push(value as PresetState<unknown>);
     }
     return state;
