@@ -108,8 +108,7 @@ body { font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", "Source Ha
 .ov-hist__label { color: var(--ov-muted); }
 .ov-verdicts { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: space-around; font-size: clamp(11px, 1.35vh, 21px); }
 .ov-verdict { display: grid; grid-template-columns: 4.6em minmax(0, 1fr) 6.4em; align-items: center; gap: .6em; font-variant-numeric: tabular-nums; }
-.ov-verdict .ov-bar { height: .9em; }
-.ov-verdict .ov-bar i { transition: width .6s ease; }
+.ov-verdict .ov-dot { margin: 0; width: .55em; height: .55em; }
 
 /* System load */
 .ov-sys { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: .55vh; font-size: clamp(11px, 1.3vh, 20px); }
@@ -147,3 +146,8 @@ body.idle { cursor: none; }
   .ov-side { height: 70vh; min-height: 420px; }
   .ov-area-trend, .ov-area-hist, .ov-area-verd, .ov-area-sys { height: 34vh; min-height: 220px; }
 }
+.ov-verdict-chart, .ov-share { display: flex; width: 100%; height: .5rem; background: var(--ov-line, #455366); border-radius: 1rem; overflow: hidden; }
+.ov-verdict-chart { margin: .15rem 0 .35rem; flex: none; }
+.ov-verdicts .ov-verdict { display: grid; grid-template-columns: .5rem 1fr auto; gap: .45rem; }
+.ov-share { max-width: 7rem; height: .26rem; }
+.ov-share i { background: var(--ov-ok); }

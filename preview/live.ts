@@ -217,5 +217,5 @@ export function createLivePreview(env: Environment, logoNames: Record<string, st
         });
     };
 
-    return { handle, attach, hub, state: () => stateFromEntries(state) };
+    return { handle, attach, hub, captureSettings: capture.settings, state: () => stateFromEntries(state) };
 }

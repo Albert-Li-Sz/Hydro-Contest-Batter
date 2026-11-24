@@ -894,7 +894,7 @@ export function applyReactions(ctx: Context, deps: ReactionDependencies & { link
     ctx.Route('contest_xcpcio_reactions_connected_source', workerBase + '/clips/:rid/:stream', SourceStream);
     ctx.Route('contest_xcpcio_reactions_connected_feed', workerBase + '/reactions/:feed', Feed);
     ctx.Route('contest_xcpcio_reactions_connected_run', workerBase + '/reactions/:feed/:rid', Feed);
-    ctx.i18n.load('zh', { contest_xcpcio_reactions_manage: '反应视频', contest_xcpcio_reactions_public: '反应视频' });
+    ctx.i18n.load('zh', { contest_xcpcio_reactions_manage: '反应视频与渲染', contest_xcpcio_reactions_public: '反应视频' });
     return {
         screenVideos: store.publicVideos,
         playScreenVideo,

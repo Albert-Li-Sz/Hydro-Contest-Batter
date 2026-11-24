@@ -1,3 +1,4 @@
+import { ratioMeter } from './hydro-ui.js';
 // /manage judge control: judge accounts, their configs (a new password per copy) and dispatch rules.
 import {
     $, adminPassword, copyText, el, field, formatTime, get, input, notify, openDialog, post, runtime,
@@ -51,7 +52,7 @@ function renderStats() {
     ].map(([value, label]) => el('div', {}, el('strong', { text: value }), el('span', { text: label }))));
 }
 
-const percent = (value) => (value === null || value === undefined ? '—' : `${Math.round(value)}%`);
+
 const ago = (seconds) => {
     if (seconds === null || seconds === undefined) return '—';
     if (seconds < 60) return `${seconds} 秒前`;
@@ -59,7 +60,7 @@ const ago = (seconds) => {
     return `${Math.floor(seconds / 3600)} 小时前`;
 };
 const states = { busy: ['评测中', 'manage-tag--ok'], idle: ['空闲', 'manage-tag--ok'], offline: ['离线', 'manage-tag--bad'] };
-const meter = (value, warn) => el('span', { class: value !== null && value !== undefined && value >= warn ? 'manage-error' : undefined, text: percent(value) });
+const meter = (label, value, warn) => ratioMeter(label, value, { tone: value >= warn ? 'bad' : '' });
 
 function renderHealth() {
     alerts.replaceChildren(...state.health.alerts.map((alert) => el('li', { class: `manage-alert manage-alert--${alert.level}`, text: alert.text })));
@@ -77,8 +78,8 @@ function renderHealth() {
                 el('td', { class: 'manage-nowrap', text: `${machine.judged5} 个`, title: `最近 15 分钟 ${machine.judged15} 个，累计 ${machine.totalJudged} 个` }),
                 el('td', { class: 'manage-nowrap', text: machine.averageSeconds === null ? '—' : `${machine.averageSeconds} 秒` }),
                 el('td', { class: machine.systemErrors15 ? 'manage-error' : undefined, text: String(machine.systemErrors15), title: '最近 15 分钟' }),
-                el('td', {}, meter(metrics?.cpu, 95)),
-                el('td', {}, meter(metrics?.memoryRate, 90)),
+                el('td', {}, meter('CPU', metrics?.cpu, 95)),
+                el('td', {}, meter('内存', metrics?.memoryRate, 90)),
                 el('td', { text: metrics?.temperature ? `${Math.round(metrics.temperature)}°C` : '—' }),
                 el('td', { class: 'manage-small manage-nowrap', text: !metrics ? '无数据' : metrics.live ? '实时' : `${ago(metrics.reportedSecondsAgo)}上报` }),
             );

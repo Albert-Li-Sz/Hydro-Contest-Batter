@@ -6,7 +6,7 @@ const manager = runtime.mode === 'manager';
 const storageKey = `xcpcio-balloons:${runtime.mode}:${runtime.base.replace(/\/balloon-desk\/.*$/, '')}`;
 const saved = (() => { try { return JSON.parse(localStorage.getItem(storageKey) || '{}'); } catch { return {}; } })();
 const view = {
-    tab: manager && saved.tab === 'settings' ? 'settings' : 'deliver',
+    tab: manager && (location.hash ? location.hash === '#settings' : saved.tab === 'settings') ? 'settings' : 'deliver',
     zones: new Set(Array.isArray(saved.zones) ? saved.zones : []),
     problems: new Set(Array.isArray(saved.problems) ? saved.problems : []),
     status: ['pending', 'delivered', 'held', 'revoked', 'all'].includes(saved.status) ? saved.status : 'pending',
@@ -470,9 +470,9 @@ function renderHeading() {
                     if (view.tab === value) return;
                     if (dirty && !confirm('设置有未保存的更改，离开设置页将丢失。继续？')) return;
                     if (dirty) { dirty = false; draft = null; }
-                    view.tab = value; remember(); renderHeading(); render();
+                    view.tab = value; history.replaceState(history.state, '', '#' + value); remember(); renderHeading(); if (data) render();
                 } })));
-        heading.replaceChildren(tabs, el('a', { class: 'button', href: runtime.contestUrl, text: '返回比赛' }));
+        heading.replaceChildren(tabs, el('a', { class: 'button', href: 'control#venue', text: '比赛配置' }), el('a', { class: 'button', href: runtime.contestUrl, text: '返回比赛' }));
         return;
     }
     const name = el('input', { class: 'textbox', value: view.by, maxlength: 20, placeholder: '你的名字（记录谁送达）', 'aria-label': '配送员姓名' });
@@ -502,6 +502,20 @@ async function refresh(force = false) {
     } finally { refreshing = false; }
 }
 
+if (manager) addEventListener('hashchange', () => {
+    const next = location.hash === '#settings' ? 'settings' : 'deliver';
+    if (next === view.tab) return;
+    if (dirty && !confirm('离开前放弃未保存的气球设置？')) {
+        history.replaceState(history.state, '', '#' + view.tab);
+        return;
+    }
+    dirty = false;
+    draft = null;
+    view.tab = next;
+    remember();
+    renderHeading();
+    if (data) render();
+});
 addEventListener('beforeunload', (event) => { if (dirty) event.preventDefault(); });
 renderHeading();
 refresh(true);

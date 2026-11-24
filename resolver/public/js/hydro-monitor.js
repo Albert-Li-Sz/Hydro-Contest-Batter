@@ -1,3 +1,4 @@
+import { ratioMeter } from './hydro-ui.js';
 // Judge monitoring page: polls the plugin's monitor data and redraws (text only, no HTML).
 const runtime = JSON.parse(document.getElementById('monitor-runtime').textContent);
 const $ = (id) => document.getElementById(id);
@@ -103,8 +104,8 @@ function machineCard(machine) {
     ].filter(Boolean).join(' · ');
     const spec = m ? [m.model, m.cores ? `${m.cores} 核` : null, m.memoryTotal ? `内存 ${bytes(m.memoryTotal)}` : null, m.os,
         m.compilers != null ? `${m.compilers} 种语言环境` : null].filter(Boolean).join(' · ') : '';
-    const stat = (label, value, cls = '', title = '') => el('div', { class: 'monitor-stat', title: title || undefined }, el('b', { class: cls, text: value }), el('span', { text: label }));
-    const acceptRate = machine.judged15 ? `${Math.round((machine.accepted15 / machine.judged15) * 100)}%` : '—';
+    const stat = (label, value, cls = '', title = '') => el('div', { class: 'monitor-stat', title: title || undefined }, el('b', { class: cls }, value), el('span', { text: label }));
+    const acceptRate = ratioMeter('最近 15 分钟通过率', machine.judged15 ? machine.accepted15 / machine.judged15 * 100 : null, { shape: 'ring', tone: 'ok' });
     return el('article', { class: `monitor-machine monitor-machine--${machine.online ? 'online' : 'offline'}` },
         el('header', { class: 'monitor-machine__head' },
             el('div', {}, el('h3', { text: machine.name }), el('div', { class: 'resolver-muted monitor-small', text: facts })),
@@ -154,7 +155,7 @@ function render(data) {
     machines.replaceChildren(...(data.machines.length ? data.machines.map(machineCard) : [el('p', { class: 'resolver-muted', text: '没有评测机连接到 Hydro，也没有评测机上报' })]));
     rows($('live'), data.live, '没有正在评测的任务', 8, (item) => el('tr', {},
         el('td', { text: item.judge }), ...subjectCells(item), el('td', { text: item.lang }), el('td', { text: item.status }),
-        el('td', { text: item.progress != null ? `${item.casesDone}（${Math.round(item.progress)}%）` : String(item.casesDone) }),
+        el('td', {}, item.progress == null ? String(item.casesDone) : ratioMeter('评测进度', item.progress, { caption: item.casesDone + ' 个测试点' })),
         el('td', { class: item.elapsedSeconds > 60 ? 'monitor-late' : '', text: duration(item.elapsedSeconds) })));
     rows($('finished'), data.finished, '还没有评测结果（插件启动后开始记录）', 10, (item) => el('tr', {},
         el('td', { text: ago(item.agoSeconds) }), el('td', { text: item.judge }), ...subjectCells(item), el('td', { text: item.lang }),

@@ -294,7 +294,7 @@ export function createCapturePreview(env: Environment, options: {
     }
 
     return {
-        handle, upgrade, medias, activeRecordingTeams: recording.activeTeams, judged: recording.judged,
+        handle, upgrade, medias, settings: { get: () => settings, save: (settings: object) => operate('settings', { settings }) }, activeRecordingTeams: recording.activeTeams, judged: recording.judged,
         revoke: (token: string) => relay.closeViewers(contestKey, 4004, '直播链接已作废', (endpoint) => endpoint.kind !== 'overlay' || endpoint.token === token),
     };
 }

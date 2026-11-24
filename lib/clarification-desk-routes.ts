@@ -436,6 +436,6 @@ export function applyClarificationDesk(ctx: Context, dependencies: {
     ctx.Route('contest_xcpcio_clarification_desk_data', '/contest/:tid/clarification-desk/data', ManagerData);
     ctx.Route('contest_xcpcio_clarification_delegate', '/contest/:tid/clarification-desk/jury/:token', DelegatePage);
     ctx.Route('contest_xcpcio_clarification_delegate_data', '/contest/:tid/clarification-desk/jury/:token/data', DelegateData);
-    ctx.i18n.load('zh', { contest_xcpcio_clarification_desk: '答疑台', contest_xcpcio_clarification_delegate: '答疑台' });
+    ctx.i18n.load('zh', { contest_xcpcio_clarification_desk: '答疑与公告', contest_xcpcio_clarification_delegate: '答疑与公告' });
     return { automaticNotices };
 }

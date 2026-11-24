@@ -13,6 +13,7 @@ import {
     runtime,
     select,
 } from './hydro-reaction-ui.js';
+import { helpTip, ratioMeter } from './hydro-ui.js';
 import { editLayout } from './hydro-reaction-layout.js';
 const tabs = [
     ['videos', '视频'],
@@ -21,11 +22,26 @@ const tabs = [
     ['workers', '媒体机'],
     ['public', '公开设置'],
 ];
+document.getElementById('rx-config').href = runtime.base.replace(/\/reactions$/, '/control#media');
 const states = { waiting: '等待', rendering: '渲染中', ready: '已完成', failed: '失败', stale: '已过期', removed: '已清理' };
 const filters = {};
 let data,
-    tab = runtime.tab || 'videos',
+    tab = selectedTab(),
     page = 1;
+function selectedTab() {
+    const hash = location.hash.slice(1);
+    return tabs.some(([id]) => id === hash) ? hash : runtime.tab || 'videos';
+}
+function selectTab() {
+    const next = selectedTab();
+    if (tab === next) return;
+    if (tab === 'workers') justIssued = null;
+    tab = next;
+    page = 1;
+    notify();
+    refresh();
+}
+window.addEventListener('hashchange', selectTab);
 let latestRequest = 0;
 async function load() {
     const sequence = ++latestRequest,
@@ -49,11 +65,7 @@ function render() {
     document.getElementById('rx-tabs').replaceChildren(
         ...tabs.map(([id, label]) => {
             const b = button(label, () => {
-                if (tab === 'workers' && id !== tab) justIssued = null;
-                tab = id;
-                page = 1;
-                notify();
-                return refresh();
+                if (tab !== id) location.hash = id;
             });
             b.setAttribute('aria-current', String(id === tab));
             return b;
@@ -78,7 +90,7 @@ function render() {
         const done = data.stats?.done ?? videos.filter((v) => v.readyAt >= hour && v.state === 'ready').length,
             fail = data.stats?.fail ?? videos.filter((v) => v.state === 'failed' && v.updatedAt >= hour).length;
         root.append(
-            el('p', { text: `最近一小时完成 ${done} 条，失败率 ${done + fail ? Math.round((fail * 100) / (done + fail)) : 0}%` }),
+            el('p', { class: 'rx-queue-summary' }, '最近一小时完成 ' + done + ' 条', el('span', {}, '失败率 ', ratioMeter('渲染失败率', done + fail ? fail / (done + fail) * 100 : null, { shape: 'ring', tone: fail ? 'bad' : 'ok' }))),
             el('p', {
                 text:
                     '待处理 ' +
@@ -254,19 +266,10 @@ function workers() {
             ),
         );
     root.append(
-        el('h3', { text: '在媒体机上启动' }),
-        el(
-            'p',
-            {},
-            el('a', {
-                href: 'https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.compose.yaml',
-                target: '_blank',
-                rel: 'noopener',
-                text: '下载 Compose 配置',
-            }),
-            '并保存为 compose.yaml。将上面复制的 .env 配置写入同目录的 .env 文件，然后运行：',
-        ),
-        el('pre', { class: 'rx-code', text: 'docker compose up -d' }),
+        el('div', { class: 'rx-actions' },
+            el('a', { href: 'https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.compose.yaml', text: '下载 Compose 配置' }),
+            el('a', { href: 'https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.html#install', target: '_blank', rel: 'noopener', text: '媒体机安装图解' }),
+            helpTip('Compose 部署', '将 compose.yaml 与含连接码的 .env 放在同一目录，运行 docker compose up -d。')),
         el('h2', { text: '媒体机心跳' }),
         button('刷新', load),
     );
@@ -343,7 +346,7 @@ function publication() {
     flag('download', '允许下载');
     root.append(
         fields,
-        el('p', { text: '学校隐藏时，已烧录学校名称或 Logo 的版式也会隐藏。' }),
+        helpTip('学校隐私', '隐藏学校时，含学校名称或 Logo 的成品也会从公开页隐藏。'),
         el(
             'div',
             { class: 'rx-actions' },

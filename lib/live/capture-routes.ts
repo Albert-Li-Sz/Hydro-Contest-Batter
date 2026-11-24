@@ -59,9 +59,12 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
         if (envelope && typeof envelope === 'object' && typeof envelope.id === 'string') relay.receive(envelope);
     });
 
-    async function loadSettings(contestKey: string): Promise<CaptureSettings> {
-        const doc: CaptureConfigDoc | null = await configs.findOne({ _id: contestKey });
+    function savedSettings(doc: CaptureConfigDoc | null): CaptureSettings {
         try { return readCaptureSettings(doc?.settings); } catch { return defaultCaptureSettings(); }
+    }
+
+    async function loadSettings(contestKey: string) {
+        return savedSettings(await configs.findOne({ _id: contestKey }));
     }
 
     /** Each participant's seat (onsite-toolkit), a team without one sitting where its first seated member does. */
@@ -101,12 +104,32 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
         return doc;
     }
 
-    /** Saves a contest's capture settings (the capture page and 赛事中控) and tells open devices and overlays. */
+    // Both configuration screens patch this document. Retry a racing update against the latest
+    // stored fields, including pre-upgrade documents that have no revision or only partial settings.
+    async function updateSettings(contestKey: string, input: unknown, uid: number) {
+        for (let attempt = 0; attempt < 6; attempt++) {
+            const doc: CaptureConfigDoc | null = await configs.findOne({ _id: contestKey });
+            const previous = savedSettings(doc);
+            const settings = normalizeCaptureSettings(input, previous);
+            const fields = { settings, updatedAt: new Date(), updatedBy: uid };
+            if (doc) {
+                const result = await configs.updateOne({ _id: contestKey, settings: doc.settings ?? null }, { $set: fields });
+                if (result.matchedCount) return { previous, settings };
+            } else {
+                try {
+                    await configs.insertOne({ _id: contestKey, ...fields });
+                    return { previous, settings };
+                } catch (error) {
+                    if ((error as { code?: number }).code !== 11000) throw error;
+                }
+            }
+        }
+        throw new CaptureError('其他管理员正在修改采集设置，请重新保存', 409);
+    }
+
     async function saveSettings(tdoc: Tdoc, input: unknown, uid: number) {
         const contestKey = helpers.key(tdoc);
-        const previous = await loadSettings(contestKey);
-        const settings = normalizeCaptureSettings(input, previous);
-        await configs.updateOne({ _id: contestKey }, { $set: { settings, updatedAt: new Date(), updatedBy: uid } }, { upsert: true });
+        const { previous, settings } = await updateSettings(contestKey, input, uid);
         const now = Date.now();
         if (!settings.enabled) {
             for (const doc of await devices.find({ contestKey }).project({ _id: 1 }).toArray()) relay.kickDevice(doc._id, '本场比赛已停用画面采集，重新启用后会自动连接', 4005);
@@ -596,7 +619,7 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
     ctx.Connection('contest_xcpcio_live_capture_own_ws', '/contest/:tid/live-capture/me/ws', CaptureOwnConnectionHandler);
     ctx.Connection('contest_xcpcio_live_capture_overlay_ws', '/contest/:tid/live-overlay/:token/ws/capture', CaptureOverlayViewerHandler);
     ctx.Connection('contest_xcpcio_live_capture_staff_ws', '/contest/:tid/live/ws/capture', CaptureStaffViewerHandler);
-    ctx.i18n.load('zh', { contest_xcpcio_live_capture: '画面采集' });
+    ctx.i18n.load('zh', { contest_xcpcio_live_capture: '采集设备与录像' });
 
     /** The director console's 画面采集 page: each device, the team it shows and whether it may go on air. */
     async function directorStatus(tdoc: Tdoc) {

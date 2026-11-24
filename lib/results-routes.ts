@@ -425,7 +425,7 @@ export function applyResults(ctx: Context, dependencies: {
     ctx.Route('contest_xcpcio_rejudge_review_data', '/contest/:tid/rejudge-review/data', ReviewDataHandler);
     ctx.Route('contest_xcpcio_results', '/contest/:tid/results', ResultsHandler);
     ctx.Route('contest_xcpcio_results_export', '/contest/:tid/results/export/:format', ResultsExportHandler);
-    ctx.i18n.load('zh', { contest_xcpcio_results: '成绩与导出', contest_xcpcio_rejudge_review: '重测复核' });
+    ctx.i18n.load('zh', { contest_xcpcio_results: '成绩快照与导出', contest_xcpcio_rejudge_review: '重测复核' });
     /** For 赛事中控: how many rejudged results the jury may want to look at, and the sessions built before them. */
     async function reviewSummary(tdoc: Tdoc) {
         const review = await readReview(tdoc);

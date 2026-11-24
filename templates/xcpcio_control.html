@@ -3,12 +3,20 @@
 {% block content %}
 <link rel="stylesheet" href="{{ codeBase }}/hydro-config.css">
 <link rel="stylesheet" href="{{ codeBase }}/hydro-manage.css">
+<link rel="stylesheet" href="{{ codeBase }}/hydro-recordings.css">
 <div class="row resolver-config xcpcio-manage xcpcio-control" id="hydro-resolver-config"><div class="medium-12 columns">
   <section class="section visible">
     <div class="section__header resolver-heading">
-      <div><h1 class="section__title">赛事中控</h1><p class="resolver-muted">{{ tdoc.title }}</p></div>
+      <div><h1 class="section__title">比赛配置与工作台</h1><p class="resolver-muted">{{ tdoc.title }} <span role="status" id="control-status">加载中…</span></p></div>
+      <div id="control-phase"></div>
     </div>
-    <div class="section__body" id="manage-root"><p class="resolver-muted">加载中…</p></div>
+    <div class="control-layout">
+      <nav class="control-nav" aria-label="比赛配置分类" id="control-nav"></nav>
+      <div class="section__body control-body">
+        <div id="manage-root"></div>
+        <div id="control-recording" hidden></div>
+      </div>
+    </div>
   </section>
 </div></div>
 <script type="application/json" id="manage-runtime">{{ runtimeJson | safe }}</script>

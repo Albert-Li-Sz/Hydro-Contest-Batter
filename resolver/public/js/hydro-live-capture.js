@@ -46,7 +46,7 @@ $('manage-root').replaceChildren(
         el('div', { class: 'manage-toolbar' }, el('h3', { text: '预览', style: 'margin:0' }), el('span', { class: 'manage-spacer' }),
             previewStream, previewButton, closeButton),
         grid),
-    el('details', { class: 'manage-group' }, el('summary', { text: '采集设置' }), settingsBox),
+    el('details', { class: 'manage-group', id: 'capture-network' }, el('summary', { text: '采集设置' }), settingsBox),
 );
 
 const absolute = (path) => new URL(path, location.href).href;
@@ -133,8 +133,7 @@ function renderSettings() {
         saved.textContent = '正在保存…';
         saved.classList.remove('manage-error');
         try {
-            const { enabled: _enabled, ...rest } = state.settings;
-            const result = await post('settings', { settings: { ...rest, iceServers: ice.value, ...patch } });
+            const result = await post('settings', { settings: patch });
             state.settings = result.settings;
             saved.textContent = '已保存';
             await load();
@@ -152,7 +151,7 @@ function renderSettings() {
     };
     const ice = el('textarea', { class: 'textbox', rows: 3, placeholder: 'stun:192.168.1.10:3478\nturn:192.168.1.10:3478 用户名 密码', spellcheck: 'false' });
     ice.value = state.settings.iceServers.map((server) => [server.urls[0], server.username, server.credential].filter(Boolean).join(' ')).join('\n');
-    ice.addEventListener('change', () => save({}));
+    ice.addEventListener('change', () => save({ iceServers: ice.value }));
     settingsBox.replaceChildren(
         el('div', { class: 'resolver-checks' },
             box('prompt', '选手进入比赛时提示开启'),

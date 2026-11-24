@@ -245,3 +245,10 @@
         max-height: 48vh;
     }
 }
+.rx-queue-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 1em; }
+.reactions-page .rx-tabs button { color: inherit; font: inherit; }
+.reactions-page .rx-tabs button[aria-current=true] { color: #2876aa; box-shadow: inset 0 -2px #5f9fd6; }
+.reactions-page .rx-actions .xc-help { padding: 0; background: transparent; border: 1px solid currentColor; border-radius: 50%; color: inherit; cursor: help; }
+.theme--dark .reactions-page .rx-tabs button[aria-current=true] { color: #8dbce1; }
+.theme--dark .reactions-page :is(.rx-tools, .rx-editor, .rx-fields, .rx-actions) :is(input, select, button:not(.xc-help)),
+.theme--dark .reactions-page :is(.rx-row button, .rx-code, .rx-dialog) { color: #ddd; background: #323334; border-color: #626871; }

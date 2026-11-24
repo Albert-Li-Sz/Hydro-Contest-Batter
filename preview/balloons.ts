@@ -235,5 +235,5 @@ export function createBalloonsPreview(env: Environment, version: string, demo: (
         }
         return true;
     };
-    return { handle, receipts };
+    return { handle, receipts, settings: { get: () => doc.settings, save: (settings: object) => operate('settings', { settings }, true) } };
 }

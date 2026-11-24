@@ -61,7 +61,8 @@ const saveState = async (next: typeof settings) => {
     await fs.rename(`${statePath}.tmp`, statePath);
     settings = next;
 };
-const controlPreview = createControlPreview(env, pluginVersion, demoData, { get: () => settings, set: saveState }, reactionsPreview);
+const controlPreview = createControlPreview(env, pluginVersion, demoData, { get: () => settings, set: saveState },
+    { balloons: balloonsPreview.settings, capture: livePreview.captureSettings }, reactionsPreview);
 const base = '/contest/demo';
 let unlocked = false;
 const boardUrl = `${base}/scoreboard/xcpcio-plus`;
@@ -123,7 +124,7 @@ const server = http.createServer(async (request, response) => {
         }
         if (url.pathname === settingsUrl) {
             response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(env.render('xcpcio_plus_settings.html', {
-                ...defaults, boardUrl, publicUrl, ccsUrl: `/d/system/ccsapi/contests/${previewCcsId}`, replacementEnabled: true,
+                ...defaults, boardUrl, publicUrl, controlUrl: `${base}/control`, ccsUrl: `/d/system/ccsapi/contests/${previewCcsId}`, replacementEnabled: true,
                 resolverUrl: `${base}/resolver`, screensUrl: `${base}/screens`,
                 settingsJson: toScriptJson({ settings, teams, automaticBoards: automaticBoards(teams), filterFields: rosterFields(teams, defaultProfileFields) }),
             })); return;

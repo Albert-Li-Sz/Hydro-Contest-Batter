@@ -534,7 +534,7 @@ export function applyLive(ctx: Context, dependencies: {
     ctx.Route('contest_xcpcio_live_overlay_api', '/contest/:tid/live-overlay/:token/api/overlay/*path', LiveOverlayApiHandler);
     ctx.Connection('contest_xcpcio_live_overlay_ws', '/contest/:tid/live-overlay/:token/ws/overlay/*path', LiveOverlayConnectionHandler);
     ctx.Route('contest_xcpcio_live_media', '/contest/:tid/live-media/:mediaKey/:name', LiveMediaHandler);
-    ctx.i18n.load('zh', { contest_xcpcio_live: '直播' });
+    ctx.i18n.load('zh', { contest_xcpcio_live: '直播导播与 OBS' });
     // The sidebar shows 直播 next to 滚榜 for the same managers, only while this module is enabled.
     ctx.on('handler/after', (handler) => {
         if (handler.UiContext?.xcpcioResolverUrl) {

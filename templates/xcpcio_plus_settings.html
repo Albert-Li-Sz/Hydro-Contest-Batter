@@ -5,10 +5,11 @@
 <div class="row xp-page xp-settings" id="xp-settings"><div class="medium-12 columns">
   <section class="section visible">
     <div class="section__header xp-page-header">
-      <div><h1 class="section__title">榜单与奖项设置</h1><p class="xp-muted">{{ tdoc.title }}</p></div>
+      <div><h1 class="section__title">榜单规则与奖项</h1><p class="xp-muted">{{ tdoc.title }}</p></div>
       <div class="xp-page-actions">
+        <a class="button" href="{{ controlUrl }}#rules">比赛配置</a>
         <a class="button" href="{{ boardUrl }}">查看榜单</a>
-        {% if resolverUrl %}<a class="button" href="{{ resolverUrl }}">滚榜配置</a>{% endif %}
+        {% if resolverUrl %}<a class="button" href="{{ resolverUrl }}">滚榜预演与播放</a>{% endif %}
         {% if screensUrl %}<a class="button" href="{{ screensUrl }}">大屏</a>{% endif %}
       </div>
     </div>
@@ -64,7 +65,7 @@
       </section>
       </div>
     </div>
-    <section class="section visible">
+    <section class="section visible" id="board-access">
       <div class="section__header"><h2 class="section__title">访问与默认榜单</h2></div>
       <div class="section__body">
         <div class="xp-checks xp-access-options">
@@ -95,7 +96,7 @@
         <div class="xp-line"><button class="button" type="button" id="xp-add-special">＋ 添加特别奖</button></div>
       </div>
     </section>
-    <section class="section visible">
+    <section class="section visible" id="manual-boards">
       <div class="section__header"><h2 class="section__title">手动分榜</h2></div>
       <div class="section__body">
         <div id="xp-boards"></div>

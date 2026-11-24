@@ -11,7 +11,7 @@
         {% if realtimeUrl %}<a class="button" href="{{ realtimeUrl }}">查看实时榜</a>{% endif %}
         {% if frozenUrl %}<a class="button" href="{{ frozenUrl }}">返回封榜视图</a>{% endif %}
         {% if publicUrl %}<a class="button" href="{{ publicUrl }}">免登录榜单</a>{% endif %}
-        {% if settingsUrl %}<a class="button" href="{{ settingsUrl }}">榜单与奖项设置</a>{% endif %}
+        {% if settingsUrl %}<a class="button" href="{{ settingsUrl }}">榜单规则与奖项</a>{% endif %}
         {% if unlock %}<form method="post" action="{{ unlock.url }}" class="xp-unlock-form" id="xp-unlock-form">
           <input type="hidden" name="operation" value="unlock">
           {% if unlock.ready %}<button type="submit" class="button primary">解除封榜</button>

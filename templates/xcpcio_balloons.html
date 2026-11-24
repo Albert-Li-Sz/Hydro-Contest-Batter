@@ -7,7 +7,7 @@
 <div class="row resolver-config xcpcio-manage xcpcio-balloons" id="hydro-resolver-config" data-mode="{{ 'desk' if desk else 'manager' }}"><div class="medium-12 columns">
   <section class="section visible">
     <div class="section__header resolver-heading">
-      <div><h1 class="section__title">气球配送</h1><p class="resolver-muted">{{ tdoc.title }}{% if desk %} · 配送员页面{% endif %}</p></div>
+      <div><h1 class="section__title">{{ '气球配送' if desk else '气球配送与小票' }}</h1><p class="resolver-muted">{{ tdoc.title }}{% if desk %} · 配送员页面{% endif %}</p></div>
       <div class="balloon-heading-actions" id="balloon-heading-actions"></div>
     </div>
     <div class="section__body" id="balloon-root"><p class="resolver-muted">加载中…</p></div>

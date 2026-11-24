@@ -1,5 +1,7 @@
 import { $, el, field as labeled, formatTime, get, input, notify, openDialog, post, runtime } from './hydro-manage-common.js';
 
+import { helpTip, ratioMeter } from './hydro-ui.js';
+
 function field(label, control) {
     control.setAttribute('aria-label', label);
     return labeled(label, control);
@@ -166,34 +168,46 @@ function showRecordings(panel, state, data, query, reload) {
     previous.disabled = currentPage <= 1; next.disabled = currentPage >= totalPages;
     const page = !query.teamUid && totalPages > 1 ? toolbar(previous, el('span', { text: currentPage + ' / ' + totalPages + ' 页' }), next) : null;
     panel.replaceChildren(group('提交片段', toolbar(field('队伍', team), field('题目', pid), field('结果', verdict), field('状态', phase), button('刷新', () => reload())), page, list),
-        group('留档时间轴', el('p', { class: 'resolver-muted', text: '实色为录像，斜纹为缺段。点击录像可从相应时刻播放。' }), timeline),
+        group('留档时间轴', toolbar(el('span', { class: 'record-key' }, '有录像'), el('span', { class: 'record-key record-key--gap' }, '缺段'), helpTip('留档回看', '选择时间段可从该时刻播放。')), timeline),
         group('存储用量', el('p', { text: '已用 ' + bytes(usage.reduce((s, r) => s + r.bytes, 0)) + (Number.isFinite(data.freeBytes) ? ' · 磁盘可用 ' + bytes(data.freeBytes) : '') }),
             table(['队伍', '类型', '文件数', '用量'], usage.map((r) => [teamName(state, r.teamUid), kinds[r.kind] || r.kind, String(r.count), bytes(r.bytes)]), '尚无录像文件')),
         group('清理录像', toolbar(field('类型', cleanKind), field('队伍', cleanTeam), field('起始时间', from), field('结束时间', to)),
             toolbar(button('预览删除范围', () => clean(false)), button('删除本场全部录像', () => clean(true), 'manage-danger')), message));
 }
 
-function showSettings(panel, state, data) {
+export async function mountRecordingSettings(panel, captureBase) {
+    panel.replaceChildren(el('p', { class: 'resolver-muted', text: '加载中…' }));
+    try {
+        const [state, data] = await Promise.all([get({}, captureBase + '/data'), get({ view: 'settings' }, captureBase + '/recordings/data')]);
+        showSettings(panel, state, data, captureBase);
+    } catch (error) {
+        panel.replaceChildren(el('p', { role: 'alert', text: error.message }), button('重试', () => mountRecordingSettings(panel, captureBase)));
+    }
+}
+
+function showSettings(panel, state, data, captureBase = runtime.base) {
     const recording = structuredClone(state.settings.recording);
+    let savedRecording = structuredClone(recording);
     const message = status(), estimate = el('div', { role: 'status' });
     let pending = 0, revision = 0;
     function displayPlan(info, measured = data.measured, measuredPeak = data.measuredPeak) {
         const total = Object.values(info.sources).reduce((sum, n) => sum + n, 0);
         const pct = info.utilization;
-        const utilization = el('strong', { text: pct == null ? '未填写赛场上行带宽' : '峰值占上行 ' + percent(pct),
-            class: pct == null ? '' : pct < .6 ? 'record-ok' : pct <= .8 ? 'record-warn' : 'manage-error' });
+        const utilization = el('span', { class: 'record-utilization' }, '峰值占上行 ',
+            ratioMeter('峰值占上行', pct == null ? null : pct * 100, { shape: 'ring', tone: pct < .6 ? 'ok' : pct <= .8 ? 'warn' : 'bad' }),
+            helpTip('峰值占上行', '预计峰值带宽除以赛场上行带宽。超过 100% 时可能出现上传积压。'));
         estimate.replaceChildren(el('p', { text: data.stats.teams + ' 支队伍 · 比赛 ' + (data.stats.seconds / 3600).toFixed(1) + ' 小时 · ' + (info.real ? '按实际提交速度推算' : '按赛前提交数估计') }),
             toolbar(el('strong', { text: '平均 ' + num(info.averageMbps) + ' Mbps' }), el('strong', { text: '峰值 ' + num(info.peakMbps) + ' Mbps' + (measuredPeak ? ' · 实测峰值系数 ' + num(measuredPeak) : '') }), utilization,
                 el('strong', { text: '预计存储 ' + bytes(info.storageBytes) })),
             Number.isFinite(data.freeBytes) ? el('p', { class: info.storageBytes > data.freeBytes ? 'manage-error' : '', text: '磁盘可用 ' + bytes(data.freeBytes) }) : document.createTextNode(''),
-            table(['来源', '预计用量', '占比', '码率'], Object.entries(info.sources).map(([key, n]) => [names[key], bytes(n), total ? percent(n / total) : '0%',
+            table(['来源', '预计用量', '占比', '码率'], Object.entries(info.sources).map(([key, n]) => [names[key], bytes(n), ratioMeter(names[key] + '存储占比', total ? n / total * 100 : null),
                 measured?.[key] ? num(measured[key]) + ' kbps · 按实测' : '按设置']), ''));
     }
     function changed() {
         const index = ++revision;
         clearTimeout(pending);
         pending = setTimeout(async () => {
-            try { const result = await operate(recordings, 'estimate', { recording }); if (index === revision) displayPlan(result.estimate, result.measured, result.measuredPeak); }
+            try { const result = await post('estimate', { recording }, captureBase + '/recordings'); if (index === revision) displayPlan(result.estimate, result.measured, result.measuredPeak); }
             catch (error) { if (index === revision) estimate.replaceChildren(el('p', { class: 'manage-error', text: error.message })); }
         }, 180);
     }
@@ -221,7 +235,7 @@ function showSettings(panel, state, data) {
                 inputs.append(el('small', { class: 'resolver-muted', text: '当前未采集摄像头。可在采集设备的采集设置中开启。' }));
                 return;
             }
-            if (q.preset === 'archiveHd') inputs.append(el('small', { class: 'resolver-muted', text: '依次尝试 H.265、AV1、H.264。首段最多 2 秒，之后每 60 秒分段。' }));
+            if (q.preset === 'archiveHd') inputs.append(helpTip(names[source] + '编码', '依次尝试 H.265、AV1、H.264。首段最长 2 秒，之后每 60 秒分段。'));
         };
         preset.onchange = () => {
             const value = preset.value;
@@ -251,8 +265,26 @@ function showSettings(panel, state, data) {
     displayPlan(data.estimate);
     form.onsubmit = async (event) => {
         event.preventDefault();
-        try { const result = await post('settings', { settings: { recording } }); state.settings = result.settings; notify(message, '录制设置已保存'); }
-        catch (error) { notify(message, error.message, true); }
+        const submitted = structuredClone(recording);
+        const patch = {};
+        for (const group of ['clips', 'archive', 'planning']) {
+            const changed = Object.entries(submitted[group]).filter(([key, value]) =>
+                JSON.stringify(value) !== JSON.stringify(savedRecording[group][key]));
+            if (changed.length) patch[group] = Object.fromEntries(changed);
+        }
+        if (submitted.autoDowngrade !== savedRecording.autoDowngrade) patch.autoDowngrade = submitted.autoDowngrade;
+        const submit = form.querySelector('[type="submit"]');
+        if (submit.disabled) return;
+        submit.disabled = true;
+        try {
+            if (Object.keys(patch).length) {
+                const result = await post('settings', { settings: { recording: patch } }, captureBase);
+                state.settings = result.settings;
+            }
+            savedRecording = submitted;
+            notify(message, '录制设置已保存');
+        } catch (error) { notify(message, error.message, true); }
+        finally { submit.disabled = false; }
     };
     panel.replaceChildren(form);
 }
@@ -282,7 +314,7 @@ function reportView(state, test) {
         (test.targets || []).map((id) => {
             const d = test.devices[id] || {};
             const rates = Object.entries(d.bitrates || {}).map(([k, v]) => names[k] + ' ' + num(v)).join('、');
-            return [deviceName(id), bytes(d.bytes), bytes(d.backlogBytes), String(d.failures ?? '—'), percent(d.dropRate), d.pressure || '—',
+            return [deviceName(id), bytes(d.bytes), bytes(d.backlogBytes), String(d.failures ?? '—'), ratioMeter('丢帧率', d.dropRate == null ? null : d.dropRate * 100), d.pressure || '—',
                 num(d.throughputMbps), [rates, codecLabels[d.archiveScreenCodec] && '留档屏幕 ' + codecLabels[d.archiveScreenCodec],
                     codecLabels[d.archiveWebcamCodec] && '留档摄像头 ' + codecLabels[d.archiveWebcamCodec]].filter(Boolean).join(' · ') || '—', d.recordingError || (grades[d.grade] || '等待上报') + (d.recommendation === 'low' ? ' · 建议低档' : '')];
         }), '没有设备报告'));
@@ -311,7 +343,7 @@ function showTests(panel, state, data) {
     };
     const refresh = async () => { try { renderReports(await get({}, tests)); } catch (error) { notify(message, error.message, true); } };
     renderReports(data);
-    panel.replaceChildren(group('设备自检', el('p', { text: '试录并上传当前画质的各路视频，约 30 秒。留空将测试全部在线设备。' }),
+    panel.replaceChildren(group('设备自检', helpTip('设备自检', '按当前画质试录并上传各路视频，约 30 秒。留空时测试全部在线设备。'),
         toolbar(...selected.map(([, label]) => label)), button('开始设备自检', () => run('start', { kind: 'device', deviceIds: selected.filter(([, , check]) => check.checked).map(([id]) => id) }))),
     group('全场压力测试', toolbar(field('测试时长 / 分钟', minutes), field('每队模拟提交间隔 / 秒', interval), field('方式', mode)),
         toolbar(button('开始全场压力测试', () => run('start', { kind: 'venue', durationSeconds: minutes.valueAsNumber * 60, intervalSeconds: interval.valueAsNumber, mode: mode.value }), 'primary'),
@@ -357,7 +389,8 @@ export function installRecordingTabs(state, loadCapture) {
         node.setAttribute('role', 'tab');
         buttons.set(key, node); nav.append(node);
     }
-    const fromHash = () => { const key = location.hash.slice(1); open(buttons.has(key) ? key : 'capture'); };
+    const fromHash = () => { const key = location.hash.slice(1); open(buttons.has(key) ? key : 'capture');
+        if (key === 'network') { const details = $('capture-network'); details.open = true; details.scrollIntoView({ block: 'start' }); } };
     window.addEventListener('hashchange', fromHash);
     fromHash();
 }

@@ -287,6 +287,7 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
             this.response.template = 'xcpcio_plus_settings.html';
             this.response.body = {
                 tdoc: this.tdoc,
+                controlUrl: `${contestBase(this.tdoc)}/control`,
                 boardUrl: `${contestBase(this.tdoc)}/scoreboard/xcpcio-plus`,
                 resolverUrl: `${contestBase(this.tdoc)}/resolver`,
                 screensUrl: `${contestBase(this.tdoc)}/screens`,
@@ -372,7 +373,7 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
         if (handler.user.own(tdoc) || handler.user.hasPerm(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD)) return;
         if (labelsHidden((await loadSettings(tdoc)).ccpcBoard, tdoc, Date.now())) throw new ForbiddenError('封榜前隐藏题号期间不提供此榜单');
     });
-    ctx.i18n.load('zh', { 'XCPCIO Plus': 'XCPCIO 增强榜' });
+    ctx.i18n.load('zh', { 'XCPCIO Plus': 'XCPCIO 增强榜', contest_xcpcio_plus_settings: '榜单规则与奖项' });
     ctx.inject(['scoreboard', 'server'], ({ scoreboard, server }) => {
         scoreboard.addView('xcpcio-plus', 'XCPCIO Plus', { tdoc: 'tdoc', realtime: (value: unknown) => Types.Boolean[0](value), json: (value: unknown) => Types.Boolean[0](value) }, {
             async display({ tdoc, realtime, json }) {

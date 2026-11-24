@@ -4,7 +4,7 @@
 <link rel="stylesheet" href="{{ codeBase }}/hydro-config.css">
 <div class="row resolver-config" id="hydro-resolver-config"><div class="medium-12 columns">
   <section class="section visible">
-    <div class="section__header resolver-heading"><div><h1 class="section__title">滚榜配置</h1><p class="resolver-muted" id="contest-title"></p></div><a class="button" id="back-link" href="{{ contestUrl }}">返回比赛</a></div>
+    <div class="section__header resolver-heading"><div><h1 class="section__title">滚榜预演与播放</h1><p class="resolver-muted" id="contest-title"></p></div><div class="xc-actions"><a class="button" href="control#media">比赛配置</a><a class="button" id="back-link" href="{{ contestUrl }}">返回比赛</a></div></div>
     <div class="section__body"><p id="rehearsal-note" class="resolver-notice" hidden>仅供彩排</p><p id="message" class="resolver-error" role="alert" hidden></p>
       <div class="resolver-stats">
         <div><strong id="stat-teams">—</strong><span>参赛队伍</span></div><div><strong id="stat-official">—</strong><span>正式参赛</span></div><div><strong id="stat-problems">—</strong><span>题目数量</span></div><div><strong id="stat-pending">—</strong><span>待揭晓提交</span></div>
@@ -25,11 +25,10 @@
       </div>
     </section>
     <section class="section visible" id="awards">
-      <div class="section__header"><h2 class="section__title">奖项</h2></div>
+      <div class="section__header"><h2 class="section__title">奖项<button class="xc-help" type="button" id="resolver-award-policy" aria-label="奖项规则帮助">?</button></h2></div>
       <div class="section__body">
         <div class="resolver-fields resolver-three" id="resolver-award-summary"></div>
-        <p class="resolver-muted" id="resolver-award-policy"></p>
-        <a class="button" href="{{ settingsUrl }}#board-awards">修改榜单与奖项设置</a>
+        <a class="button" href="{{ settingsUrl }}#board-awards">编辑各榜奖项</a>
       </div>
     </section>
     <section class="section visible">
@@ -54,7 +53,7 @@
       </div>
     </section>
   </form>
-  <section class="section visible" id="sessions"><div class="section__header resolver-heading"><h2 class="section__title">我的滚榜会话</h2><button type="button" class="button" id="refresh-sessions">刷新列表</button></div><div class="section__body"><p class="resolver-muted" id="session-retention"></p><div id="session-list" aria-live="polite"></div></div></section>
+  <section class="section visible" id="sessions"><div class="section__header resolver-heading"><h2 class="section__title">我的滚榜会话<button class="xc-help" type="button" id="session-retention" aria-label="会话保留时间帮助">?</button></h2><button type="button" class="button" id="refresh-sessions">刷新列表</button></div><div class="section__body"><div id="session-list" aria-live="polite"></div></div></section>
   <dialog id="resolver-delete-confirm" aria-labelledby="resolver-delete-title"><form method="dialog"><h2 id="resolver-delete-title">删除滚榜会话</h2><p>删除此会话的固定快照及已保存进度？</p><div class="resolver-actions"><button class="button" value="cancel">取消</button><button class="button primary" value="delete">确认删除</button></div></form></dialog>
   <p class="resolver-muted">Resolver-Web v1.4.0 · <a href="{{ assetBase }}/licenses/ICPC-Software-License.txt">ICPC Software License</a> · <a href="{{ assetBase }}/licenses/Resolver-Web-Apache-2.0.txt">Apache-2.0</a></p>
 </div></div>

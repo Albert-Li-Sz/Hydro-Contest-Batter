@@ -163,3 +163,31 @@
 .xcpcio-control .control-suffix { padding-bottom: 8px; }
 .xcpcio-control .control-links { display: flex; flex-wrap: wrap; gap: 8px; }
 .xcpcio-control .control-links .button { margin: 0; }
+
+.xcpcio-control .control-layout { display: grid; grid-template-columns: 12rem minmax(0, 1fr); }
+.xcpcio-control .control-nav { border-inline-end: 1px solid var(--manage-line); padding-block: .6rem; }
+.xcpcio-control .control-nav a { display: block; padding: .7rem 1.2rem; border-inline-start: 3px solid transparent; color: inherit; text-decoration: none; }
+.xcpcio-control .control-nav a:hover { background-color: rgba(95,159,214,.07); }
+.xcpcio-control .control-nav a[aria-current=page] { border-color: #5f9fd6; background-color: rgba(95,159,214,.13); font-weight: 600; }
+.xcpcio-control .control-body { min-width: 0; }
+.xcpcio-control .control-group { border: none; border-bottom: 1px solid var(--manage-line); padding: 0 0 1.2rem; margin: 0 0 1.2rem; }
+.xcpcio-control .control-group:last-child { border-bottom: 0; margin-bottom: 0; }
+.xcpcio-control .control-group h3 { display: flex; align-items: center; font-size: 1rem; font-weight: 600; margin: 0 0 .65rem; }
+.xcpcio-control .control-links { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1.25rem; }
+.xcpcio-control .control-status { justify-content: flex-end; font-size: .86em; }
+.xcpcio-control .control-nav a:focus-visible, .xc-help:focus-visible { outline: 2px solid #4792c5; outline-offset: -2px; }
+@media (max-width: 760px) {
+    .xcpcio-control .control-layout { grid-template-columns: minmax(0,1fr); }
+    .xcpcio-control .control-nav { display: flex; flex-wrap: wrap; gap: .2rem; border: 0; border-bottom: 1px solid var(--manage-line); padding: .55rem .75rem; }
+    .xcpcio-control .control-nav a { font-size: .9em; border: 0; border-bottom: 2px solid transparent; padding: .45rem .6rem; }
+    .xcpcio-control .control-status { justify-content: flex-start; }
+    .xcpcio-control .resolver-heading { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: no-preference) {
+    .xcpcio-control .control-nav a { transition: background-color .15s, border-color .15s; }
+    .xcpcio-control .control-enter { animation: xc-fade .16s ease-out; }
+}
+.xcpcio-control .control-links a { color: #2876aa; text-decoration: underline; text-underline-offset: .15em; text-decoration-color: transparent; }
+.xcpcio-control .control-links a:hover, .xcpcio-control .control-links a:focus-visible { text-decoration-color: currentColor; }
+.theme--dark .xcpcio-control .control-links a { color: #8dbce1; }
+.xcpcio-control #control-status { margin-inline-start: .65em; }

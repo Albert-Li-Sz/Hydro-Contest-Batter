@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-    ContestModel, type Context, Handler, NotFoundError, ObjectId, param, PERM, type Tdoc, Types, ValidationError,
+    ContestModel, type Context, Handler, NotFoundError, ObjectId, param, PERM, PRIV, type Tdoc, Types, ValidationError,
 } from 'hydrooj';
 import { type BalloonSettings } from './balloons';
 import { contestPhase, patchBoard, presetIds, presetOf, presets, type PresetId } from './control';
@@ -14,7 +14,7 @@ class ControlError extends Error {
 }
 
 /**
- * 赛事中控 (/contest/:tid/control): the board's rules, awards and access, the balloons, printing, the public
+ * 比赛配置与工作台 (/contest/:tid/control): the board's rules, awards and access, the balloons, printing, the public
  * screens and 解除封榜 on one page, each saved through its own module; plus the rejudges waiting for review.
  */
 export function applyControl(ctx: Context, dependencies: {
@@ -30,7 +30,7 @@ export function applyControl(ctx: Context, dependencies: {
     const codeBase = resolverCodeBase(JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8')).version);
     const contestBase = (tdoc: Tdoc) => `/d/${encodeURIComponent(tdoc.domainId)}/contest/${tdoc.docId}`;
 
-    async function state(tdoc: Tdoc) {
+    async function state(tdoc: Tdoc, systemAdmin: boolean) {
         const [board, balloons, capture, review, reactions] = await Promise.all([
             dependencies.loadSettings(tdoc), dependencies.balloons.get(tdoc), dependencies.capture?.get(tdoc) ?? null,
             dependencies.review(tdoc).catch(() => null), dependencies.reactions?.summary(tdoc),
@@ -61,7 +61,8 @@ export function applyControl(ctx: Context, dependencies: {
                 results: `${base}/results`, review: `${base}/rejudge-review`, resolver: `${base}/resolver`, screens: `${base}/screens`,
                 reactions: `${base}/reactions/manage`, balloons: `${base}/balloons`, live: dependencies.live ? `${base}/live` : null, capture: dependencies.capture ? `${base}/live/capture` : null,
                 presence: `${base}/presence`, monitor: `${base}/monitor`, overview: `${base}/overview`, desk: `${base}/clarification-desk`,
-                printers: '/manage/xcpcio-printers', rejudge: '/manage/xcpcio-rejudge', edit: `${base}/edit`,
+                printers: systemAdmin ? '/manage/xcpcio-printers' : null, rejudge: systemAdmin ? '/manage/xcpcio-rejudge' : null,
+                judges: systemAdmin ? '/manage/xcpcio-judges' : null, seats: systemAdmin ? '/manage/xcpcio-users#seats' : null, edit: `${base}/edit`,
             },
         };
     }
@@ -76,7 +77,7 @@ export function applyControl(ctx: Context, dependencies: {
             if (!tdoc) throw new NotFoundError('Contest not found');
             if (!this.user._id) throw new ControlError('请登录比赛管理账号', 403);
             if (!this.user.own(tdoc)) this.checkPerm(PERM.PERM_EDIT_CONTEST);
-            if (tdoc.rule !== 'acm') throw new ControlError('赛事中控仅支持 ACM 比赛');
+            if (tdoc.rule !== 'acm') throw new ControlError('比赛配置仅支持 ACM 比赛');
             this.tdoc = tdoc;
         }
 
@@ -168,11 +169,11 @@ export function applyControl(ctx: Context, dependencies: {
 
         async get() {
             this.response.type = 'application/json';
-            this.response.body = await state(this.tdoc);
+            this.response.body = await state(this.tdoc, this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM));
         }
     }
 
     ctx.Route('contest_xcpcio_control', '/contest/:tid/control', ControlHandler);
     ctx.Route('contest_xcpcio_control_data', '/contest/:tid/control/data', ControlDataHandler);
-    ctx.i18n.load('zh', { contest_xcpcio_control: '赛事中控' });
+    ctx.i18n.load('zh', { contest_xcpcio_control: '比赛配置与工作台' });
 }

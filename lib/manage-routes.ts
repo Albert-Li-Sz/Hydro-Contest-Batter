@@ -874,6 +874,6 @@ export function applyManage(ctx: Context, dependencies: {
     ctx.injectUI('ControlPanel', 'manage_xcpcio_users', { before: 'manage_user_priv' }, PRIV.PRIV_EDIT_SYSTEM);
     ctx.injectUI('ControlPanel', 'manage_xcpcio_judges', {}, PRIV.PRIV_EDIT_SYSTEM);
     ctx.injectUI('ControlPanel', 'manage_xcpcio_rejudge', {}, PRIV.PRIV_EDIT_SYSTEM);
-    ctx.i18n.load('zh', { manage_xcpcio_users: '用户配置', manage_xcpcio_judges: '评测机控制', manage_xcpcio_rejudge: '批量重测' });
+    ctx.i18n.load('zh', { manage_xcpcio_users: '用户、队伍与座位', manage_xcpcio_judges: '评测机与调度', manage_xcpcio_rejudge: '批量重测' });
     ctx.i18n.load('en', { manage_xcpcio_users: 'User Configuration', manage_xcpcio_judges: 'Judge Control', manage_xcpcio_rejudge: 'Batch Rejudge' });
 }

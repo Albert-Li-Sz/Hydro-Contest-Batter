@@ -59,7 +59,7 @@ function animate(node, id, target, format) {
     requestAnimationFrame(step);
 }
 
-function kpi(id, label, value, { format = (v) => thousands(Math.round(v)), unit = '', note = '', tone = '' } = {}) {
+function kpi(id, label, value, { format = (v) => thousands(Math.round(v)), unit = '', note = '', tone = '', share } = {}) {
     let card = $(`kpi-${id}`);
     if (!card) {
         card = el('div', { class: `ov-kpi${tone ? ` ov-kpi--${tone}` : ''}`, id: `kpi-${id}` },
@@ -70,7 +70,11 @@ function kpi(id, label, value, { format = (v) => thousands(Math.round(v)), unit 
     }
     animate(card.querySelector('.ov-kpi__value span'), id, value, format);
     card.querySelector('.ov-kpi__value small').textContent = unit;
-    card.querySelector('.ov-kpi__note').textContent = note;
+    const detail = card.querySelector('.ov-kpi__note');
+    if (Number.isFinite(share)) {
+        detail.replaceChildren(el('span', { class: 'ov-share', role: 'img', title: note, 'aria-label': note },
+            el('i', { style: 'width:' + Math.min(100, Math.max(0, share)) + '%' })));
+    } else detail.textContent = note;
 }
 
 /**
@@ -151,11 +155,15 @@ function histogramPanel(histogram) {
 
 function verdictPanel(verdicts, total) {
     const rows = verdicts.filter((item) => item.count || item.key === 'ok' || item.key === 'wa');
-    const max = Math.max(1, ...rows.map((item) => item.count));
-    $('verdicts').replaceChildren(...rows.map((item) => el('div', { class: 'ov-verdict' },
-        el('span', { text: item.label }),
-        el('span', { class: 'ov-bar' }, el('i', { style: `width:${(item.count / max) * 100}%;background:${verdictColors[item.key]}` })),
-        el('span', { class: 'ov-num', text: `${thousands(item.count)} · ${total ? ((item.count / total) * 100).toFixed(0) : 0}%` }))));
+    const chart = el('div', { class: 'ov-verdict-chart', role: 'img', 'aria-label': total ? rows.map(item => item.label + ' ' + item.count).join('，') : '暂无提交' });
+    for (const item of rows) {
+        if (!item.count || !total) continue;
+        chart.append(el('i', { style: `width:${item.count / total * 100}%;background:${verdictColors[item.key]}`,
+            title: item.label + ' ' + (item.count / total * 100).toFixed(1) + '%' }));
+    }
+    $('verdicts').replaceChildren(chart, ...rows.map(item => el('div', { class: 'ov-verdict' },
+        el('i', { class: 'ov-dot', style: 'background:' + verdictColors[item.key] }), el('span', { text: item.label }),
+        el('span', { class: 'ov-num', text: thousands(item.count) }))));
 }
 
 const bytes = (value) => {
@@ -243,8 +251,8 @@ function render() {
     kpi('schools', '参赛学校', data.schools);
     kpi('problems', '已解出题目', data.solvedProblems, { unit: `/ ${data.problems}` });
     kpi('submissions', '总提交', data.submissions, { note: data.pending ? `评测中 ${thousands(data.pending)}` : '' });
-    kpi('accepted', '通过', data.accepted, { note: `通过率 ${data.acceptRate.toFixed(1)}%`, tone: 'ok' });
-    kpi('solved', '已过题队伍', data.solvedTeams, { note: `占参赛队伍 ${data.solvedTeamsRate.toFixed(1)}%` });
+    kpi('accepted', '通过', data.accepted, { note: data.submissions ? `通过率 ${data.acceptRate.toFixed(1)}%` : '暂无提交', share: data.submissions ? data.acceptRate : null, tone: 'ok' });
+    kpi('solved', '已过题队伍', data.solvedTeams, { note: data.teams ? `占参赛队伍 ${data.solvedTeamsRate.toFixed(1)}%` : '暂无队伍', share: data.teams ? data.solvedTeamsRate : null });
     kpi('average', '队均过题', data.averageSolved, { format: (v) => v.toFixed(1), unit: '题' });
     kpi('recent', '近 10 分钟提交', data.recentSubmissions, { note: `其中通过 ${thousands(data.recentAccepted)}` });
     const totalMinutes = Math.round((data.endAt - data.beginAt) / 60_000);

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Hydro Contest Better v1.21.2 操作手册，涵盖安装升级、ACM 比赛配置、赛事中控、CCPC 赛制、增强榜、成绩导出、答疑台、滚榜、大屏、气球配送、机位监控、比赛录制、反应视频、直播、打印和赛后清理。">
+  <meta name="description" content="Hydro Contest Better v1.22.0 操作手册，涵盖安装升级、ACM 比赛配置、比赛配置与工作台、CCPC 赛制、增强榜、成绩导出、答疑台、滚榜、大屏、气球配送、机位监控、比赛录制、反应视频、直播、打印和赛后清理。">
   <meta name="theme-color" content="#811c39">
   <title>Hydro Contest Better 操作手册</title>
   <link rel="stylesheet" href="./manual.css">
@@ -15,7 +15,7 @@
       <a class="brand" href="./">Hydro Contest Better</a>
       <nav aria-label="项目链接">
         <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better">源码</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.21.2">下载 v1.21.2</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.22.0">下载 v1.22.0</a>
       </nav>
     </div>
   </header>
@@ -25,9 +25,10 @@
         <p>手册目录</p>
         <a href="#start">入口与角色</a>
         <a href="#install">安装与升级</a>
+        <a href="#configuration">比赛配置与工作台</a>
         <a href="#prepare">赛前配置</a>
         <a href="#presence">机位签到与监控</a>
-        <a href="#clarifications">答疑台</a>
+        <a href="#clarifications">答疑与公告</a>
         <a href="#screens">现场大屏</a>
         <a href="#balloons">气球配送</a>
         <a href="#broadcast">直播与 OBS</a>
@@ -35,7 +36,7 @@
         <a href="#print">比赛打印</a>
         <a href="#judging">评测监控与重测</a>
         <a href="#resolver">赛后滚榜</a>
-        <a href="#results">成绩与导出</a>
+        <a href="#results">成绩快照与导出</a>
         <a href="#cleanup">赛后清理</a>
         <a href="#integration">CCS API 对接</a>
         <a href="#troubleshoot">故障排查</a>
@@ -43,11 +44,11 @@
     </aside>
     <main id="manual">
       <header class="intro">
-        <p class="version">适用于插件 v1.21.2 · Hydro 5.x</p>
+        <p class="version">适用于插件 v1.22.0 · Hydro 5.x</p>
         <h1>Hydro 比赛操作手册</h1>
         <p class="lead">从安装插件、配置 ACM 比赛，到现场投屏、气球配送、打印、直播和赛后滚榜。</p>
         <p>界面截图使用演示比赛数据。点击配图可查看原图。</p>
-        <a class="primary-link" href="#prepare">开始配置比赛</a>
+        <a class="primary-link" href="#configuration">开始配置比赛</a>
       </header>
 
       <section id="start" aria-labelledby="start-heading">
@@ -55,6 +56,8 @@
         <dl class="entries">
           <div><dt>系统管理员</dt><dd>安装和升级插件，在 Hydro 控制面板 <code>/manage</code> 管理用户、评测机、打印服务器和批量重测。</dd></div>
           <div><dt>比赛管理员</dt><dd>比赛所有者或拥有「编辑比赛」权限的用户。在比赛侧边栏配置榜单、分榜与奖项，打开大屏、直播、监控和滚榜。</dd></div>
+          <div><dt>选手</dt><dd>使用发放的队伍账号登录并报名比赛。如果本场启用录制，按提示选择整个屏幕并授权摄像头，保留采集窗口。<a href="./media-worker.html#record">开始采集</a></dd></div>
+          <div><dt>导播与媒体机维护</dt><dd>导播登录本场比赛打开直播控制台，媒体机维护人员通过 Docker Compose 启动独立渲染服务。<a href="./media-worker.html#install">媒体机安装</a></dd></div>
           <div><dt>现场工作人员</dt><dd>在投屏电脑打开管理员发放的大屏链接，或将直播画面链接填入 OBS。需要操作导播台时，使用有比赛管理权限的 Hydro 账号登录。</dd></div>
         </dl>
         <figure class="guide-shot">
@@ -66,19 +69,19 @@
       <section id="install" aria-labelledby="install-heading">
         <h2 id="install-heading">安装与升级</h2>
         <p>使用运行 Hydro 的系统账号执行命令。需要 Hydro 5.x、Node.js 22 或以上。用 PM2 管理 Hydro 时，默认进程名为 <code>hydrooj</code>。</p>
-        <p>从发布页下载 <code>hydro-scoreboard-xcpcio-plus-1.21.2.tgz</code> 和同名 <code>.sha256</code> 文件，放在同一个目录。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.21.2">v1.21.2 下载</a></p>
+        <p>从发布页下载 <code>hydro-scoreboard-xcpcio-plus-1.22.0.tgz</code> 和同名 <code>.sha256</code> 文件，放在同一个目录。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.22.0">v1.22.0 下载</a></p>
 
         <h3>校验并解压</h3>
-        <pre><code>sha256sum -c hydro-scoreboard-xcpcio-plus-1.21.2.tgz.sha256
-mkdir xcpcio-v1.21.2
-tar -xzf hydro-scoreboard-xcpcio-plus-1.21.2.tgz -C xcpcio-v1.21.2</code></pre>
+        <pre><code>sha256sum -c hydro-scoreboard-xcpcio-plus-1.22.0.tgz.sha256
+mkdir xcpcio-v1.22.0
+tar -xzf hydro-scoreboard-xcpcio-plus-1.22.0.tgz -C xcpcio-v1.22.0</code></pre>
 
         <figure class="guide-shot">
           <a href="./images/manual/install-archive.svg"><img src="./images/manual/install-archive.svg" width="840" height="262" loading="lazy" alt="终端示例中的 SHA-256 校验显示 OK，解压后可找到 package/install.sh"></a>
           <figcaption>校验结果显示 OK 后再解压。进入新目录，确认 package 下有 install.sh。</figcaption>
         </figure>
         <h3>首次安装</h3>
-        <pre><code>bash xcpcio-v1.21.2/package/install.sh install</code></pre>
+        <pre><code>bash xcpcio-v1.22.0/package/install.sh install</code></pre>
         <p>脚本将插件复制到 <code>$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus</code>，执行 <code>hydrooj addon add</code>，然后重启 Hydro。</p>
         <figure class="guide-shot">
           <a href="./images/manual/install-choice.svg"><img src="./images/manual/install-choice.svg" width="840" height="298" loading="lazy" alt="首次安装选 install，已有安装从新包执行 upgrade，两种方式都要验证比赛入口"></a>
@@ -88,7 +91,7 @@ tar -xzf hydro-scoreboard-xcpcio-plus-1.21.2.tgz -C xcpcio-v1.21.2</code></pre>
           <summary>手动安装到新目录</summary>
           <pre><code>addon_dir="$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 mkdir -p "$addon_dir"
-tar -xzf hydro-scoreboard-xcpcio-plus-1.21.2.tgz -C "$addon_dir" --strip-components=1
+tar -xzf hydro-scoreboard-xcpcio-plus-1.22.0.tgz -C "$addon_dir" --strip-components=1
 hydrooj addon add "$addon_dir"
 pm2 restart hydrooj</code></pre>
           <figure class="guide-shot">
@@ -98,7 +101,7 @@ pm2 restart hydrooj</code></pre>
         </details>
 
         <h3>已有安装时升级</h3>
-        <pre><code>bash xcpcio-v1.21.2/package/install.sh upgrade
+        <pre><code>bash xcpcio-v1.22.0/package/install.sh upgrade
 pm2 status hydrooj</code></pre>
         <p>在浏览器打开 Hydro 首页和一场 ACM 比赛，确认榜单、滚榜和大屏入口可用。自定义目录用 <code>--dir</code> 指向原安装位置，非默认 PM2 进程用 <code>--service</code>。容器部署用 <code>--no-restart</code>，然后通过容器管理方式重启 Hydro。</p>
         <figure class="guide-shot">
@@ -116,32 +119,56 @@ pm2 status hydrooj</code></pre>
         </details>
       </section>
 
+      <section id="configuration" aria-labelledby="configuration-heading">
+        <h2 id="configuration-heading">比赛配置与工作台</h2>
+        <p>打开一场 ACM 比赛，用比赛所有者或有「编辑比赛」权限的账号进入右侧菜单的「比赛配置与工作台」。电脑上从左侧选择分类，手机上点标题下的分类。复制当前地址即可让另一位比赛管理员直达同一组设置。</p>
+        <ol>
+          <li><strong>赛制与奖项。</strong>选择赛制，核对确认框中的规则后应用。选择固定数量或有效队伍比例，再填写金银铜名额。按学校或参赛资格自动分榜，也可从「编辑手动分榜」「各榜奖项」「特别奖」打开对应编辑区。简单开关即时保存，完整分榜表单请点击「保存设置」。</li>
+          <li><strong>公开与访问。</strong>逐项检查公开榜单、学校显示、CCS API、比赛中公开选手屏幕和反应视频。将指针移到问号上，或者用 Tab 聚焦、在手机上轻点问号即可查看说明。按 Esc 或点到其他位置收起。复制公开链接后可用未登录窗口检查观众看到的内容。</li>
+        </ol>
+        <figure class="guide-shot">
+          <a href="./images/manual/contest-control.jpg"><img src="./images/manual/contest-control.jpg" width="1170" height="698" loading="lazy" alt="比赛配置左侧分类和赛制、同分、奖牌及分榜表单"></a>
+          <figcaption>赛制与奖项。选择预设后，可继续调整当前比赛的单项规则。</figcaption>
+        </figure>
+        <figure class="guide-shot">
+          <a href="./images/manual/control-access-help.jpg"><img src="./images/manual/control-access-help.jpg" width="1170" height="350" loading="lazy" alt="公开与访问分类中展开的选手屏幕公开提示"></a>
+          <figcaption>公开选手屏幕与公开反应视频分别控制。悬停或聚焦问号可查看开关的影响。</figcaption>
+        </figure>
+        <ol start="3">
+          <li><strong>现场服务。</strong>开启气球或小票，设定封榜后是否暂缓配送，在「气球颜色与小票分单」配置具体颜色和打印规则。开启「允许选手打印」后，系统管理员可以从「打印设备与队列」连接现场打印客户端。「答疑分工与封榜提醒」用于维护回复模板及答疑员链接。</li>
+          <li><strong>采集与播出。</strong>开启画面采集，按需开启摄像头。从这里进入采集设备、设备试录、视频版式或媒体机连接。要布置会场屏幕或 OBS，请进入「大屏画面与链接」或「直播导播与 OBS」。</li>
+          <li><strong>录制与存储。</strong>分别设置提交片段和全程留档的屏幕、摄像头画质。填入赛场上行带宽后查看峰值占用圆环和各来源的存储占比，最后点击「保存录制设置」。采集页的「录制设置」读取同一份配置。详见<a href="./media-worker.html#screen-archive">双路留档与容量估算</a>。</li>
+          <li><strong>赛事工作台。</strong>现场工作人员按任务打开机位、答疑、气球或评测页面。赛后在「重测复核」检查变更，在「成绩快照与导出」保存、比较或导出结果。解除封榜按钮在比赛结束且榜单仍封榜时出现，执行后观众即可看到最终成绩。</li>
+        </ol>
+        <figure class="guide-shot">
+          <a href="./images/manual/control-work.jpg"><img src="./images/manual/control-work.jpg" width="1170" height="423" loading="lazy" alt="赛事工作台中的赛场运行、成绩与复核、观看比赛和比赛管理入口"></a>
+          <figcaption>比赛级操作使用本场权限。座位管理、评测机调度、批量重测和打印设备入口仅对系统管理员显示。</figcaption>
+        </figure>
+      </section>
+
       <section id="prepare" aria-labelledby="prepare-heading">
         <h2 id="prepare-heading">赛前配置</h2>
         <ol>
           <li>在 Hydro 创建 ACM 比赛，录入题目、开始时间、结束时间和封榜时间。需要打印时在比赛设置开启「允许打印」。</li>
           <li>核对选手显示名、学校字段和正式参赛资格。需要座位图、配送或打印分区时，使用 onsite-toolkit 导入座位号，例如 <code>A-01</code>、<code>B-12</code>。</li>
-          <li>从比赛右侧菜单打开「榜单与奖项」（增强榜页的「榜单与奖项设置」同样可以进入）。只有主榜默认存在。按需开启学校榜、正式资格榜，或创建手动分榜并筛选、勾选成员。</li>
+          <li>从比赛右侧菜单打开「榜单规则与奖项」（增强榜页的「榜单规则与奖项」同样可以进入）。只有主榜默认存在。按需开启学校榜、正式资格榜，或创建手动分榜并筛选、勾选成员。</li>
           <li>选择同分规则：「Hydro 规则」罚时精确到秒；「ICPC 区域赛规则」罚时按分钟计，再比最后一题通过时间，仍相同则并列；「CCPC 规则」罚时按分钟计，题数和总用时相同即并列。设置赛事默认奖项，名额可填固定数量，或按有效队伍（正式且至少通过一题）的比例，如金 10%、银 20%、铜 30%，各自向上取整。奖牌和奖杯（默认冠军、亚军、季军）可按队伍名次或学校名次颁发，奖杯并列时可让最晚通过早者得或共享。在「各榜奖项」展开目标榜并勾选「单独设置此榜奖项」，可独立配置金银铜、并列同奖、一血和奖杯。增强榜、滚榜、大屏、直播、CCS API 和成绩导出共用这些规则。</li>
-          <li>比赛当天的常用设置集中在比赛右侧菜单的「赛事中控」：一键切换 Hydro、ICPC 区域赛或 CCPC 赛制，修改奖项、封榜与公开、分榜、气球、打印和画面采集，滚榜结束后解除封榜。CCPC 赛制开启封榜前隐藏题号（过题达到门槛才显示题号，每队格子按各自顺序排列）、过题后忽略再次提交、统一的一血气球和每队各自配色。</li>
+          <li>比赛当天的常用设置集中在比赛右侧菜单的「比赛配置与工作台」：一键切换 Hydro、ICPC 区域赛或 CCPC 赛制，修改奖项、封榜与公开、分榜、气球、打印和画面采集，滚榜结束后解除封榜。CCPC 赛制开启封榜前隐藏题号（过题达到门槛才显示题号，每队格子按各自顺序排列）、过题后忽略再次提交、统一的一血气球和每队各自配色。</li>
           <li>在「特别奖」添加最佳女队、顽强拼搏等奖项。可按所选榜的名次、最后一次首次通过、有过题的最后一名或指定队伍发奖。两个「最后」规则仅考虑有过题的正式队伍。公开增强榜在比赛结束、解封且评测完成后显示获奖名单。</li>
           <li>按赛事需求开启「公开榜单」「向所有观众显示学校」和「替换原生榜单」。保存后用未登录窗口检查已开启的公开榜链接与学校显示。</li>
         </ol>
         <figure class="guide-shot">
           <a href="./images/manual/scoreboard-settings.jpg"><img src="./images/manual/scoreboard-settings.jpg" width="1190" height="746" loading="lazy" alt="榜单与奖项设置中的同分规则、奖牌名额和自动分榜选项"></a>
-          <figcaption>赛前先在「榜单与奖项」设定同分规则和奖牌名额，再选择需要生成的分榜。</figcaption>
+          <figcaption>赛前先在「榜单规则与奖项」设定同分规则和奖牌名额，再选择需要生成的分榜。</figcaption>
         </figure>
         <p><strong>打星选手</strong>以星号显示，不占正式名次、奖牌或奖杯。能否获得一血由各榜的「允许打星选手获一血奖」决定。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/usage.md#规则">完整计分与奖项规则</a></p>
-        <figure class="guide-shot">
-          <a href="./images/manual/contest-control.jpg"><img src="./images/manual/contest-control.jpg" width="1170" height="576" loading="lazy" alt="赛事中控显示赛制选项、同分规则和奖牌名额"></a>
-          <figcaption>比赛当天，在中控顶部核对当前赛制、名额和奖项依据。</figcaption>
-        </figure>
+        <p>赛前核对常用开关时，可按<a href="#configuration">比赛配置图解</a>逐项检查。</p>
         <p class="path"><strong>常用地址</strong><br>榜单设置 <code>/d/&lt;域ID&gt;/contest/&lt;比赛ID&gt;/xcpcio-settings</code><br>公开榜单 <code>/d/&lt;域ID&gt;/contest/&lt;比赛ID&gt;/xcpcio-public</code></p>
       </section>
 
       <section id="presence" aria-labelledby="presence-heading">
         <h2 id="presence-heading">机位签到与监控</h2>
-        <p>在比赛侧边栏打开「机位监控」。座位图按考场排列，每格显示一支队伍，颜色表示在线、可能离线、离线或未登录。启用画面采集后，格内显示「采集中」「已连接未采集」或「未连接」。只要独立采集窗口持续共享屏幕，选手切换标签、最小化或关闭比赛页都保持「采集中」。</p>
+        <p>在比赛侧边栏打开「机位签到与监控」。座位图按考场排列，每格显示一支队伍，颜色表示在线、可能离线、离线或未登录。启用画面采集后，格内显示「采集中」「已连接未采集」或「未连接」。只要独立采集窗口持续共享屏幕，选手切换标签、最小化或关闭比赛页都保持「采集中」。</p>
         <ol>
           <li>开赛前让选手登录并打开比赛页面。页面顶部的「签到」显示已打开比赛页面的队伍数，虚线格子是还没签到的队伍。</li>
           <li>比赛进行中关注右侧告警：两支队伍同一 IP（换座或共用电脑）、IP 与座位绑定不符、离线、未登录、10 分钟内换了 IP、画面采集未连接、浏览器过旧。点击告警或格子查看详情。</li>
@@ -151,13 +178,13 @@ pm2 status hydrooj</code></pre>
           <a href="./images/manual/presence-seat-map.jpg"><img src="./images/manual/presence-seat-map.jpg" width="840" height="605" loading="lazy" alt="按考场排列的座位格，以及在线、离线和未登录的队伍数量"></a>
           <figcaption>先看考场汇总，再按座位定位异常队伍。格内同时显示签到与采集状态。</figcaption>
         </figure>
-        <p>IP 与座位的比对来自 onsite-toolkit 的 IP 登录。座位或 IP 绑定有误时，系统管理员在「用户配置 → 座位与 IP」修正。</p>
+        <p>IP 与座位的比对来自 onsite-toolkit 的 IP 登录。座位或 IP 绑定有误时，系统管理员在「用户、队伍与座位 → 座位与 IP」修正。</p>
       </section>
 
       <section id="clarifications" aria-labelledby="clarifications-heading">
-        <h2 id="clarifications-heading">答疑台</h2>
+        <h2 id="clarifications-heading">答疑与公告</h2>
         <ol>
-          <li>在比赛侧边栏打开「答疑台」。选手继续在 Hydro 原生比赛题目页提问。待回复队列会显示题号、队伍、座位与等待时长。开启提示音后，答疑台在后台标签页中也会继续刷新并响铃。</li>
+          <li>在比赛侧边栏打开「答疑与公告」。选手继续在 Hydro 原生比赛题目页提问。待回复队列会显示题号、队伍、座位与等待时长。开启提示音后，答疑台在后台标签页中也会继续刷新并响铃。</li>
           <li>先点「标记处理中」，再选标准回复或填写文字。需要向全体解释时，另填公开稿后发送。公开稿进入大屏的「比赛公告滚动」，也可推送至直播字幕。</li>
           <li>在「设置」给各题出题人生成答疑员链接，或启用自动封榜提醒。换人时可更换或删除旧链接。</li>
         </ol>
@@ -170,7 +197,7 @@ pm2 status hydrooj</code></pre>
 
       <section id="screens" aria-labelledby="screens-heading">
         <h2 id="screens-heading">现场大屏</h2>
-        <p>在比赛侧边栏打开「大屏」。选画面并调整分榜、样式或轮播间隔，设置自动保存，点「预览」查看。确认后复制链接，在投屏电脑的浏览器打开。点击画面或按 <kbd>F</kbd> 进入全屏，按 <kbd>Esc</kbd> 退出。</p>
+        <p>在比赛侧边栏打开「大屏画面与链接」。选画面并调整分榜、样式或轮播间隔，设置自动保存，点「预览」查看。确认后复制链接，在投屏电脑的浏览器打开。点击画面或按 <kbd>F</kbd> 进入全屏，按 <kbd>Esc</kbd> 退出。</p>
         <figure class="guide-shot">
           <a href="./images/manual/screens-message-settings.jpg"><img src="./images/manual/screens-message-settings.jpg" width="1188" height="518" loading="lazy" alt="大屏管理中已选文字公告，可编辑投屏内容"></a>
           <figcaption>在右侧画面列表选「文字公告」，在左侧输入比赛通知后预览。</figcaption>
@@ -192,7 +219,7 @@ pm2 status hydrooj</code></pre>
 
       <section id="balloons" aria-labelledby="balloons-heading">
         <h2 id="balloons-heading">气球配送</h2>
-        <p>在比赛侧边栏打开「气球配送」，点「开启气球配送」。插件为每支队伍每道题的第一次通过生成一个带编号的气球，不需要 Hydro 气球颜色。封榜后的气球默认暂缓，直到解除封榜才发放（可改为继续发放）。重测撤销通过时，气球自动撤销。</p>
+        <p>在比赛侧边栏打开「气球配送与小票」，点「开启气球配送」。插件为每支队伍每道题的第一次通过生成一个带编号的气球，不需要 Hydro 气球颜色。封榜后的气球默认暂缓，直到解除封榜才发放（可改为继续发放）。重测撤销通过时，气球自动撤销。</p>
         <h3>基本模式</h3>
         <ol>
           <li>用 onsite-toolkit 导入座位号。考场取座位号去掉末尾数字的部分，例如 <code>A-12</code> 属于 A 区。</li>
@@ -206,7 +233,7 @@ pm2 status hydrooj</code></pre>
         </figure>
         <h3>小票机模式</h3>
         <ol>
-          <li>系统管理员在「打印服务器管理」把打印电脑上的热敏打印机的「类型」改为「小票机」，选纸宽 58 或 80 mm 和输出方式（一般选 ESC/POS），点「测试小票」确认。打印客户端需要 1.14.0 或更新版本。</li>
+          <li>系统管理员在「打印设备与队列」把打印电脑上的热敏打印机的「类型」改为「小票机」，选纸宽 58 或 80 mm 和输出方式（一般选 ESC/POS），点「测试小票」确认。打印客户端需要 1.14.0 或更新版本。</li>
           <li>在气球配送的「设置」里设置每题的气球颜色和颜色名，勾选「开启小票打印」后保存。</li>
           <li>按需添加分配规则：考场前缀加题目，对应一台或多台小票机，规则按顺序匹配。不设规则时，小票打印到负责该座位的打印服务器上的小票机。</li>
           <li>每出现一个新气球就自动打印一张小票，上面有座位、题号与颜色、一血标记、队名和该队已通过的题。志愿者拿小票送气球，送达后标记。</li>
@@ -221,7 +248,7 @@ pm2 status hydrooj</code></pre>
       <section id="broadcast" aria-labelledby="broadcast-heading">
         <h2 id="broadcast-heading">直播与 OBS</h2>
         <ol>
-          <li>进入比赛侧边栏的「直播」，登录后打开「导播台」。导播台默认中文，右上角可切换为 English。用 <strong>控制台</strong> 切换画面（含给观众看的<strong>赛况总览</strong>），用 <strong>字幕</strong> 添加公告和字幕，用 <strong>榜单</strong> 切换分榜。需要队伍画面时，在侧边栏的「画面采集」启用本场的画面采集（默认不启用，可设置只采集屏幕）。导播台的「画面采集」页可预览各队画面并一键上屏，默认使用屏幕。选手登录并打开比赛后会弹窗提示开启，点一下打开采集窗口并选择整个屏幕即可，无需启动参数；关闭窗口时会提醒，中断后比赛页面立即要求重新开启。取消「比赛中直播可用屏幕」后，屏幕在比赛结束后才进入直播；比赛设了封榜时，要等到解除封榜。</li>
+          <li>进入比赛侧边栏的「直播导播与 OBS」，登录后打开「导播台」。导播台默认中文，右上角可切换为 English。用 <strong>控制台</strong> 切换画面（含给观众看的<strong>赛况总览</strong>），用 <strong>字幕</strong> 添加公告和字幕，用 <strong>榜单</strong> 切换分榜。需要队伍画面时，在侧边栏的「采集设备与录像」启用本场的画面采集（默认不启用，可设置只采集屏幕）。导播台的「画面采集」页可预览各队画面并一键上屏，默认使用屏幕。选手登录并打开比赛后会弹窗提示开启，点一下打开采集窗口并选择整个屏幕即可，无需启动参数；关闭窗口时会提醒，中断后比赛页面立即要求重新开启。取消「比赛中直播可用屏幕」后，屏幕在比赛结束后才进入直播；比赛设了封榜时，要等到解除封榜。</li>
           <li>复制设置页的「直播画面」链接。在 OBS 添加「浏览器」来源，填写链接，宽高设为 <strong>1920 × 1080</strong>。需要隐藏状态条时，在链接末尾加 <code>?noStatus</code>。</li>
           <li>控制台可单独开启首解快报、奖牌线追踪或单题战况，默认全部关闭。OBS 浏览器来源支持透明背景，可与比赛视频叠加。</li>
         </ol>
@@ -236,8 +263,8 @@ pm2 status hydrooj</code></pre>
         </figure>
         <p>字幕页的 <strong>Title</strong> 点「+」先新建一条空字幕，再点编辑选择 SVG 模板（内置 ICPC 下三分之一条模板，也可在「媒体文件」上传）并填写数据，保存后即可显示；未选模板时点显示会提示原因。<strong>Picture</strong> 和滚动条中的图片可填写完整网址、以 <code>/</code> 开头的站内路径，或直接填写「媒体文件」里的文件名，保存后自动换成文件地址。</p>
         <h3>录制与反应视频</h3>
-        <p>在「画面采集 → 录制设置」勾选本场需要的提交片段或全程留档。新配置同时采集屏幕和摄像头，采集目标均为 1080p、30 fps。每路「高清留档」分别以 720p、24 fps、1.2 Mbps 为目标。机位依次尝试 H.265、AV1、H.264，三种均不可用时会提示。选定编码后先保存最多 2 秒的首段，随后每 60 秒分段，停止录制时保存尾段。在「录像」分别点开屏幕和摄像头时间轴，可核对各路实际编码、分辨率并回放。赛前请向选手告知保存期限与公开范围。<a href="./media-worker.html#screen-archive">双路留档设置与验证</a></p>
-        <p>在「反应视频 → 媒体机」为每台机器创建连接，把连接码写入该机的 <code>.env</code>，通过 Docker Compose 拉取镜像并启动。管理员可按版式合成视频，在导播台回放，或经审核后公开分享和大屏轮播。<a href="./media-worker.html">安装媒体机与制作反应视频（图文教程）</a></p>
+        <p>在「采集设备与录像 → 录制设置」勾选本场需要的提交片段或全程留档。新配置同时采集屏幕和摄像头，采集目标均为 1080p、30 fps。每路「高清留档」分别以 720p、24 fps、1.2 Mbps 为目标。机位依次尝试 H.265、AV1、H.264，三种均不可用时会提示。选定编码后先保存最多 2 秒的首段，随后每 60 秒分段，停止录制时保存尾段。在「录像」分别点开屏幕和摄像头时间轴，可核对各路实际编码、分辨率并回放。赛前请向选手告知保存期限与公开范围。<a href="./media-worker.html#screen-archive">双路留档设置与验证</a></p>
+        <p>在「反应视频与渲染 → 媒体机」为每台机器创建连接，把连接码写入该机的 <code>.env</code>，通过 Docker Compose 拉取镜像并启动。管理员可按版式合成视频，在导播台回放，或经审核后公开分享和大屏轮播。<a href="./media-worker.html">安装媒体机与制作反应视频（图文教程）</a></p>
         <figure class="guide-shot">
           <a href="./images/media-worker/layout-editor.png"><img src="./images/media-worker/layout-editor.png" width="1168" height="625" loading="lazy" alt="反应视频版式编辑器显示图层、画布预览和画面布局"></a>
           <figcaption>生成反应视频前，在版式编辑器核对屏幕、摄像头和信息卡片的位置。</figcaption>
@@ -248,7 +275,7 @@ pm2 status hydrooj</code></pre>
       <section id="print" aria-labelledby="print-heading">
         <h2 id="print-heading">比赛打印</h2>
         <ol>
-          <li>比赛开启「允许打印」。系统管理员在 <code>/manage</code> 进入「打印服务器管理」，添加打印电脑，选择服务的比赛和座位前缀。</li>
+          <li>比赛开启「允许打印」。系统管理员在 <code>/manage</code> 进入「打印设备与队列」，添加打印电脑，选择服务的比赛和座位前缀。</li>
           <li>在打印电脑下载适配系统和架构的客户端。运行后粘贴后台生成的 <code>hydro-print:</code> 连接信息。Linux 与 macOS 的系统打印依赖 CUPS。</li>
           <li>连接后核对后台同步的打印机，启用所需设备并点「打印测试页」。也可先用 <code>--to-folder &lt;目录&gt;</code> 把打印请求保存为 PDF。</li>
           <li>选手从该场比赛的「打印」页提交。工作人员按页眉上显示的座位和队伍分发。</li>
@@ -278,12 +305,20 @@ pm2 status hydrooj</code></pre>
       <section id="judging" aria-labelledby="judging-heading">
         <h2 id="judging-heading">评测监控与重测</h2>
         <dl class="entries">
-          <div><dt>比赛管理员</dt><dd>从比赛侧边栏打开「评测监控」看排队、正在评测的任务和机器告警。从「赛况总览」看实时排名、各题通过与服务器负载。</dd></div>
-          <div><dt>系统管理员</dt><dd>在 <code>/manage</code> 的「用户配置」核对用户、队伍、座位与 IP 登录。在「评测机控制」查看健康状态，调整独立评测机的并发、语言、暂停状态和任务范围。复制评测配置会生成新密码，机器下次连接需使用新配置。</dd></div>
+          <div><dt>比赛管理员</dt><dd>从比赛侧边栏打开「评测队列与监控」看排队、正在评测的任务和机器告警。从「赛况总览」看实时排名、各题通过与服务器负载。</dd></div>
+          <div><dt>系统管理员</dt><dd>在 <code>/manage</code> 的「用户、队伍与座位」核对用户、队伍、座位与 IP 登录。在「评测机与调度」查看健康状态，调整独立评测机的并发、语言、暂停状态和任务范围。复制评测配置会生成新密码，机器下次连接需使用新配置。</dd></div>
         </dl>
         <figure class="guide-shot">
           <a href="./images/manual/judge-monitor.jpg"><img src="./images/manual/judge-monitor.jpg" width="1190" height="550" loading="lazy" alt="评测监控的告警区和队列、等待时间等指标"></a>
           <figcaption>遇到评测积压，先看告警和等待时间，再打开具体评测机检查。</figcaption>
+        </figure>
+        <figure class="guide-shot">
+          <a href="./images/manual/judge-load.jpg"><img src="./images/manual/judge-load.jpg" width="291" height="245" loading="lazy" alt="三台演示评测机的 CPU、内存占用条及温度"></a>
+          <figcaption>在「评测机与调度」按机器查看 CPU 和内存。示例第二台 CPU 占用 72%，温度 63°C；横杠表示没有温度上报。</figcaption>
+        </figure>
+        <figure class="guide-shot">
+          <a href="./images/manual/overview-verdicts.jpg"><img src="./images/manual/overview-verdicts.jpg" width="296" height="166" loading="lazy" alt="赛况总览的评测结果用分段色条展示分布，下方列出各结果的实际提交数"></a>
+          <figcaption>在「赛况总览」查看整场比赛。每段颜色的长度表示该结果占全部提交的比例，下列数字为提交条数。</figcaption>
         </figure>
         <h3>批量重测</h3>
         <ol>
@@ -301,11 +336,11 @@ pm2 status hydrooj</code></pre>
       <section id="resolver" aria-labelledby="resolver-heading">
         <h2 id="resolver-heading">赛后滚榜</h2>
         <ol>
-          <li>在比赛侧边栏打开「滚榜」。赛前可彩排。正式滚榜应在比赛结束、相关提交评测或重测完成之后进行。</li>
+          <li>在比赛侧边栏打开「滚榜预演与播放」。赛前可彩排。正式滚榜应在比赛结束、相关提交评测或重测完成之后进行。</li>
           <li>选择「仅滚所选榜单」来显示该榜成员，或选择「所选分榜正式，其余非正式」来展示全部队伍并按所选榜决定正式资格。</li>
           <li>核对封榜点和奖项。比赛没有封榜时间时，选择「本场滚榜自定义」，填写最后多少分钟封榜。核对分榜、学校显示、每屏行数和播放速度。</li>
           <li>点击「开始滚榜」生成会话。主持端用前进、回退和自动推进控制节奏。在主持端点「投到观众屏」，打开生成的观众链接，即可在另一台电脑投屏。</li>
-          <li>滚榜结束后，在增强榜页或赛事中控点击「解除封榜」公开全部结果（比赛结束后可用，不可撤销）。比赛结束后封榜不会自动解除。</li>
+          <li>滚榜结束后，在增强榜页或比赛配置与工作台点击「解除封榜」公开全部结果（比赛结束后可用，不可撤销）。比赛结束后封榜不会自动解除。</li>
         </ol>
         <figure class="guide-shot">
           <a href="./images/manual/resolver-setup.jpg"><img src="./images/manual/resolver-setup.jpg" width="1190" height="718" loading="lazy" alt="滚榜配置显示彩排、封榜点、待揭晓提交数和奖牌名额"></a>
@@ -319,12 +354,12 @@ pm2 status hydrooj</code></pre>
       </section>
 
       <section id="results" aria-labelledby="results-heading">
-        <h2 id="results-heading">成绩与导出</h2>
+        <h2 id="results-heading">成绩快照与导出</h2>
         <ol>
-          <li>在比赛侧边栏打开「成绩与导出」。可拍摄手动快照，也可选比赛结束、解封或批量重测前自动生成的快照。</li>
+          <li>在比赛侧边栏打开「成绩快照与导出」。可拍摄手动快照，也可选比赛结束、解封或批量重测前自动生成的快照。</li>
           <li>选择分榜和要对比的两份成绩。核对发生变化的队伍、奖项和提交。通过插件执行的批量重测也可查看重测前的成绩。</li>
           <li>下载所选榜的成绩表或获奖名单。成绩表含名次、学校名次、奖杯和奖牌。CSV 可用 Excel 打开，获奖名单可用于制作证书。「全部代码」使用 Hydro 的比赛代码导出。</li>
-          <li>批量重测后，从赛事中控打开「重测复核」：查看结果有变化的提交及其对名次和奖项的影响，筛选后批量恢复原结果，或保留重测结果。基于旧结果的滚榜会话会被标出，可以按原设置用当前成绩重建。</li>
+          <li>批量重测后，从比赛配置与工作台打开「重测复核」：查看结果有变化的提交及其对名次和奖项的影响，筛选后批量恢复原结果，或保留重测结果。基于旧结果的滚榜会话会被标出，可以按原设置用当前成绩重建。</li>
         </ol>
         <figure class="guide-shot">
           <a href="./images/manual/results-export.jpg"><img src="./images/manual/results-export.jpg" width="1190" height="520" loading="lazy" alt="成绩与导出页面将当前成绩与已保存快照比较，并提供 CSV 下载"></a>
@@ -335,7 +370,7 @@ pm2 status hydrooj</code></pre>
 
       <section id="cleanup" aria-labelledby="cleanup-heading">
         <h2 id="cleanup-heading">赛后清理</h2>
-        <p>机房要交给下一场比赛或日常教学前，系统管理员在 <code>/manage</code> 的「用户配置 → 座位与 IP」操作。选择刚结束的比赛，列表就是它的全部参赛账号。</p>
+        <p>机房要交给下一场比赛或日常教学前，系统管理员在 <code>/manage</code> 的「用户、队伍与座位 → 座位与 IP」操作。选择刚结束的比赛，列表就是它的全部参赛账号。</p>
         <ol>
           <li>点「备份」，保存一份座位与 IP 登录（插件内保留最近 50 份，同时下载 JSON 文件）。</li>
           <li>点「清理」，勾选座位、IP 登录和退出登录，输入管理员密码。清理前会再自动备份一次。被清除的 IP 从下一次请求起无法自动登录。未勾选退出登录时保留已有会话。</li>
@@ -354,7 +389,7 @@ pm2 status hydrooj</code></pre>
 
       <section id="integration" aria-labelledby="integration-heading">
         <h2 id="integration-heading">CCS API 对接</h2>
-        <p>有外部工具需要比赛数据时，在「榜单与奖项设置」开启「开放 CCS API」，保存后复制页面上的比赛地址。在外部工具中使用站点 HTTPS 地址和所需权限的 Hydro 账号。匿名读取取决于公开榜设置，已启用双因素认证的账号用 Hydro 会话认证。</p>
+        <p>有外部工具需要比赛数据时，在「榜单规则与奖项」开启「开放 CCS API」，保存后复制页面上的比赛地址。在外部工具中使用站点 HTTPS 地址和所需权限的 Hydro 账号。匿名读取取决于公开榜设置，已启用双因素认证的账号用 Hydro 会话认证。</p>
         <figure class="guide-shot">
           <a href="./images/manual/ccs-access.jpg"><img src="./images/manual/ccs-access.jpg" width="1170" height="267" loading="lazy" alt="榜单设置中的开放 CCS API 开关、比赛 API 地址和确认最终结果按钮"></a>
           <figcaption>复制「CCS API 地址」这一行给对接方。示例中的回环地址用于本机预览。</figcaption>
@@ -392,7 +427,7 @@ pm2 status hydrooj</code></pre>
               </figure>
             </details>
           </dd></div>
-          <div><dt>大屏显示待定</dt><dd>检查赛程和封榜设置。公开画面在封榜后隐藏新提交结果，管理员可用「评测监控」核实是否仍在评测。
+          <div><dt>大屏显示待定</dt><dd>检查赛程和封榜设置。公开画面在封榜后隐藏新提交结果，管理员可用「评测队列与监控」核实是否仍在评测。
             <details class="diagnostic-example">
               <summary>查看评测队列</summary>
               <figure class="guide-shot">
@@ -410,7 +445,7 @@ pm2 status hydrooj</code></pre>
               </figure>
             </details>
           </dd></div>
-          <div><dt>小票不打印</dt><dd>在「打印服务器管理」确认打印电脑在线、打印机类型为「小票机」且勾选了参与打印、客户端为 1.14.0 或以上；在气球配送设置中确认已开启小票打印，分配规则选中的小票机显示「可用」。ESC/POS 小票中文乱码时，把输出方式改为「系统驱动」，或检查小票机是否为中文（GB18030）机型。
+          <div><dt>小票不打印</dt><dd>在「打印设备与队列」确认打印电脑在线、打印机类型为「小票机」且勾选了参与打印、客户端为 1.14.0 或以上；在气球配送设置中确认已开启小票打印，分配规则选中的小票机显示「可用」。ESC/POS 小票中文乱码时，把输出方式改为「系统驱动」，或检查小票机是否为中文（GB18030）机型。
             <details class="diagnostic-example">
               <summary>查看小票规则与设备提示</summary>
               <figure class="guide-shot">
@@ -460,11 +495,11 @@ pm2 status hydrooj</code></pre>
               <summary>查看重测前后的成绩变化</summary>
               <figure class="guide-shot">
                 <a href="./images/manual/rejudge-review.jpg"><img src="./images/manual/rejudge-review.jpg" width="1190" height="550" loading="lazy" alt="重测复核对照原结果、重测结果、名次影响和处理状态"></a>
-                <figcaption>从赛事中控进入「重测复核」，核对哪条提交发生变化，再决定是否用当前成绩重建会话。</figcaption>
+                <figcaption>从比赛配置与工作台进入「重测复核」，核对哪条提交发生变化，再决定是否用当前成绩重建会话。</figcaption>
               </figure>
             </details>
           </dd></div>
-          <div><dt>名次与 Hydro 原生榜不一致</dt><dd>检查「榜单与奖项」中的同分规则。ICPC 区域赛规则按分钟计罚时并比较最后一题通过时间，Hydro 原生榜始终按秒计罚时。
+          <div><dt>名次与 Hydro 原生榜不一致</dt><dd>检查「榜单规则与奖项」中的同分规则。ICPC 区域赛规则按分钟计罚时并比较最后一题通过时间，Hydro 原生榜始终按秒计罚时。
             <details class="diagnostic-example">
               <summary>查看同分和奖项规则</summary>
               <figure class="guide-shot">
@@ -495,7 +530,7 @@ pm2 status hydrooj</code></pre>
             <details class="diagnostic-example">
               <summary>查看中控的赛程与封榜状态</summary>
               <figure class="guide-shot">
-                <a href="./images/manual/freeze-state.jpg"><img src="./images/manual/freeze-state.jpg" width="1170" height="178" loading="lazy" alt="赛事中控顶部显示当前比赛状态"></a>
+                <a href="./images/manual/freeze-state.jpg"><img src="./images/manual/freeze-state.jpg" width="1170" height="178" loading="lazy" alt="比赛配置与工作台顶部显示当前比赛状态"></a>
                 <figcaption>两次演示的中控状态对照。上图为赛中封榜，下图为比赛结束后仍封榜，此时管理员可以看到「解除封榜」。</figcaption>
               </figure>
             </details>
@@ -504,8 +539,8 @@ pm2 status hydrooj</code></pre>
       </section>
       <footer class="manual-footer">
         <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/usage.md">完整使用文档</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.21.2/docs/verification.md">验证记录</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.21.2/NOTICE">来源与许可</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.22.0/docs/verification.md">验证记录</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.22.0/NOTICE">来源与许可</a>
         <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/issues">报告问题</a>
       </footer>
     </main>

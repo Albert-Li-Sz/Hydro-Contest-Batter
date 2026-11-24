@@ -1,3 +1,4 @@
+import { ratioMeter } from './hydro-ui.js';
 import { ResolverView } from './render/resolver-view.js';
 import { actionIndicesFor } from './playback-model.js';
 
@@ -85,12 +86,11 @@ function updateAwards(board, config) {
         const item = document.createElement('div');
         const count = config ? config[`${tier}Count`] : ratio ? board.medalCounts?.[tier] : board.medals[tier];
         // 按比例设奖: the share and what it comes to.
-        item.textContent = ratio
-            ? `${rules[`${tier}Citation`]} · ${board.medals[tier]}%（${count ?? '—'} 名）`
-            : `${rules[`${tier}Citation`]} · ${count} 名`;
+        item.textContent = rules[`${tier}Citation`] + ' · ' + (count ?? '—') + ' 名';
+        if (ratio) item.append(' ', ratioMeter('奖牌名额比例', board.medals[tier]));
         summary.append(item);
     }
-    document.getElementById('resolver-award-policy').textContent = [
+    document.getElementById('resolver-award-policy').dataset.help = [
         ratio && `按有效队伍比例设奖（有效队伍 ${board.eligible ?? '—'} 支：正式且至少通过一题，名额向上取整）`,
         { icpc: '同分规则：ICPC 区域赛（罚时按分钟，再比最后一题通过时间）', ccpc: '同分规则：CCPC（罚时按分钟，同题数同用时并列）' }[rules.tieBreak] || '同分规则：Hydro（罚时精确到秒）',
         rules.medalRanking === 'school' ? '奖牌按学校名次' : rules.medalSameScore ? '并列同奖' : '按名额授奖',
@@ -251,7 +251,7 @@ document.getElementById('contest-title').textContent = runtime.title;
 document.getElementById('back-link').href = runtime.contestUrl;
 const select = form.elements.boardId;
 for (const board of runtime.boards) select.add(new Option(board.name, board.id));
-document.getElementById('session-retention').textContent = runtime.sessionDays > 0
+document.getElementById('session-retention').dataset.help = runtime.sessionDays > 0
     ? `会话连续 ${runtime.sessionDays} 天没有打开或推进后会自动删除。` : '会话永久保留，可由创建者手动删除。';
 for (const [key, value] of Object.entries(runtime.config)) {
     const field = form.elements.namedItem(key);

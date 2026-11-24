@@ -276,7 +276,13 @@ async function send(payload, message, onSuccess) {
     }
 }
 
-for (const button of tabs) button.addEventListener('click', () => setTab(button.dataset.deskTab));
+const tabFromHash = () => {
+    const id = location.hash.slice(1);
+    setTab(tabs.some(button => button.dataset.deskTab === id) ? id : 'pending');
+};
+for (const button of tabs) button.addEventListener('click', () => { location.hash = button.dataset.deskTab; });
+addEventListener('hashchange', tabFromHash);
+tabFromHash();
 byId('subject').addEventListener('change', renderQueue);
 byId('queue').addEventListener('click', (event) => {
     const button = event.target.closest('[data-question]');

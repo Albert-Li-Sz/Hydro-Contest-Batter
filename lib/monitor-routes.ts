@@ -256,6 +256,6 @@ export function applyMonitor(ctx: Context) {
 
     ctx.Route('contest_xcpcio_monitor', '/contest/:tid/monitor', MonitorHandler);
     ctx.Route('contest_xcpcio_monitor_data', '/contest/:tid/monitor/data', MonitorDataHandler);
-    ctx.i18n.load('zh', { contest_xcpcio_monitor: '评测监控' });
+    ctx.i18n.load('zh', { contest_xcpcio_monitor: '评测队列与监控' });
     return { tracker, machines };
 }

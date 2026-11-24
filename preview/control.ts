@@ -1,9 +1,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Environment } from 'nunjucks';
 import type { BoardData } from '../lib/board';
-import { defaultBalloonSettings, normalizeBalloonSettings } from '../lib/balloons';
+import type { BalloonSettings } from '../lib/balloons';
 import { contestPhase, patchBoard, presetIds, presetOf, presets, type PresetId } from '../lib/control';
-import { defaultCaptureSettings, normalizeCaptureSettings } from '../lib/live/capture';
+import type { CaptureSettings } from '../lib/live/capture';
 import { filterChanges, impactOf, lastChange, reviewChanges, verdictName, type ReviewChange, type ReviewItem } from '../lib/rejudge-review';
 import { resolverCodeBase } from '../lib/resolver-data';
 import type { ResultsData } from '../lib/results';
@@ -17,11 +17,11 @@ const statusNames: Record<number, string> = { 1: 'CORRECT', 2: 'WRONG_ANSWER', 3
  * contest's clock. The review shows three rejudged submissions of the demo contest, one already restored.
  */
 export function createControlPreview(env: Environment, version: string, demo: () => BoardData,
-    board: { get: () => BoardSettings; set: (settings: BoardSettings) => Promise<void> }, reactions?: ReturnType<typeof import('./reactions').createReactionsPreview>) {
+    board: { get: () => BoardSettings; set: (settings: BoardSettings) => Promise<void> },
+    modules: { balloons: { get(): BalloonSettings; save(patch: object): void }; capture: { get(): CaptureSettings; save(patch: object): void } },
+    reactions?: ReturnType<typeof import('./reactions').createReactionsPreview>) {
     const codeBase = resolverCodeBase(version);
     const base = '/contest/demo';
-    let balloons = { ...defaultBalloonSettings(), enabled: true };
-    let capture = { ...defaultCaptureSettings(), enabled: true, screenDuringContest: false };
     let allowPrint = true;
     let unlocked = false;
 
@@ -81,6 +81,7 @@ export function createControlPreview(env: Environment, version: string, demo: ()
 
     function state(phase: string) {
         const settings = board.get();
+        const balloons = modules.balloons.get(), capture = modules.capture.get();
         const contest = times(phase);
         const summary = review(new URL('http://preview/'));
         return {
@@ -102,7 +103,7 @@ export function createControlPreview(env: Environment, version: string, demo: ()
                 settings: `${base}/xcpcio-settings`, board: `${base}/scoreboard/xcpcio-plus`, publicBoard: settings.publicAccess ? `${base}/xcpcio-public` : null,
                 results: `${base}/results`, review: `${base}/rejudge-review`, resolver: `${base}/resolver`, screens: `${base}/screens`, balloons: `${base}/balloons`,
                 reactions: `${base}/reactions/manage`, live: `${base}/live`, capture: `${base}/live/capture`, presence: `${base}/presence`, monitor: `${base}/monitor`, overview: `${base}/overview`,
-                desk: `${base}/clarification-desk`, printers: '/manage/xcpcio-printers', rejudge: '/manage/xcpcio-rejudge', edit: `${base}/edit`,
+                desk: `${base}/clarification-desk`, seats: '/manage/xcpcio-users#seats', judges: '/manage/xcpcio-judges', printers: '/manage/xcpcio-printers', rejudge: '/manage/xcpcio-rejudge', edit: `${base}/edit`,
             },
         };
     }
@@ -137,16 +138,16 @@ export function createControlPreview(env: Environment, version: string, demo: ()
         try {
             const { operation, payload } = await operate(request);
             if (operation === 'board') await board.set(patchBoard(board.get(), payload));
-            else if (operation === 'balloons') balloons = normalizeBalloonSettings(payload, [100, 101, 102], balloons);
+            else if (operation === 'balloons') modules.balloons.save(payload);
             else if (operation === 'reactions') reactions?.setPublic(payload.enabled===true);
-            else if (operation === 'capture') capture = normalizeCaptureSettings(payload, capture);
+            else if (operation === 'capture') modules.capture.save(payload);
             else if (operation === 'print') allowPrint = payload.allowPrint === true;
             else if (operation === 'unlock') unlocked = true;
             else if (operation === 'preset') {
                 const id = payload.id as PresetId;
                 if (!presetIds.includes(id)) throw new Error('未知的赛制');
                 await board.set(patchBoard(board.get(), presets[id].board as Record<string, unknown>));
-                balloons = normalizeBalloonSettings(presets[id].balloons, [100, 101, 102], balloons);
+                modules.balloons.save(presets[id].balloons);
             } else if (operation === 'restore') {
                 const restore = payload.restore !== false;
                 for (const rid of (payload.rids as string[]) || []) {

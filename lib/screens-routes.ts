@@ -414,5 +414,5 @@ export function applyScreens(ctx: Context, dependencies: {
     ctx.Route('contest_xcpcio_screen_data', '/contest/:tid/screen/:token/:type/data', ScreenDataHandler);
     ctx.Route('contest_xcpcio_screen_reaction', '/contest/:tid/screen/:token/:type/videos/:vid', ScreenReactionHandler);
     ctx.Route('contest_xcpcio_screen_image', '/contest/:tid/screen/:token/:type/images/:mid', ScreenImageHandler);
-    ctx.i18n.load('zh', { contest_xcpcio_screens: '大屏' });
+    ctx.i18n.load('zh', { contest_xcpcio_screens: '大屏画面与链接' });
 }

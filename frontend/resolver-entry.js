@@ -4,23 +4,23 @@ const reactionsEntryId = 'xcpcio-reactions-entry';
 const controlEntryId = 'xcpcio-control-entry';
 const entries = (url, { live = true, capture = false } = {}) => [
     // 赛事中控: the settings of every page below that a contest day needs, in one place.
-    [controlEntryId, url.replace(/\/resolver$/, '/control'), 'icon-settings', '赛事中控'],
+    [controlEntryId, url.replace(/\/resolver$/, '/control'), 'icon-settings', '比赛配置与工作台'],
     // One place for the boards and every award the board, the resolver, the screens and the broadcast use.
-    [entryIds[6], url.replace(/\/resolver$/, '/xcpcio-settings'), 'icon-award', '榜单与奖项'],
-    [resultsEntryId, url.replace(/\/resolver$/, '/results'), 'icon-download', '成绩与导出'],
-    [entryIds[0], url, 'icon-statistics', '滚榜'],
-    [entryIds[1], url.replace(/\/resolver$/, '/screens'), 'icon-preview', '大屏'],
+    [entryIds[6], url.replace(/\/resolver$/, '/xcpcio-settings'), 'icon-award', '榜单规则与奖项'],
+    [resultsEntryId, url.replace(/\/resolver$/, '/results'), 'icon-download', '成绩快照与导出'],
+    [entryIds[0], url, 'icon-statistics', '滚榜预演与播放'],
+    [entryIds[1], url.replace(/\/resolver$/, '/screens'), 'icon-preview', '大屏画面与链接'],
     // Which teams are owed which balloons, by room and problem; receipt tickets for the runners.
-    [entryIds[7], url.replace(/\/resolver$/, '/balloons'), 'icon-balloon', '气球配送'],
-    ...live ? [[entryIds[2], url.replace(/\/resolver$/, '/live'), 'icon-play', '直播']] : [],
+    [entryIds[7], url.replace(/\/resolver$/, '/balloons'), 'icon-balloon', '气球配送与小票'],
+    ...live ? [[entryIds[2], url.replace(/\/resolver$/, '/live'), 'icon-play', '直播导播与 OBS']] : [],
     // 画面采集: contestants' screens and webcams (with the live module and its plugin setting).
-    ...live && capture ? [[entryIds[3], url.replace(/\/resolver$/, '/live/capture'), 'icon-security', '画面采集']] : [],
-    ...live && capture ? [[reactionsEntryId, url.replace(/\/resolver$/, '/reactions/manage'), 'icon-play', '反应视频']] : [],
+    ...live && capture ? [[entryIds[3], url.replace(/\/resolver$/, '/live/capture'), 'icon-security', '采集设备与录像']] : [],
+    ...live && capture ? [[reactionsEntryId, url.replace(/\/resolver$/, '/reactions/manage'), 'icon-play', '反应视频与渲染']] : [],
     // Which contestant computers are on, and which look wrong (check-in before the start).
-    [entryIds[8], url.replace(/\/resolver$/, '/presence'), 'icon-user--multiple', '机位监控'],
-    [entryIds[4], url.replace(/\/resolver$/, '/monitor'), 'icon-stopwatch', '评测监控'],
+    [entryIds[8], url.replace(/\/resolver$/, '/presence'), 'icon-user--multiple', '机位签到与监控'],
+    [entryIds[4], url.replace(/\/resolver$/, '/monitor'), 'icon-stopwatch', '评测队列与监控'],
     [entryIds[5], url.replace(/\/resolver$/, '/overview'), 'icon-pie-chart', '赛况总览'],
-    [entryIds[9], url.replace(/\/resolver$/, '/clarification-desk'), 'icon-comment', '答疑台'],
+    [entryIds[9], url.replace(/\/resolver$/, '/clarification-desk'), 'icon-comment', '答疑与公告'],
 ];
 const removeEntries = () => { for (const id of [...entryIds, resultsEntryId, controlEntryId, reactionsEntryId]) document.getElementById(id)?.remove(); };
 

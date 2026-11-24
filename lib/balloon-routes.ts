@@ -660,7 +660,7 @@ export function applyBalloons(ctx: Context, dependencies: {
     ctx.Route('contest_xcpcio_balloons_data', '/contest/:tid/balloons/data', BalloonsDataHandler);
     ctx.Route('contest_xcpcio_balloon_desk', '/contest/:tid/balloon-desk/:token', BalloonDeskHandler);
     ctx.Route('contest_xcpcio_balloon_desk_data', '/contest/:tid/balloon-desk/:token/data', BalloonDeskDataHandler);
-    ctx.i18n.load('zh', { contest_xcpcio_balloons: '气球配送', contest_xcpcio_balloon_desk: '气球配送' });
+    ctx.i18n.load('zh', { contest_xcpcio_balloons: '气球配送与小票', contest_xcpcio_balloon_desk: '气球配送' });
 
     return {
         receipts,

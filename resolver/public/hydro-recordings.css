@@ -17,3 +17,6 @@
 .record-chart figcaption { color: var(--manage-muted); }
 .record-ok { color: #23795b; }
 .record-warn { color: #95691c; }
+.record-utilization, .record-key { display: inline-flex; align-items: center; gap: .4em; }
+.record-key::before { content: ''; width: 1.2rem; height: .5rem; background: #257f70; }
+.record-key--gap::before { background: repeating-linear-gradient(135deg, #b88745 0 2px, transparent 2px 5px); }

@@ -25,7 +25,7 @@ const themed = [
     '/manage/xcpcio-users', '/manage/xcpcio-users#seats', '/manage/xcpcio-judges', '/manage/xcpcio-rejudge', '/manage/xcpcio-printers',
     `${contest}/clarification-desk`, ...['recordings', 'settings', 'tests'].map((tab) => `${contest}/live/capture#${tab}`),
     `${contest}/reactions/manage`, `${contest}/reactions/manage/layouts`, `${contest}/reactions`,
-    `${contest}/results`, `${contest}/control`, `${contest}/rejudge-review`,
+    `${contest}/results`, `${contest}/control`, ...['access', 'venue', 'media', 'recording', 'work'].map(key => `${contest}/control#${key}`), `${contest}/rejudge-review`,
 ];
 const plain = [`${contest}/live-capture/me?as=1`, `${contest}/problems?as=1`, `${contest}/presence?phase=before`,
     ...['controls', 'capture', 'scoreboard', 'ticker', 'teamSpotlight', 'contestInfo'].map((page) => `${contest}/live/admin/${page}`), `${contest}/live/admin`];
@@ -36,6 +36,8 @@ const ignoredConsole = /favicon|404 \(Not Found\)|NotAllowedError|Permission den
 
 const failures = [];
 const fail = (where, message) => failures.push(`${where}: ${message}`);
+
+const check = (where, ok, message) => { if (!ok) fail(where, message); };
 
 function freePort() {
     return new Promise((resolve, reject) => {
@@ -91,7 +93,14 @@ async function sweep(browser, base) {
         const where = `${url} @${width}${theme === 'dark' ? ' dark' : ''}`;
         const context = await browser.newContext({ viewport: { width, height } });
         try {
-            const page = await open(context, base, theme === 'dark' ? `${url}${url.includes('?') ? '&' : '?'}theme=dark` : url, where);
+            const target = new URL(url, base);
+            if (theme === 'dark') target.searchParams.set('theme', 'dark');
+            const page = await open(context, base, target.pathname + target.search + target.hash, where);
+            if (target.pathname.endsWith('/control')) {
+                const key = target.hash || '#rules';
+                await page.locator('#control-nav a[aria-current="page"][href="' + key + '"]').waitFor();
+                check(where, await page.locator('html').evaluate(e => e.classList.contains('theme--dark')) === (theme === 'dark'), 'wrong theme');
+            }
             await page.waitForTimeout(1500);
             await checkLayout(page, where, options);
         } catch (error) { fail(where, error.message.split('\n')[0]); } finally { await context.close(); }
@@ -161,12 +170,69 @@ async function broadcastStyles(browser, base) {
     } finally { await context.close(); }
 }
 
+// The settings and specialist workspaces share one contest and the same save endpoints.
+async function configuration(context, base) {
+    const where = 'control';
+    const control = await open(context, base, `${contest}/control?phase=sealed`, where);
+    const category = (label) => control.getByRole('navigation', { name: '比赛配置分类' }).getByRole('link', { name: label });
+    await category('公开与访问').click();
+    const help = control.getByRole('button', { name: '公开选手屏幕帮助' });
+    await help.hover();
+    await control.getByRole('tooltip').waitFor();
+    await control.emulateMedia({ reducedMotion: 'reduce' });
+    check(where, await control.getByRole('tooltip').evaluate(node => getComputedStyle(node).animationName) === 'none', 'help animates with reduced motion');
+    check(where, await control.locator('#manage-root').evaluate(node => getComputedStyle(node).animationName) === 'none', 'category animates with reduced motion');
+    await control.emulateMedia({ reducedMotion: null });
+    await category('公开与访问').hover();
+    await control.getByRole('tooltip').waitFor({ state: 'hidden' });
+    await help.focus();
+    await control.getByRole('tooltip').waitFor();
+    await help.press('Escape');
+    await control.getByRole('tooltip').waitFor({ state: 'hidden' });
+    await category('现场服务').click();
+    await control.getByRole('link', { name: '气球颜色与小票分单' }).click();
+    await control.getByRole('button', { name: '从 Hydro 气球颜色导入' }).waitFor();
+    check(where, (await control.getByRole('tab', { name: '设置' }).getAttribute('aria-selected')) === 'true', 'balloon settings tab not selected');
+    await control.goBack();
+    await category('录制与存储').click();
+    const bandwidth = control.getByLabel('上行 / Mbps', { exact: true });
+    const previous = await bandwidth.inputValue();
+    await bandwidth.fill('80');
+    await control.getByRole('button', { name: '保存录制设置' }).click();
+    await control.getByText('录制设置已保存', { exact: true }).waitFor();
+    const captureSettings = await context.newPage();
+    await captureSettings.goto(base + contest + '/live/capture#settings');
+    const persisted = captureSettings.getByLabel('上行 / Mbps', { exact: true });
+    check(where, await persisted.inputValue() === '80', 'recording settings differ between configuration and capture');
+    await captureSettings.close();
+    await bandwidth.fill(previous);
+    await control.getByRole('button', { name: '保存录制设置' }).click();
+    await category('采集与播出').click();
+    await control.getByRole('link', { name: '媒体机连接' }).click();
+    await control.getByRole('button', { name: '创建连接', exact: true }).waitFor();
+    await control.goBack();
+    await category('赛制与奖项').click();
+    await control.getByRole('radio', { name: 'CCPC' }).click();
+    await control.getByRole('button', { name: '改用', exact: true }).click();
+    await control.getByRole('status').filter({ hasText: '已改用 CCPC 赛制' }).waitFor();
+    check(where, await control.getByLabel('同分规则').inputValue() === 'ccpc', 'the 赛制 did not change the ranking rule');
+    check(where, await control.getByLabel('封榜前隐藏题号').isChecked(), 'the CCPC board is off');
+    await control.getByLabel('过题达到').fill('5');
+    await control.getByLabel('过题达到').press('Tab');
+    await control.getByRole('status').filter({ hasText: '已保存' }).waitFor();
+    const hidden = await (await context.request.get(`${base}${contest}/xcpcio-public?json=true&running=1`)).json();
+    check(where, JSON.stringify(hidden.contest.problem_id) === JSON.stringify(['A', 'C', '']) && hidden.hiddenFrom === 2, 'the board shows hidden labels');
+    await control.getByRole('button', { name: '解除封榜' }).click();
+    await control.getByRole('button', { name: '解除封榜', exact: true }).last().click();
+    await control.getByRole('status').filter({ hasText: '已解除封榜' }).waitFor();
+    await checkLayout(control, where);
+}
+
 async function interactions(browser, base) {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, permissions: ['camera', 'microphone'] });
-    const check = (where, ok, message) => { if (!ok) fail(where, message); };
+    let where = 'capture';
     try {
         // 画面采集: enable, add devices by seat and one in another zone, filter by seat prefix.
-        let where = 'capture';
         const manage = await open(context, base, `${contest}/live/capture`, where);
         await manage.waitForTimeout(1000);
         if ((await manage.locator('.capture-switch button').innerText()) === '启用') await manage.locator('.capture-switch button').click();
@@ -443,24 +509,9 @@ async function interactions(browser, base) {
         check(where, (await review.locator('tbody tr', { hasText: 's-13' }).innerText()).includes('已恢复原结果'), 'the restore did not show');
         check(where, (await review.getByText('基于旧结果').count()) === 2, 'sessions built before the restore are not flagged');
         await checkLayout(review, where);
-        // 赛事中控 last: the CCPC 赛制 changes the shared board settings, and the board hides labels before the freeze.
         where = 'control';
-        const control = await open(context, base, `${contest}/control?phase=sealed`, where);
-        await control.getByRole('radio', { name: 'CCPC' }).click();
-        await control.getByRole('button', { name: '改用', exact: true }).click();
-        await control.getByRole('status').filter({ hasText: '已改用 CCPC 赛制' }).waitFor();
-        check(where, await control.getByLabel('同分规则').inputValue() === 'ccpc', 'the 赛制 did not change the ranking rule');
-        check(where, await control.getByLabel('封榜前隐藏题号').isChecked(), 'the CCPC board is off');
-        await control.getByLabel('过题达到').fill('5');
-        await control.getByLabel('过题达到').press('Tab');
-        await control.getByRole('status').filter({ hasText: '已保存' }).waitFor();
-        const hidden = await (await context.request.get(`${base}${contest}/xcpcio-public?json=true&running=1`)).json();
-        check(where, JSON.stringify(hidden.contest.problem_id) === JSON.stringify(['A', 'C', '']) && hidden.hiddenFrom === 2, 'the board shows hidden labels');
-        await control.getByRole('button', { name: '解除封榜' }).click();
-        await control.getByRole('button', { name: '解除封榜', exact: true }).last().click();
-        await control.getByRole('status').filter({ hasText: '已解除封榜' }).waitFor();
-        await checkLayout(control, where);
-    } catch (error) { fail('interactions', error.message.split('\n')[0]); } finally { await context.close(); }
+        await configuration(context, base);
+    } catch (error) { fail(where, error.stack || error.message); } finally { await context.close(); }
 }
 
 const statePath = path.join(await mkdtemp(path.join(tmpdir(), 'xcpcio-ui-')), 'preview-state.json');
@@ -477,6 +528,10 @@ try {
     // UI_SMOKE=interactions skips the page sweep while working on an interaction.
     const mode = process.env.UI_SMOKE;
     if (!mode) await sweep(browser, base);
+    if (mode === 'control') {
+        const context = await browser.newContext();
+        try { await configuration(context, base); } finally { await context.close(); }
+    }
     if (mode === 'venue') await venueWorkflow(browser, base, contest);
     if (!mode || mode === 'resolver') console.log('Resolver audience', JSON.stringify(await resolverAudience(browser, base)));
     if (!mode || mode === 'live') await broadcastStyles(browser, base);

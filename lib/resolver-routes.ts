@@ -202,7 +202,7 @@ export function applyResolver(ctx: Context, dependencies: {
         if (!handler.user.own(tdoc) && !handler.user.hasPerm(PERM.PERM_EDIT_CONTEST)) return;
         handler.UiContext.xcpcioResolverUrl = `/d/${encodeURIComponent(handler.domain._id)}/contest/${tdoc.docId}/resolver`;
     });
-    ctx.i18n.load('zh', { contest_resolver: '滚榜', contest_resolver_play: '滚榜播放' });
+    ctx.i18n.load('zh', { contest_resolver: '滚榜预演与播放', contest_resolver_play: '滚榜播放' });
     return {
         /** Every resolver session of the contest, whoever created it. */
         ofContest: (tdoc: Tdoc) => sessions.ofContest(tdoc.domainId, String(tdoc.docId)),

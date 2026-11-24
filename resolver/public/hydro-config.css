@@ -1,3 +1,4 @@
+@import "./hydro-ui.css";
 /* HydroXCPCIO configuration uses Hydro's own sections, forms and buttons. */
 #hydro-resolver-config [hidden] { display: none !important; }
 #hydro-resolver-config .resolver-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; }
@@ -42,3 +43,9 @@
 #hydro-resolver-config dialog::backdrop { background:#0008; }
 #hydro-resolver-config dialog h2 { font-size:18px; margin-bottom:16px; }
 .theme--dark #hydro-resolver-config dialog { background:#323334; color:#ddd; }
+#hydro-resolver-config .xc-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .45rem; }
+#hydro-resolver-config :is(button, input, select, textarea) { font-family: inherit; }
+@media (max-width: 600px) {
+    #hydro-resolver-config .resolver-heading { align-items: flex-start; flex-wrap: wrap; gap: .6rem; }
+    #hydro-resolver-config .xc-actions { justify-content: flex-start; }
+}

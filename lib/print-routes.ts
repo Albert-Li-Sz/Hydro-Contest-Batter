@@ -589,6 +589,6 @@ export function applyPrintServers(ctx: Context, dependencies: { receipts?: Recei
     ctx.Connection('manage_xcpcio_printers_ws', '/manage/xcpcio-printers/ws', PrintersSocketHandler);
     // Right below 评测机控制.
     ctx.injectUI('ControlPanel', 'manage_xcpcio_printers', { before: 'manage_xcpcio_rejudge' }, PRIV.PRIV_EDIT_SYSTEM);
-    ctx.i18n.load('zh', { manage_xcpcio_printers: '打印服务器管理' });
+    ctx.i18n.load('zh', { manage_xcpcio_printers: '打印设备与队列' });
     ctx.i18n.load('en', { manage_xcpcio_printers: 'Print Servers' });
 }

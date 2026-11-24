@@ -1,0 +1,40 @@
+.xc-help {
+    display: inline-grid; place-items: center; vertical-align: middle; margin-inline-start: .35em;
+    width: 1.65em; height: 1.65em; border-radius: 50%; border: 1px solid currentColor;
+    background: transparent; color: inherit; opacity: .72; font: inherit; font-size: .8em;
+    line-height: 1; padding: 0; cursor: help;
+}
+.xc-help:hover, .xc-help:focus-visible { color: #247bbb; opacity: 1; }
+.xc-help-text {
+    position: fixed; z-index: 10000; width: max-content; max-width: min(20rem, calc(100vw - 16px));
+    box-sizing: border-box; padding: .55em .8em; border-radius: 3px;
+    color: #fff; background: #283442; box-shadow: 0 2px 8px #0003;
+    font-family: inherit; font-size: .85rem; line-height: 1.6; overflow-wrap: anywhere;
+}
+.xc-meter { --xc-color: #4391c5; --xc-track: rgba(126, 143, 157, .23); display: inline-flex;
+    gap: .55em; align-items: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.xc-meter > i { flex: none; }
+.xc-meter--bar > i { width: clamp(2.5rem, 5vw, 5rem); height: .38rem; overflow: hidden;
+    border-radius: 10px; background: var(--xc-track); }
+.xc-meter--bar > i::after { content: ''; display: block; background: var(--xc-color); width: var(--xc-fill); height: 100%; border-radius: inherit; }
+.xc-meter--ring > i { width: 1.8em; height: 1.8em; border-radius: 50%;
+    background: conic-gradient(var(--xc-color) var(--xc-fill), var(--xc-track) 0);
+    mask: radial-gradient(farthest-side, transparent 62%, #000 65%); }
+.xc-meter--ok { --xc-color: #45966c; }
+.xc-meter--warn { --xc-color: #b37f26; }
+.xc-meter--bad { --xc-color: #d15c4f; }
+.xc-meter--unknown > i { opacity: .55; }
+@media (forced-colors: active) {
+    .xc-meter { --xc-color: Highlight; --xc-track: GrayText; }
+    .xc-meter > i, .xc-meter > i::after { forced-color-adjust: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+    .xc-help-text { animation: xc-fade .12s ease-out; }
+    .xc-meter--bar > i::after { transition: width .18s ease-out; }
+    #hydro-resolver-config :is(.button, .manage-tabs button, .rx-tabs button, .manage-segments button) {
+        transition: background-color .14s, color .14s, border-color .14s;
+    }
+    @keyframes xc-fade { from { opacity: 0; } to { opacity: 1; } }
+}
+.xc-field-help { position: relative; padding-inline-end: 1.6em; }
+.xc-field-help > .xc-help { position: absolute; inset-inline-end: 0; top: 0; }

@@ -14,5 +14,6 @@
   <div class="nav__list"><span class="preview-caption">本地功能预览</span><button id="preview-theme" type="button" aria-label="切换深色模式">切换深色</button></div>
 </div></nav>
 <div id="panel" class="preview-shell"><main class="main">{% block content %}{% endblock %}</main><footer class="preview-footer">Hydro · XCPCIO 增强榜 · 本地预览</footer></div>
-<script>document.getElementById('preview-theme').addEventListener('click', () => {const dark = document.documentElement.classList.toggle('theme--dark');localStorage.setItem('xcpcio-preview-theme', dark ? 'dark' : 'light');});</script>
+<script>const heading = document.querySelector('main h1'); if (heading) document.title = heading.textContent.trim() + ' · Hydro 预览';
+document.getElementById('preview-theme').addEventListener('click', () => {const dark = document.documentElement.classList.toggle('theme--dark');localStorage.setItem('xcpcio-preview-theme', dark ? 'dark' : 'light');});</script>
 </body></html>

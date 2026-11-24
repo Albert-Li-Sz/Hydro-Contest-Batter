@@ -199,5 +199,5 @@ export function applyPresence(ctx: Context) {
     ctx.Route('contest_xcpcio_presence', '/contest/:tid/presence', PresenceHandler);
     ctx.Route('contest_xcpcio_presence_data', '/contest/:tid/presence/data', PresenceDataHandler);
     ctx.Route('contest_xcpcio_presence_beat', '/contest/:tid/presence/beat', BeatHandler);
-    ctx.i18n.load('zh', { contest_xcpcio_presence: '机位监控' });
+    ctx.i18n.load('zh', { contest_xcpcio_presence: '机位签到与监控' });
 }

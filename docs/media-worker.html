@@ -45,7 +45,7 @@
       <section id="prepare">
         <h2>准备比赛和媒体机</h2>
         <dl class="entries">
-          <div><dt>Hydro 服务器</dt><dd>安装 Hydro 插件 v1.21.2，使用 ACM 比赛。比赛所有者或有「编辑比赛」权限的账号负责配置。若侧边栏没有相应入口，请系统管理员确认插件的「启用直播模块」和「启用直播的画面采集」两个开关。<a href="./#install">插件安装与升级</a></dd></div>
+          <div><dt>Hydro 服务器</dt><dd>安装 Hydro 插件 v1.22.0，使用 ACM 比赛。比赛所有者或有「编辑比赛」权限的账号负责配置。若侧边栏没有相应入口，请系统管理员确认插件的「启用直播模块」和「启用直播的画面采集」两个开关。<a href="./#install">插件安装与升级</a></dd></div>
           <div><dt>媒体机</dt><dd>准备一台能访问比赛站点和容器仓库的电脑，为下载片段和编码输出留出磁盘。Linux 可使用 Docker Engine 和 Compose 插件；Windows、macOS 可使用 Docker Desktop 的 Linux 容器。<a href="https://docs.docker.com/compose/install/">Docker Compose 安装说明</a></dd></div>
           <div><dt>选手机</dt><dd>使用可共享整个屏幕的桌面 Chrome 或 Edge，通过 HTTPS 访问比赛。比赛启用摄像头时，还需要相应设备和浏览器授权。赛前在参赛须知写明录制内容、保存期限、联系人和公开范围。</dd></div>
         </dl>
@@ -59,7 +59,7 @@
       <section id="install">
         <h2>用 Docker Compose 启动</h2>
         <h3>为这台媒体机创建连接</h3>
-        <p>进入 <strong>比赛侧边栏 → 反应视频 → 媒体机</strong>。在「媒体机名称」输入这台机器的名字，点「创建连接」，再点「复制 .env 配置」即可取得完整配置行。若选择「复制连接码」，整串以 <code>hydro-reactions:</code> 开头，只在创建或更换密钥时显示。第二台机器请另建连接，方便赛后单独撤销。</p>
+        <p>进入 <strong>比赛侧边栏 → 反应视频与渲染 → 媒体机</strong>。在「媒体机名称」输入这台机器的名字，点「创建连接」，再点「复制 .env 配置」即可取得完整配置行。若选择「复制连接码」，整串以 <code>hydro-reactions:</code> 开头，只在创建或更换密钥时显示。第二台机器请另建连接，方便赛后单独撤销。</p>
         <figure class="guide-shot">
           <a href="./images/media-worker/api-controls.jpg"><img width="588" height="299" src="./images/media-worker/api-controls.jpg" alt="媒体机管理页中的机器名称、创建连接及逐台更换密钥与撤销连接操作。" loading="lazy" decoding="async"></a>
           <figcaption>演示比赛的媒体机管理页。创建连接后点「复制 .env 配置」，把整行交给这台机器的操作员。</figcaption>
@@ -87,7 +87,7 @@ docker compose ps</code></pre>
         <p>配置校验成功时无输出。公共镜像包含 <code>linux/amd64</code> 和 <code>linux/arm64</code> 两种架构，可匿名拉取。首次拉取 <code>ghcr.io/albert-li-sz/reactions-generator-hydro:1.21.2</code> 后，<code>ps</code> 中的 <code>reactions</code> 服务应处于运行状态。FFmpeg 和中文字体随镜像提供，默认使用 CPU。工作目录中的 <code>out</code> 保存本机编码输出和重试标记。<a href="https://github.com/users/Albert-Li-Sz/packages/container/package/reactions-generator-hydro">查看公开镜像与标签</a></p>
         <figure class="guide-shot">
           <a href="./images/media-worker/compose-start.svg"><img width="640" height="337" src="./images/media-worker/compose-start.svg" alt="测试时先看到镜像 Pulled，再看到 reactions 容器 Started，随后回到 Hydro 检查在线心跳。" loading="lazy" decoding="async"></a>
-          <figcaption>Compose 实测输出摘录。容器名称前缀由项目名决定。看到 Started 后，到「反应视频 → 媒体机」确认它已连上本场比赛。</figcaption>
+          <figcaption>Compose 实测输出摘录。容器名称前缀由项目名决定。看到 Started 后，到「反应视频与渲染 → 媒体机」确认它已连上本场比赛。</figcaption>
         </figure>
         <details>
           <summary>核对 v1.21.2 镜像与实测结果</summary>
@@ -116,7 +116,7 @@ awk -v file="$archive" '$2 == file' reactions-generator-hydro-1.21.2-images.SHA2
         </details>
         <details>
           <summary>更换单台媒体机的密钥</summary>
-          <p>在「反应视频 → 媒体机」找到该机器，点「更换密钥」，复制新的连接码并替换该机 <code>.env</code> 中的 <code>HYDRO_MEDIA_CONNECTION</code>。旧码立即失效。执行下列命令让服务重新读取文件，然后回到管理页核对心跳。</p>
+          <p>在「反应视频与渲染 → 媒体机」找到该机器，点「更换密钥」，复制新的连接码并替换该机 <code>.env</code> 中的 <code>HYDRO_MEDIA_CONNECTION</code>。旧码立即失效。执行下列命令让服务重新读取文件，然后回到管理页核对心跳。</p>
           <pre><code>docker compose up -d --force-recreate
 docker compose logs --tail=50 reactions</code></pre>
           <figure class="guide-shot">
@@ -128,7 +128,7 @@ docker compose logs --tail=50 reactions</code></pre>
 
       <section id="heartbeat">
         <h2>确认媒体机上线</h2>
-        <p>回到 <strong>反应视频 → 媒体机</strong>，在「媒体机心跳」旁点击「刷新」。找到带有 <code>reactions-01</code> 的机器名，核对版本、分区 <code>0/1</code> 和「在线」。媒体机每 15 秒更新心跳；距上次心跳满一分钟时，页面会显示「离线」。</p>
+        <p>回到 <strong>反应视频与渲染 → 媒体机</strong>，在「媒体机心跳」旁点击「刷新」。找到带有 <code>reactions-01</code> 的机器名，核对版本、分区 <code>0/1</code> 和「在线」。媒体机每 15 秒更新心跳；距上次心跳满一分钟时，页面会显示「离线」。</p>
         <figure class="guide-shot"><a href="./images/media-worker/media-worker.png"><img width="588" height="142" src="./images/media-worker/media-worker.png" alt="媒体机心跳显示分区 0/1、在线状态及队列 0" loading="lazy"></a><figcaption>这张示例截图展示在线状态、分区和队列。上线后请核对列表中的实际版本。</figcaption></figure>
         <p>新比赛的队列可以为 0。下一步让一条真实提交产生片段，就能检查完整流程。</p>
       </section>
@@ -136,15 +136,25 @@ docker compose logs --tail=50 reactions</code></pre>
       <section id="record">
         <h2>录制第一条提交</h2>
         <ol>
-          <li>管理员进入 <strong>画面采集 → 采集设备</strong>，启用本场采集，并将测试机位绑定到参赛队伍或对应座位。</li>
+          <li>管理员进入 <strong>采集设备与录像 → 采集设备</strong>，启用本场采集，并将测试机位绑定到参赛队伍或对应座位。</li>
           <li>进入 <strong>录制设置 → 提交片段</strong>，勾选「录制提交片段」，首次测试选「所有判完的提交」，点击「保存录制设置」。需要整场审阅时，可另行启用<a href="#screen-archive">屏幕和摄像头全程留档</a>。</li>
           <li>在该队的采集窗口点「开始采集」，选择整个屏幕，按本场要求授权摄像头，保持窗口打开。先让它录满提交前的时间窗，默认 20 秒。</li>
-          <li>用同一队伍在<strong>正式比赛时间内</strong>提交一份可评测的程序。默认截取到通过判定后 40 秒，其他结果后 10 秒。等后段录完并上传，再进入 <strong>画面采集 → 录像</strong> 查看该提交。</li>
+          <li>用同一队伍在<strong>正式比赛时间内</strong>提交一份可评测的程序。默认截取到通过判定后 40 秒，其他结果后 10 秒。等后段录完并上传，再进入 <strong>采集设备与录像 → 录像</strong> 查看该提交。</li>
         </ol>
         <figure class="guide-shot"><a href="./images/media-worker/recording-settings.png"><img width="1172" height="402" src="./images/media-worker/recording-settings.png" alt="录制设置页中的提交片段、录制范围和画质设置" loading="lazy"></a><figcaption>截图展示提交片段的画质和时间窗，录制范围决定哪些判题会请求上传。全程留档的画质在同一页下方单独设置。</figcaption></figure>
         <h3 id="screen-archive">配置屏幕和摄像头全程留档</h3>
+          <p>从「比赛配置与工作台 → 录制与存储」打开本场设置。也可以在「采集设备与录像 → 录制设置」进入相同表单。在「采集与播出」启用画面采集和摄像头后，选手机分别授权两个来源。</p>
+        <figure class="guide-shot">
+          <a href="./images/manual/recording-archive-settings.jpg"><img src="./images/manual/recording-archive-settings.jpg" width="688" height="253" loading="lazy" alt="全程留档表单分别设置屏幕和摄像头，两路均为 720p、24 fps、1200 kbps"></a>
+          <figcaption>勾选「录制全程留档」，为两路分别选择「高清留档」。问号显示编码回退顺序，点击表单末尾的「保存录制设置」生效。</figcaption>
+        </figure>
+          <p>在「带宽与存储」填写现场测得的上行带宽、预计每队提交数和通过数。下图以 8 支队伍、5 小时、40 Mbps 上行为例，两路全程留档加提交片段的估计峰值为 60.60 Mbps，已超过上行。可调整码率或上行容量，再到「测试」用实际机位试录并检查积压。</p>
+        <figure class="guide-shot">
+          <a href="./images/manual/recording-capacity.jpg"><img src="./images/manual/recording-capacity.jpg" width="948" height="387" loading="lazy" alt="峰值上行占用 151.5% 的圆环，四种录像来源各自的预计存储量和占比条"></a>
+          <figcaption>示例中的 47.72 GB 是按这场比赛参数估算的容量。实测码率、比赛时长和片段数都会改变结果。</figcaption>
+        </figure>
         <ol>
-          <li>打开 <strong>画面采集 → 采集设备</strong> 确认屏幕和摄像头都已启用。新比赛两路的采集目标均为 <strong>1080p、30 fps</strong>。在 <strong>录制设置 → 全程留档</strong> 勾选「录制全程留档」，核对「留档 · 屏幕」和「留档 · 摄像头」后保存。</li>
+          <li>打开 <strong>采集设备与录像 → 采集设备</strong> 确认屏幕和摄像头都已启用。新比赛两路的采集目标均为 <strong>1080p、30 fps</strong>。在 <strong>录制设置 → 全程留档</strong> 勾选「录制全程留档」，核对「留档 · 屏幕」和「留档 · 摄像头」后保存。</li>
           <li>新比赛的屏幕与摄像头分别使用<strong>「高清留档」</strong>，目标为 <strong>720p、24 fps、1200 kbps</strong>。机位先用最多 <strong>2 秒</strong>的短段确认编码，成功后保存该段，随后每 <strong>60 秒</strong> 分段，停止录制时保存尾段。保持机位共享约 65 秒，再到「录像」的队伍留档时间轴分别点开屏幕和摄像头的常规段，核对播放器下方的实际编码、分辨率，并试播或下载。测试无需提交代码。</li>
           <li>「高清留档」按 <strong>H.265（HEVC）→ AV1 → H.264（AVC）</strong> 的顺序尝试编码。两路各自选取编码。一条源不可用时，另一条已授权的画面可继续录制。用现场选手机实际试录，再用工作人员的浏览器验证回看。新配置的「上传积压时自动降低画质」默认关闭，可按热身赛结果手动开启。</li>
         </ol>
@@ -156,7 +166,7 @@ docker compose logs --tail=50 reactions</code></pre>
         <p>录像状态会从「等待上传」「上传中」变为「已就绪」。点「查看」可分别播放屏幕和摄像头。若某一路只有部分覆盖，管理页会标为「部分缺失」，合成时缺段可出现背景占位。</p>
         <details>
           <summary>热身赛怎样试录和测带宽？</summary>
-          <p>进入「画面采集 → 测试」，先选一台在线设备，点「开始设备自检」，约 30 秒后核对分路码率、掉帧和上传吞吐。再选 3–15 分钟的全场压力测试，比较峰值、P95、最大积压及失败率。点击「测试存储写入与读回」可单独测量 Hydro 存储。试录媒体随测试清理，报告留存；首次出片仍需要本场队伍的一条有效提交。</p>
+          <p>进入「采集设备与录像 → 测试」，先选一台在线设备，点「开始设备自检」，约 30 秒后核对分路码率、掉帧和上传吞吐。再选 3–15 分钟的全场压力测试，比较峰值、P95、最大积压及失败率。点击「测试存储写入与读回」可单独测量 Hydro 存储。试录媒体随测试清理，报告留存；首次出片仍需要本场队伍的一条有效提交。</p>
           <figure class="guide-shot">
             <a href="./images/media-worker/warmup-controls.jpg"><img width="650" height="327" src="./images/media-worker/warmup-controls.jpg" alt="「测试」页有设备自检、压力测试时长、每队模拟提交间隔，以及单独的存储读写测试按钮。" loading="lazy" decoding="async"></a>
             <figcaption>演示比赛的测试页。图中压力测试时长为 3 分钟，每队模拟提交间隔为 180 秒，可按热身赛规模调整。</figcaption>
@@ -167,9 +177,9 @@ docker compose logs --tail=50 reactions</code></pre>
       <section id="render">
         <h2>选择版式，检查第一条成品</h2>
         <ol>
-          <li>在 <strong>反应视频 → 版式</strong> 选择竖屏或横屏。竖屏默认突出摄像头，横屏默认同时展示屏幕与摄像头。检查版式的适用结果是否包含测试提交。</li>
+          <li>在 <strong>反应视频与渲染 → 版式</strong> 选择竖屏或横屏。竖屏默认突出摄像头，横屏默认同时展示屏幕与摄像头。检查版式的适用结果是否包含测试提交。</li>
           <li>调整构图时可从「复制为新版式」开始，拖动元素并选择队名、题号、结果等卡片字段。在「预览素材」选内置示例或已录到的提交，点「保存版式」。选中真实提交后，点「生成样片」可检查实际编码效果。</li>
-          <li>在 <strong>反应视频 → 渲染队列</strong> 看待处理数和媒体机状态。随后在「视频」按队伍、题目或版式筛选；成品状态从「等待」「渲染中」变为「已完成」。点「预览」检查画面与声音，或下载 MP4。</li>
+          <li>在 <strong>反应视频与渲染 → 渲染队列</strong> 看待处理数和媒体机状态。随后在「视频」按队伍、题目或版式筛选；成品状态从「等待」「渲染中」变为「已完成」。点「预览」检查画面与声音，或下载 MP4。</li>
         </ol>
         <figure class="guide-shot"><a href="./images/media-worker/layout-editor.png"><img width="1168" height="625" src="./images/media-worker/layout-editor.png" alt="反应视频版式编辑器中的画布、图层和版式选择" loading="lazy"></a><figcaption>版式编辑器提供即时构图预览。选择真实提交和已保存的版式后，可以让媒体机生成样片。</figcaption></figure>
         <p>同一提交可按多个版式分别出片。修改版式时，勾选「重渲染已有提交」才会处理历史任务。重测改变判题结果时，旧成品标为「已过期」并重新排队。</p>
@@ -179,8 +189,8 @@ docker compose logs --tail=50 reactions</code></pre>
         <h2>导播回放、公开与大屏轮播</h2>
         <dl class="entries">
           <div><dt>导播审片</dt><dd>在导播台的精选提交或队伍画面中展开「提交回放」。工作人员可预看原始片段及成品。公开 OBS 精选提交受比赛公开规则约束。</dd></div>
-          <div><dt>公开页</dt><dd>在「反应视频 → 公开设置」勾选「开启公开页」，选择公开范围、时机、版式、学校和下载选项，点「保存公开设置」。点「打开公开页」，用观众身份核对后再分享单条视频。</dd></div>
-          <div><dt>场馆大屏</dt><dd>进入「大屏 → 反应视频轮播」，选择一血或所有通过，设置分榜、轮播版式和每条播放秒数，打开该画面的投屏链接。可为大屏单独选横屏，公开页继续用竖屏。</dd></div>
+          <div><dt>公开页</dt><dd>在「反应视频与渲染 → 公开设置」勾选「开启公开页」，选择公开范围、时机、版式、学校和下载选项，点「保存公开设置」。点「打开公开页」，用观众身份核对后再分享单条视频。</dd></div>
+          <div><dt>场馆大屏</dt><dd>进入「大屏画面与链接 → 反应视频轮播」，选择一血或所有通过，设置分榜、轮播版式和每条播放秒数，打开该画面的投屏链接。可为大屏单独选横屏，公开页继续用竖屏。</dd></div>
         </dl>
         <figure class="guide-shot"><a href="./images/media-worker/public-replay.png"><img width="844" height="628" src="./images/media-worker/public-replay.png" alt="观众在比赛公开反应视频页打开视频回放" loading="lazy"></a><figcaption>真实 Hydro 演示比赛中的横屏成品。画面采用内置测试素材，队名为演示账号，保留了题目和判题结果以供核对。</figcaption></figure>
         <p>公开默认关闭，启用后的默认时机为「解除封榜后」。即使选「比赛结束后」，终场仍封榜时也只可显示封榜前的提交。赛中要公开含屏幕的版式，检查「比赛中屏幕」及直播的「比赛中直播可用屏幕」两个设置。启用 CCPC 隐藏题号规则时，赛中公开受限。</p>

@@ -1,4 +1,6 @@
 // Shared helpers of the /manage pages: DOM building (text only, no HTML), requests and dialogs.
+import { helpTip } from './hydro-ui.js';
+
 export const runtime = JSON.parse(document.getElementById('manage-runtime').textContent);
 export const $ = (id) => document.getElementById(id);
 
@@ -18,6 +20,7 @@ export function el(tag, attrs = {}, ...children) {
 
 async function parse(response) {
     const data = await response.json().catch(() => ({}));
+    if (typeof data.url === 'string' && /\/login(?:[/?#]|$)/.test(data.url.split('?')[0])) throw new Error('请登录后重试');
     if (!response.ok || data.error) {
         const message = typeof data.error === 'string' ? data.error : data.error?.message;
         throw new Error(message || `请求失败（${response.status}），请检查登录状态与权限`);
@@ -26,8 +29,8 @@ async function parse(response) {
 }
 
 /** Hydro routes `operation` to the handler's post<Operation> method. */
-export async function post(operation, payload) {
-    const response = await fetch(runtime.base, {
+export async function post(operation, payload, path = runtime.base) {
+    const response = await fetch(path, {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ operation, payload: JSON.stringify(payload) }),
@@ -98,7 +101,8 @@ export function openDialog({ title, body = [], confirm = '确定', submit, extra
 }
 
 export function field(label, control, hint) {
-    return el('label', {}, label, control, hint ? el('span', { class: 'resolver-muted manage-small', text: hint }) : null);
+    const field = el('label', {}, label, control);
+    return hint ? el('div', { class: 'xc-field-help' }, field, helpTip(label, hint)) : field;
 }
 
 export function input(attrs = {}) {
