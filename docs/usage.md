@@ -629,15 +629,42 @@ Hydro 的系统管理员（`PRIV_EDIT_SYSTEM`）可在控制面板（`/manage`�
 
 选手在采集窗口授权后，仅分享实时画面时显示「正在采集」，启用录像后显示「正在录制」和上传积压。提交片段默认从提交前 20 秒开始，持续至通过后 40 秒或其他判定后 10 秒，最长 120 秒。屏幕与摄像头各自按段缓存。断网恢复后继续上传，已超出保留窗口的时段记为缺段。「录像」按队伍、题目、结果和状态查看提交片段，留档按时间接续播放。清理前核对文件数和字节数，删除整场录像需输入比赛名称。
 
-在「反应视频 → 媒体机」生成本场专用令牌。下载同一发布页的 `reactions-generator-hydro-1.21.0.tar.gz`，在媒体机解压并进入解压目录。Docker 安装如下，地址由管理页提供。
+### 安装媒体机
 
-```sh
-docker build -t reactions-generator-hydro:1.21.0 .
-docker run --rm -v "$PWD/out:/app/out" reactions-generator-hydro:1.21.0 \
-  all 'https://hydro.example/d/system/contest/CONTEST/reactions-api/TOKEN' --hydro-upload
-```
+媒体机从容器内主动访问本场 Hydro。准备一台已安装 Docker 与 Compose 的电脑。进入 **反应视频 → 媒体机**，首次点击「生成令牌」，再点击「复制接口地址」。同一比赛已有令牌时直接复制。
 
-本机运行可安装 Python 3.12、Poetry 和 FFmpeg/FFprobe，再执行 `poetry install` 和 `poetry run main all '本场媒体机地址' --hydro-upload`。多机示例、硬件编码参数及失败任务重试方式见发布附件内的 HYDRO.md。媒体机令牌可在比赛管理中单独更换。
+1. 在媒体机新建目录，将下列配置下载为 `compose.yaml`。Linux 或 macOS 可直接执行命令。
+
+   ```sh
+   mkdir -p hydro-reactions/out
+   cd hydro-reactions
+   curl -fL -o compose.yaml https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.compose.yaml
+   ```
+
+2. 在同一目录新建 `.env`，把下一行等号后的示例完整替换为本场接口地址。该文件仅供媒体机操作员保管。
+
+   ```dotenv
+   HYDRO_REACTIONS_API=https://contest.example/d/system/contest/CONTEST_ID/reactions-api/TOKEN
+   ```
+
+3. 执行配置校验、拉取和启动。配置默认使用 CPU 与固定版本公共镜像 `ghcr.io/albert-li-sz/reactions-generator-hydro:1.21.0`。输出保存在本机 `./out`。
+
+   ```sh
+   docker compose config --quiet
+   docker compose pull
+   docker compose up -d
+   docker compose ps
+   ```
+
+4. 回到「反应视频 → 媒体机」，在「媒体机心跳」点击「刷新」，检查版本、在线状态和默认分区 `0/1`。管理页每台机器的心跳约每 15 秒更新。若没有心跳，可运行 `docker compose logs --tail=100 reactions` 检查网络和接口地址。
+
+5. 用已开启「录制提交片段」的机位，在比赛时间内完成一次提交。等判题和后段上传后，在「画面采集 → 录像」查看片段，再在「反应视频 → 视频」预览「已完成」的成品。
+
+Windows 可在 Docker Desktop 中运行同一 Compose 配置。赛场无法访问 GHCR 时，可在联网机器下载对应架构的镜像归档和 SHA-256 清单，复制到媒体机后校验并执行 `docker load`。[离线导入步骤](https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.html#offline)
+
+多机部署、GPU 与 Apple VideoToolbox、本地源码方式、公开策略和故障处理见[媒体机图文教程](https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.html)。
+
+### 版式与公开播放
 
 在「版式」选择横屏、竖屏或自定义尺寸，调整摄像头、屏幕、卡片、文字和图片。每个版式可选择适用一血、通过或其他结果。一条提交可生成多个成品。通过「视频」检查、下载、撤下、恢复或重渲染成品。通过「公开设置」选择范围、时机、版式、学校和下载选项。公开默认关闭，启用后的默认时机为解除封榜后。赛中隐藏题号、封榜时段、直播屏幕限制和撤下状态都影响观众可看到的内容。选择隐藏学校时，系统会排除已经把学校字段或学校 Logo 合成到画面里的视频。自定义背景图、文字、上传图片和实拍画面的内容需由工作人员在公开前检查。
 

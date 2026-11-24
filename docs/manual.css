@@ -91,3 +91,17 @@ summary { cursor: pointer; font-weight: 650; }
   h2, h3 { break-after: avoid; }
   pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 }
+
+.guide-download { display: inline-block; margin: .5rem 0 .5rem .75rem; }
+.guide-shot { margin: 1.25rem 0 1rem; }
+.guide-shot img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: .3rem; }
+.guide-shot figcaption { margin-top: .4rem; color: var(--muted); font-size: .9rem; }
+.guide-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .25rem 1rem; }
+.guide-pair h3 { margin-top: .35rem; }
+@media (max-width: 620px) {
+  .guide-pair { grid-template-columns: 1fr; }
+}
+@media print {
+  .guide-shot { break-inside: avoid; }
+  .guide-shot img { max-height: 15cm; object-fit: contain; }
+}

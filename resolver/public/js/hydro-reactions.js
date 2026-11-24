@@ -185,11 +185,11 @@ function workers() {
     );
     if (data.token)
         root.append(
-            el('p', { text: '下载本版本媒体机压缩包，在解压目录构建镜像并启动。' }),
+            el('p', { text: '在媒体机上运行以下命令。Docker 将拉取公共镜像并连接本场比赛。' }),
             el('pre', {
                 class: 'rx-code',
                 text:
-                    'docker build -t reactions-generator-hydro:1.21.0 .\ndocker run --rm -v "$PWD/out:/app/out" reactions-generator-hydro:1.21.0 all "' +
+                    'docker run --rm -v "$PWD/out:/app/out" ghcr.io/albert-li-sz/reactions-generator-hydro:1.21.0 all "' +
                     url +
                     '" --hydro-upload',
             }),

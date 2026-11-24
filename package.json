@@ -4,10 +4,10 @@
   "description": "Hydro XCPCIO 榜单增强、Resolver 滚榜、大屏、ICPC Live 直播与 CCS Contest API 2026-01",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Albert-Li-Sz/Hydro-Contest-Batter.git"
+    "url": "git+https://github.com/Albert-Li-Sz/Hydro-Contest-Better.git"
   },
-  "homepage": "https://github.com/Albert-Li-Sz/Hydro-Contest-Batter#readme",
-  "bugs": "https://github.com/Albert-Li-Sz/Hydro-Contest-Batter/issues",
+  "homepage": "https://github.com/Albert-Li-Sz/Hydro-Contest-Better#readme",
+  "bugs": "https://github.com/Albert-Li-Sz/Hydro-Contest-Better/issues",
   "main": "index.ts",
   "license": "AGPL-3.0-or-later",
   "packageManager": "pnpm@11.25.0",
@@ -54,6 +54,9 @@
     "README.md",
     "NOTICE",
     "docs/index.html",
+    "docs/media-worker.html",
+    "docs/media-worker.compose.yaml",
+    "docs/images/media-worker",
     "docs/manual.css",
     "docs/usage.md",
     "docs/verification.md",

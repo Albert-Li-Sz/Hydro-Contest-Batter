@@ -1,5 +1,15 @@
 # 验证记录
 
+## v1.21.0 公共媒体机镜像与 Pages 教程
+
+2026-11-25，GitHub Actions 使用 v1.21.0 发布附件构建 Linux amd64、arm64 媒体机镜像，两台原生 runner 各通过 91 项 Python 测试。匿名读取到的 `1.21.0` 和 `latest` 在验收时指向同一份双架构清单，摘要为 `sha256:313e2d0a7773b54fd611bd844c15cdb80641f2eebd58288e093d39ca7ad62785`。[构建记录](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/actions/runs/45456134845)
+
+- **远程 Linux 测试机。** 在空 Docker 认证配置下拉取正式镜像，自动选择 amd64。容器中的媒体机命令提供 `--hydro-upload`，`ffprobe -version` 返回 7.1.5。两个验证容器均在退出后移除。
+- **离线安装。** v1.21.0 Release 新增 amd64、arm64 两份镜像归档与 SHA-256 清单。匿名下载、校验和 `docker load` 均已通过，导入后的平台与各自发布镜像一致。
+- **完整渲染。** 用教程提供的 Compose 配置匿名拉取 arm64 镜像，接入隔离的 Hydro 5.1.0 比赛。媒体机在分区 0/1 上领取同一条一血提交的两个版式并回传。FFprobe 确认成品分别为 1920×1080 和 1080×1920 的 H.264。观众端 Range 请求返回 206 和正确的 MP4 文件头。
+- **图文教程。** 在真实 Hydro 界面使用演示队伍、内置示例片段和测试画面制作四张截图。已检查桌面和 390 像素宽的手机视图、章节跳转、图片加载和 Compose 启动配置。[媒体机教程](https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.html)
+
+
 ## 1.21.0（比赛录制、反应视频、导播回放和大屏轮播）
 
 验证日期为 2026-11-25。396 项插件测试、Hydro 5.1.0 类型检查、构建、144 个页面视图及主要交互和打印客户端 Go 测试通过。媒体机发布包通过 91 项 Python 测试（含 4 项 Hydro 适配测试）。下列验收使用隔离 MongoDB、真实 Hydro、本机浏览器与 Docker 媒体机。

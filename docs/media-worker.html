@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="用公共 Docker 镜像部署 Hydro 反应视频媒体机，从设备录制、提交判题和渲染回传，到导播回放与公开大屏。含多机分区、硬件编码和故障排查。">
+  <meta name="theme-color" content="#811c39">
+  <title>安装媒体机与制作反应视频 · Hydro 比赛操作手册</title>
+  <link rel="stylesheet" href="./manual.css">
+</head>
+<body>
+  <a class="skip-link" href="#guide">跳到教程正文</a>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="./">Hydro 比赛操作手册</a>
+      <nav aria-label="项目链接">
+        <a href="./">手册首页</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.21.0">发布附件</a>
+      </nav>
+    </div>
+  </header>
+  <div class="layout">
+    <aside class="sidebar">
+      <nav class="toc" aria-label="教程目录">
+        <p>教程目录</p>
+        <a href="#prepare">准备比赛和媒体机</a>
+        <a href="#install">用 Compose 启动</a>
+        <a href="#heartbeat">确认上线</a>
+        <a href="#record">录制第一条提交</a>
+        <a href="#render">版式与出片</a>
+        <a href="#publish">回放、公开与大屏</a>
+        <a href="#scale">多机分区与硬件编码</a>
+        <a href="#operate">更新、停机与排查</a>
+      </nav>
+    </aside>
+    <main id="guide">
+      <header class="intro">
+        <p class="version">反应视频媒体机 v1.21.0</p>
+        <h1>安装媒体机与制作反应视频</h1>
+        <p class="lead">选手机在判题后上传指定时间窗的录像。媒体机从 Hydro 领取任务，按版式合成 MP4 并交回比赛管理员审核。以下步骤用一台 CPU 媒体机制作第一条视频。</p>
+        <a class="primary-link" href="#install">安装媒体机</a>
+        <a class="guide-download" href="./media-worker.compose.yaml" download="compose.yaml">下载 Compose 配置</a>
+      </header>
+
+      <section id="prepare">
+        <h2>准备比赛和媒体机</h2>
+        <dl class="entries">
+          <div><dt>Hydro 服务器</dt><dd>安装支持录制的插件 v1.21.0，使用 ACM 比赛。比赛所有者或有「编辑比赛」权限的账号负责配置。若侧边栏没有相应入口，请系统管理员确认插件的「启用直播模块」和「启用直播的画面采集」两个开关。<a href="./#install">插件安装与升级</a></dd></div>
+          <div><dt>媒体机</dt><dd>准备一台能访问比赛站点和容器仓库的电脑，为下载片段和编码输出留出磁盘。Linux 可使用 Docker Engine 和 Compose 插件；Windows、macOS 可使用 Docker Desktop 的 Linux 容器。<a href="https://docs.docker.com/compose/install/">Docker Compose 安装说明</a></dd></div>
+          <div><dt>选手机</dt><dd>使用可共享整个屏幕的桌面 Chrome 或 Edge，通过 HTTPS 访问比赛。比赛启用摄像头时，还需要相应设备和浏览器授权。赛前在参赛须知写明录制内容、保存期限、联系人和公开范围。</dd></div>
+        </dl>
+        <p>媒体机主动访问 Hydro。部署时需要从容器访问比赛的完整地址；地址中的 <code>localhost</code> 和 <code>127.0.0.1</code> 在容器内指向容器自身。</p>
+      </section>
+
+      <section id="install">
+        <h2>用 Docker Compose 启动</h2>
+        <h3>取得本场媒体机地址</h3>
+        <p>进入 <strong>比赛侧边栏 → 反应视频 → 媒体机</strong>。首次使用点「生成令牌」，然后点「复制接口地址」。如果页面已经显示「复制接口地址」，直接复制。地址末尾的令牌可以领取本场素材、上传成品，应交给媒体机操作员保管。</p>
+
+        <h3>在媒体机创建工作目录</h3>
+        <p>Linux 或 macOS 终端中执行以下命令，确认 Docker 服务可用，然后将配置下载为 <code>compose.yaml</code>。Windows 可以用浏览器下载配置并保存为同名文件，在该目录打开 PowerShell。</p>
+        <pre><code>docker version
+docker compose version
+mkdir -p hydro-reactions/out
+cd hydro-reactions
+curl -fL -o compose.yaml https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.compose.yaml</code></pre>
+        <p>在 <code>compose.yaml</code> 旁新建名为 <code>.env</code> 的文本文件，保存下列一行。将等号后的示例地址整段替换为刚复制的地址，保留 <code>https://</code> 和末尾令牌。Windows 保存时确认文件名为 <code>.env</code>。在 Linux 或 macOS 上可运行 <code>chmod 600 .env</code> 限制该文件的读取权限。</p>
+        <pre><code>HYDRO_REACTIONS_API=https://contest.example/d/system/contest/CONTEST_ID/reactions-api/TOKEN</code></pre>
+
+        <h3>拉取镜像并运行</h3>
+        <pre><code>docker compose config --quiet
+docker compose pull
+docker compose up -d
+docker compose ps</code></pre>
+        <p>配置校验成功时无输出。公共镜像包含 <code>linux/amd64</code> 和 <code>linux/arm64</code> 两种架构，可匿名拉取。首次拉取 <code>ghcr.io/albert-li-sz/reactions-generator-hydro:1.21.0</code> 后，<code>ps</code> 中的 <code>reactions</code> 服务应处于运行状态。FFmpeg 和中文字体随镜像提供，默认使用 CPU。工作目录中的 <code>out</code> 保存本机编码输出和重试标记。<a href="https://github.com/users/Albert-Li-Sz/packages/container/package/reactions-generator-hydro">查看公开镜像与标签</a></p>
+        <details>
+          <summary>核对 v1.21.0 镜像与实测结果</summary>
+          <p>镜像的多架构索引摘要为 <code>sha256:313e2d0a7773b54fd611bd844c15cdb80641f2eebd58288e093d39ca7ad62785</code>。可用以下命令查看摘要和平台清单。</p>
+          <pre><code>docker buildx imagetools inspect ghcr.io/albert-li-sz/reactions-generator-hydro:1.21.0</code></pre>
+          <p>Linux amd64 测试机已匿名拉取镜像并启动媒体机命令和 FFprobe。在隔离的 Hydro 5.1.0 比赛中，使用本页 Compose 配置完成横屏 1920×1080 和竖屏 1080×1920 的 H.264 合成、回传和公开分段读取。现场硬件编码可按下文生成样片验证。</p>
+        </details>
+        <details id="offline">
+          <summary>赛场不能访问 GHCR 时，离线导入镜像</summary>
+          <p>在联网电脑下载与目标媒体机 CPU 对应的镜像归档、校验清单和本页 Compose 配置，一并复制到比赛网络。x86_64 选 amd64，aarch64 或 Apple 芯片运行 Linux 容器时选 arm64。媒体机启动后仍需能访问本场 Hydro。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/download/v1.21.0/reactions-generator-hydro-1.21.0-linux-amd64.tar.gz">amd64 镜像归档</a> · <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/download/v1.21.0/reactions-generator-hydro-1.21.0-linux-arm64.tar.gz">arm64 镜像归档</a> · <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/download/v1.21.0/reactions-generator-hydro-1.21.0-images.SHA256SUMS">镜像校验清单</a> · <a href="./media-worker.compose.yaml" download="compose.yaml">Compose 配置</a></p>
+          <p>在存放归档和清单的目录执行下列命令。arm64 机器将第一行改为 <code>arch=arm64</code>。清单包含两种平台，<code>awk</code> 只选当前文件，校验成功才导入。macOS 可把 <code>sha256sum -c -</code> 换成 <code>shasum -a 256 -c -</code>。</p>
+          <pre><code>arch=amd64
+archive="reactions-generator-hydro-1.21.0-linux-${arch}.tar.gz"
+awk -v file="$archive" '$2 == file' reactions-generator-hydro-1.21.0-images.SHA256SUMS | sha256sum -c - &amp;&amp; docker load -i "$archive"</code></pre>
+          <p>amd64 导入后会显示 <code>Loaded image: reactions-generator-hydro:1.21.0-amd64</code>。将下列一行<strong>追加</strong>到保存本场接口地址的 <code>.env</code>。arm64 使用 <code>reactions-generator-hydro:1.21.0-arm64</code>。</p>
+          <pre><code>HYDRO_MEDIA_IMAGE=reactions-generator-hydro:1.21.0-amd64</code></pre>
+          <p>在 <code>compose.yaml</code> 所在目录执行 <code>docker compose up -d --pull never</code>，使用已导入的镜像启动，再到管理页检查心跳。</p>
+        </details>
+        <details>
+          <summary>只使用 docker run</summary>
+          <p>以下命令适用于 Bash。执行第一段，按提示粘贴整条媒体机地址并按回车，再执行第二段。默认以前台方式运行，按 Ctrl+C 停止。已有 Compose 媒体机时请使用上述 Compose 流程管理它。</p>
+          <pre><code>read -rs -p '粘贴本场媒体机地址并按回车：' HYDRO_REACTIONS_API
+echo</code></pre>
+          <pre><code>docker run --rm --hostname reactions-01 -v "$PWD/out:/app/out" \
+  ghcr.io/albert-li-sz/reactions-generator-hydro:1.21.0 \
+  all "$HYDRO_REACTIONS_API" --hydro-upload</code></pre>
+        </details>
+      </section>
+
+      <section id="heartbeat">
+        <h2>确认媒体机上线</h2>
+        <p>回到 <strong>反应视频 → 媒体机</strong>，在「媒体机心跳」旁点击「刷新」。找到带有 <code>reactions-01</code> 的机器名，核对版本、分区 <code>0/1</code> 和「在线」。媒体机每 15 秒更新心跳；距上次心跳满一分钟时，页面会显示「离线」。</p>
+        <figure class="guide-shot"><a href="./images/media-worker/media-worker.png"><img width="1168" height="89" src="./images/media-worker/media-worker.png" alt="媒体机心跳显示分区 0/1、在线状态及队列 0" loading="lazy"></a><figcaption>示例媒体机 media-01 显示版本 1.21.0、分区 0/1、在线，当前没有等待任务。</figcaption></figure>
+        <p>新比赛的队列可以为 0。下一步让一条真实提交产生片段，就能检查完整流程。</p>
+      </section>
+
+      <section id="record">
+        <h2>录制第一条提交</h2>
+        <ol>
+          <li>管理员进入 <strong>画面采集 → 采集设备</strong>，启用本场采集，并将测试机位绑定到参赛队伍或对应座位。</li>
+          <li>进入 <strong>录制设置 → 提交片段</strong>，勾选「录制提交片段」，首次测试选「所有判完的提交」，点击「保存录制设置」。需要整场审阅时，可另开低码率的「录制全程留档」。</li>
+          <li>在该队的采集窗口点「开始采集」，选择整个屏幕，按本场要求授权摄像头，保持窗口打开。先让它录满提交前的时间窗，默认 20 秒。</li>
+          <li>用同一队伍在<strong>正式比赛时间内</strong>提交一份可评测的程序。默认截取到通过判定后 40 秒，其他结果后 10 秒。等后段录完并上传，再进入 <strong>画面采集 → 录像</strong> 查看该提交。</li>
+        </ol>
+        <figure class="guide-shot"><a href="./images/media-worker/recording-settings.png"><img width="1172" height="402" src="./images/media-worker/recording-settings.png" alt="录制设置页中的提交片段、录制范围和画质设置" loading="lazy"></a><figcaption>提交片段由比赛单独开启。录制范围决定哪些判题会请求上传。</figcaption></figure>
+        <p>录像状态会从「等待上传」「上传中」变为「已就绪」。点「查看」可分别播放屏幕和摄像头。若某一路只有部分覆盖，管理页会标为「部分缺失」，合成时缺段可出现背景占位。</p>
+        <details>
+          <summary>热身赛怎样试录和测带宽？</summary>
+          <p>进入「画面采集 → 测试」，先选一台在线设备，点「开始设备自检」，约 30 秒后核对分路码率、掉帧和上传吞吐。再选 3–15 分钟的全场压力测试，比较峰值、P95、最大积压及失败率。点击「测试存储写入与读回」可单独测量 Hydro 存储。试录媒体随测试清理，报告留存；首次出片仍需要本场队伍的一条有效提交。</p>
+        </details>
+      </section>
+
+      <section id="render">
+        <h2>选择版式，检查第一条成品</h2>
+        <ol>
+          <li>在 <strong>反应视频 → 版式</strong> 选择竖屏或横屏。竖屏默认突出摄像头，横屏默认同时展示屏幕与摄像头。检查版式的适用结果是否包含测试提交。</li>
+          <li>调整构图时可从「复制为新版式」开始，拖动元素并选择队名、题号、结果等卡片字段。在「预览素材」选内置示例或已录到的提交，点「保存版式」。选中真实提交后，点「生成样片」可检查实际编码效果。</li>
+          <li>在 <strong>反应视频 → 渲染队列</strong> 看待处理数和媒体机状态。随后在「视频」按队伍、题目或版式筛选；成品状态从「等待」「渲染中」变为「已完成」。点「预览」检查画面与声音，或下载 MP4。</li>
+        </ol>
+        <figure class="guide-shot"><a href="./images/media-worker/layout-editor.png"><img width="1168" height="625" src="./images/media-worker/layout-editor.png" alt="反应视频版式编辑器中的画布、图层和版式选择" loading="lazy"></a><figcaption>版式编辑器提供即时构图预览。选择真实提交和已保存的版式后，可以让媒体机生成样片。</figcaption></figure>
+        <p>同一提交可按多个版式分别出片。修改版式时，勾选「重渲染已有提交」才会处理历史任务。重测改变判题结果时，旧成品标为「已过期」并重新排队。</p>
+      </section>
+
+      <section id="publish">
+        <h2>导播回放、公开与大屏轮播</h2>
+        <dl class="entries">
+          <div><dt>导播审片</dt><dd>在导播台的精选提交或队伍画面中展开「提交回放」。工作人员可预看原始片段及成品。公开 OBS 精选提交受比赛公开规则约束。</dd></div>
+          <div><dt>公开页</dt><dd>在「反应视频 → 公开设置」勾选「开启公开页」，选择公开范围、时机、版式、学校和下载选项，点「保存公开设置」。点「打开公开页」，用观众身份核对后再分享单条视频。</dd></div>
+          <div><dt>场馆大屏</dt><dd>进入「大屏 → 反应视频轮播」，选择一血或所有通过，设置分榜、轮播版式和每条播放秒数，打开该画面的投屏链接。可为大屏单独选横屏，公开页继续用竖屏。</dd></div>
+        </dl>
+        <figure class="guide-shot"><a href="./images/media-worker/public-replay.png"><img width="844" height="628" src="./images/media-worker/public-replay.png" alt="观众在比赛公开反应视频页打开视频回放" loading="lazy"></a><figcaption>真实 Hydro 演示比赛中的横屏成品。画面采用内置测试素材，队名为演示账号，保留了题目和判题结果以供核对。</figcaption></figure>
+        <p>公开默认关闭，启用后的默认时机为「解除封榜后」。即使选「比赛结束后」，终场仍封榜时也只可显示封榜前的提交。赛中要公开含屏幕的版式，检查「比赛中屏幕」及直播的「比赛中直播可用屏幕」两个设置。启用 CCPC 隐藏题号规则时，赛中公开受限。</p>
+        <p>需要收回时，在管理端对应成品点「撤下」，该成品的公开页、大屏和原分享链接会停止提供播放；点「恢复」后仍要符合当前公开规则。已下载的副本由持有者保管。选择隐藏学校时，系统还会排除已烧录学校字段或学校 Logo 的版式；自定义图片、文字和实拍画面由工作人员审片确认。</p>
+      </section>
+
+      <section id="scale">
+        <h2>多机分区与硬件编码</h2>
+        <h3>两台机器分摊同一场比赛</h3>
+        <p>两台电脑各自下载同一份 Compose 配置，保留本场相同的 <code>HYDRO_REACTIONS_API</code> 和独立的 <code>out</code> 目录。在各自 <code>.env</code> 末尾加入对应设置。</p>
+        <div class="guide-pair">
+          <div><h3>第一台</h3><pre><code>HYDRO_MEDIA_NODE=reactions-01
+HYDRO_WORKER_TOTAL=2
+HYDRO_WORKER_ID=0</code></pre></div>
+          <div><h3>第二台</h3><pre><code>HYDRO_MEDIA_NODE=reactions-02
+HYDRO_WORKER_TOTAL=2
+HYDRO_WORKER_ID=1</code></pre></div>
+        </div>
+        <p>在两台机器分别执行 <code>docker compose up -d</code>。后台应出现 <code>0/2</code> 和 <code>1/2</code> 两个在线分区。分区按提交 ID 分派，一条提交的多个版式由同一分区处理。某个分区离线时，可以在替代机器上用同一分区号继续处理。</p>
+
+        <h3>按媒体机硬件选择编码器</h3>
+        <dl class="entries">
+          <div><dt>CPU</dt><dd>默认使用 CPU，可直接运行上述配置。建议先完成一条样片，再决定是否启用硬件编码。</dd></div>
+          <div><dt>NVIDIA</dt><dd>Linux 主机需提供驱动、NVIDIA Container Toolkit 和可用的 H.264 NVENC。给 Compose 服务配置 GPU 访问，在 <code>.env</code> 设置 <code>HYDRO_HARDWARE=nvidia</code>。可选的 <code>nvidia_full</code> 还依赖 CUDA 叠加滤镜和版式越界检查。<a href="https://docs.docker.com/compose/how-tos/gpu-support/">Docker Compose 的 GPU 配置</a></dd></div>
+          <div><dt>Intel / VAAPI</dt><dd>Linux 主机及容器内需具备相应媒体驱动。将 <code>/dev/dri</code> 映射到容器的同一路径；Intel QSV 选 <code>HYDRO_HARDWARE=qsv</code>，VAAPI 选 <code>HYDRO_HARDWARE=vaapi</code>。本版 VAAPI 使用 <code>/dev/dri/renderD128</code>。</dd></div>
+          <div><dt>Apple 芯片</dt><dd>要使用 VideoToolbox，请在 macOS 本机运行。下载发布附件 <code>reactions-generator-hydro-1.21.0.tar.gz</code>，解压后进入 <code>reactions-generator-hydro</code>，安装 Python 3.12、Poetry、FFmpeg 和 FFprobe，再执行下列命令。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.21.0">下载媒体机源码包</a></dd></div>
+        </dl>
+        <pre><code>poetry install
+poetry run main all '替换为本场媒体机接口地址' --hydro-upload --hardware apple</code></pre>
+        <p>更改 Docker 硬件配置后运行 <code>docker compose up -d</code>，重新生成一条样片并验证播放。驱动、设备权限和镜像内 FFmpeg 提供的编码器都会影响硬件模式可用性。</p>
+      </section>
+
+      <section id="operate">
+        <h2>更新、停机与故障排查</h2>
+        <p>以下命令在保存 <code>compose.yaml</code> 的目录执行。<code>stop</code> 可在赛后暂停服务，<code>start</code> 可恢复同一容器。升级时在本机 <code>.env</code> 中将 <code>HYDRO_MEDIA_IMAGE</code> 设为新版本镜像全名，执行 <code>docker compose pull</code>、<code>docker compose up -d</code>，再到管理页核对版本和心跳。</p>
+        <pre><code>docker compose ps
+docker compose logs --tail=100 reactions
+docker compose stop
+docker compose start</code></pre>
+        <dl class="entries">
+          <div><dt>拉取镜像失败</dt><dd>核对 <code>ghcr.io/albert-li-sz/reactions-generator-hydro:1.21.0</code>、主机架构，以及 Docker 守护进程到 GHCR 的网络和代理。能访问网页的终端与执行镜像拉取的守护进程可能使用不同代理。</dd></div>
+          <div><dt>没有心跳</dt><dd>检查容器是否运行，查看最近日志。如果是 DNS、连接超时或证书错误，检查媒体机能否解析并访问比赛域名，以及 TLS 证书链。若接口返回 404 或权限错误，重新复制本场完整接口地址并更新 <code>.env</code>，然后执行 <code>docker compose up -d</code>。令牌更换会使原地址立即失效，所有本场媒体机都需同步更新。</dd></div>
+          <div><dt>在线但没有任务</dt><dd>依次核对「录制提交片段」、比赛时间、队伍绑定、设备共享状态及录制范围。先在「录像」找到对应提交，再检查版式适用范围、多机分区是否齐全。「全程留档」与「测试」各有独立用途。</dd></div>
+          <div><dt>片段缺失或画面空白</dt><dd>在「录像」查看发生缺失的时间段及原因。首次提交前应先累积录制窗口；导播仅需要摄像头时，可选匹配的竖屏版式。若素材存在但合成失败，检查媒体机磁盘、日志与硬件编码器，修复后点「重渲染」。</dd></div>
+          <div><dt>已完成但观众看不到</dt><dd>检查是否开启公开页，核对版式、结果范围、封榜时机、学校和屏幕限制，以及该条是否已撤下。只在大屏缺失时，再核对大屏的分榜、版式和「只播一血」设置。</dd></div>
+        </dl>
+      </section>
+      <footer class="manual-footer">
+        <a href="./">返回操作手册</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/verification.md">功能验证记录</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better">GitHub 仓库</a>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
