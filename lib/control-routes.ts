@@ -22,6 +22,8 @@ export function applyControl(ctx: Context, dependencies: {
     saveSettings: (tdoc: Tdoc, settings: BoardSettings, uid: number) => Promise<BoardSettings>;
     balloons: { get: (tdoc: Tdoc) => Promise<BalloonSettings>; save: (tdoc: Tdoc, input: unknown) => Promise<BalloonSettings> };
     capture: { get: (tdoc: Tdoc) => Promise<CaptureSettings>; save: (tdoc: Tdoc, input: unknown, uid: number) => Promise<CaptureSettings> } | null;
+    reactions?: { summary(tdoc: Tdoc): Promise<{ready: number; waiting: number; failed: number; publicEnabled: boolean}>;
+        setPublic(tdoc: Tdoc, enabled: boolean): Promise<unknown> };
     live: boolean;
     review: (tdoc: Tdoc) => Promise<{ changes: number; pending: number; stale: number }>;
 }) {
@@ -29,9 +31,9 @@ export function applyControl(ctx: Context, dependencies: {
     const contestBase = (tdoc: Tdoc) => `/d/${encodeURIComponent(tdoc.domainId)}/contest/${tdoc.docId}`;
 
     async function state(tdoc: Tdoc) {
-        const [board, balloons, capture, review] = await Promise.all([
+        const [board, balloons, capture, review, reactions] = await Promise.all([
             dependencies.loadSettings(tdoc), dependencies.balloons.get(tdoc), dependencies.capture?.get(tdoc) ?? null,
-            dependencies.review(tdoc).catch(() => null),
+            dependencies.review(tdoc).catch(() => null), dependencies.reactions?.summary(tdoc),
         ]);
         const base = contestBase(tdoc);
         return {
@@ -51,12 +53,13 @@ export function applyControl(ctx: Context, dependencies: {
                 publicAccess: board.publicAccess, showIdentity: board.showIdentity, ccsApi: board.ccsApi,
             },
             balloons: { enabled: balloons.enabled, afterFreeze: balloons.afterFreeze, first: balloons.first, teamColors: balloons.teamColors, tickets: balloons.tickets.enabled },
-            capture: capture && { enabled: capture.enabled, screenDuringContest: capture.screenDuringContest, webcam: capture.webcam },
+            reactions,
+            capture: capture && { clips: capture.recording.clips.enabled, archive: capture.recording.archive.enabled, enabled: capture.enabled, screenDuringContest: capture.screenDuringContest, webcam: capture.webcam },
             review,
             links: {
                 settings: `${base}/xcpcio-settings`, board: `${base}/scoreboard/xcpcio-plus`, publicBoard: board.publicAccess ? `${base}/xcpcio-public` : null,
                 results: `${base}/results`, review: `${base}/rejudge-review`, resolver: `${base}/resolver`, screens: `${base}/screens`,
-                balloons: `${base}/balloons`, live: dependencies.live ? `${base}/live` : null, capture: dependencies.capture ? `${base}/live/capture` : null,
+                reactions: `${base}/reactions/manage`, balloons: `${base}/balloons`, live: dependencies.live ? `${base}/live` : null, capture: dependencies.capture ? `${base}/live/capture` : null,
                 presence: `${base}/presence`, monitor: `${base}/monitor`, overview: `${base}/overview`, desk: `${base}/clarification-desk`,
                 printers: '/manage/xcpcio-printers', rejudge: '/manage/xcpcio-rejudge', edit: `${base}/edit`,
             },
@@ -122,6 +125,14 @@ export function applyControl(ctx: Context, dependencies: {
         async postCapture(_domainId: string, input: string) {
             if (!dependencies.capture) throw new ControlError('画面采集未启用', 404);
             await dependencies.capture.save(this.tdoc, this.payload(input), this.user._id);
+            this.response.body = { ok: true };
+        }
+
+        @param('payload', Types.String)
+        async postReactions(_domainId: string, input: string) {
+            const { enabled } = this.payload(input);
+            if (!dependencies.reactions || typeof enabled !== 'boolean') throw new ControlError('公开视频设置无效');
+            await dependencies.reactions.setPublic(this.tdoc, enabled);
             this.response.body = { ok: true };
         }
 

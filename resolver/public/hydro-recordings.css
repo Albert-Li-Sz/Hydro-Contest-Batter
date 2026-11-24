@@ -1,0 +1,19 @@
+.xcpcio-manage .record-tabs { margin: 0 20px; flex-wrap: wrap; }
+.xcpcio-manage [role="tabpanel"][hidden] { display: none; }
+.record-toolbar, .record-quality { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 18px; margin: 12px 0; }
+.record-toolbar label, .record-quality label { flex: 0 1 auto; min-width: 110px; }
+.record-toolbar .textbox, .record-toolbar .select, .record-quality .select { display: block; width: auto; max-width: 100%; margin: 2px 0 0; }
+.record-toolbar input[type=number] { width: 100px; }
+.record-quality .record-toolbar { margin: 0; align-self: center; }
+.record-timeline > div { margin-bottom: 12px; }
+.record-lane { position: relative; height: 24px; background: var(--manage-line, #daf0ec); overflow: hidden; border-radius: 4px; }
+.record-segment, .record-gap { position: absolute; inset-block: 2px; min-width: 1px; border: 0; padding: 0; }
+.record-segment { background: #257f70; cursor: pointer; }
+.record-segment:hover, .record-segment:focus { background: #184a7d; }
+.record-gap { background: repeating-linear-gradient(135deg, #c78d45 0 2px, transparent 2px 6px); }
+.record-player video { display: block; width: 100%; max-height: 45vh; background: #161a20; }
+.record-chart { margin: 12px 0; color: #257f70; }
+.record-chart svg { width: 100%; max-width: 720px; height: 110px; background: rgba(51, 133, 113, .06); }
+.record-chart figcaption { color: var(--manage-muted); }
+.record-ok { color: #23795b; }
+.record-warn { color: #95691c; }

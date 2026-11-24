@@ -14,7 +14,7 @@ import type { BalloonScreenData } from './balloon-routes';
 import type { ContestLinks } from './links';
 import {
     broadcastRows, decodePoster, defaultScreenConfig, groupSources, hiddenBeforeStart, intervalTypes, isPosterId, judgeScreen,
-    maxPosterImages, normalizeScreenConfig, presentationItem, problemRows, saveScreenConfig, screenCategories, ScreenConfig,
+    eligibleScreenReaction, maxPosterImages, reactionPlaylist, type ScreenReaction, normalizeScreenConfig, presentationItem, problemRows, saveScreenConfig, screenCategories, ScreenConfig,
     screenData, ScreenError, screenLabels, screenProjection, ScreenType, screenTypes, screenVariants, standingsTypes,
 } from './screens-data';
 import { judgeHealth } from './manage/judges';
@@ -43,6 +43,10 @@ const newToken = () => randomBytes(24).toString('hex');
 export function applyScreens(ctx: Context, dependencies: {
     loadSettings: (tdoc: Tdoc) => Promise<BoardSettings>;
     loadData: (tdoc: Tdoc, realtime: boolean, identity: boolean, staffResults: boolean) => Promise<BoardData>;
+    screenVideos?: (tdoc: Tdoc, layoutId?: string) => Promise<(ScreenReaction & { id: string })[]>;
+    screenLayouts?: (tdoc: Tdoc) => Promise<{ id: string; name: string }[]>;
+    playScreenVideo?: (tdoc: Tdoc, layoutId: string, id: string, handler: Handler,
+        allowed: (video: Pick<ScreenReaction, 'teamUid' | 'accepted' | 'firstSolve'>) => boolean) => Promise<void>;
     machines: (now: number) => Promise<MonitorMachine[]>;
     /** 气球配送 (lib/balloon-routes.ts): its balloons and colours, when the contest uses it. */
     balloons?: (tdoc: Tdoc) => Promise<BalloonScreenData | null>;
@@ -97,6 +101,14 @@ export function applyScreens(ctx: Context, dependencies: {
         return { settings, data, boards: resolverBoards(data, settings, settings.showIdentity) };
     }
 
+    async function screenTeamIds(tdoc: Tdoc, boardId: string) {
+        if (boardId === 'all') return null;
+        const { boards } = await source(tdoc);
+        const board = boards.find(candidate => candidate.id === boardId);
+        if (!board) throw new ScreenError('所选分榜已不存在', 404);
+        return new Set(board.teamIds);
+    }
+
     async function contestSeats(tdoc: Tdoc) {
         const entries = await ContestModel.getMultiStatus(tdoc.domainId, { docId: tdoc.docId })
             .project<TeamEntry>({ uid: 1, members: 1 }).toArray();
@@ -139,6 +151,7 @@ export function applyScreens(ctx: Context, dependencies: {
                     base: `${base}/screens`, contestUrl: base, linkBase: `${base}/screen/${doc.token}`,
                     title: this.tdoc.title, config: doc.config, types: screenTypes, labels: screenLabels, variants: screenVariants,
                     categories: screenCategories, groupSources, intervalTypes: [...intervalTypes],
+                    reactionLayouts: await dependencies.screenLayouts?.(this.tdoc) ?? [],
                     standingsTypes: [...standingsTypes], boards: boards.map(({ id, name }) => ({ id, name })),
                     sessions: (await sessions.list(scope)).map((row) => ({
                         id: row.id, createdAt: row.createdAt, title: row.overview.title,
@@ -284,6 +297,20 @@ export function applyScreens(ctx: Context, dependencies: {
         }
     }
 
+    class ScreenReactionHandler extends ScreenPublicHandler {
+        notUsage = true;
+
+        @param('vid', Types.String)
+        async get(_domainId: string, id: string) {
+            if (this.type !== 'reactions' || !dependencies.playScreenVideo || !ContestModel.canShowScoreboard.call(this, this.tdoc, false)) {
+                throw new NotFoundError('视频不可播放');
+            }
+            const item = this.doc.config.items.reactions;
+            const teams = await screenTeamIds(this.tdoc, item.boardId);
+            await dependencies.playScreenVideo(this.tdoc, item.layoutId || '', id, this, video => eligibleScreenReaction(video, item, teams));
+        }
+    }
+
     class ScreenDataHandler extends ScreenPublicHandler {
         @param('revision', Types.Int, true)
         @param('session', Types.String, true)
@@ -312,6 +339,14 @@ export function applyScreens(ctx: Context, dependencies: {
             try {
                 let payload: unknown;
                 if (type === 'poster') payload = item.images.map((id) => `${contestBase(tdoc)}/screen/${this.doc.token}/poster/images/${id}`);
+                else if (type === 'reactions') {
+                    const [videos, teams] = await Promise.all([
+                        dependencies.screenVideos?.(tdoc, item.layoutId || undefined) ?? [],
+                        screenTeamIds(tdoc, item.boardId),
+                    ]);
+                    const mediaBase = `${contestBase(tdoc)}/screen/${this.doc.token}/reactions/videos/`;
+                    payload = reactionPlaylist(videos.map(v => ({ ...v, url: mediaBase + encodeURIComponent(v.id) })), item, teams);
+                }
                 else if (type === 'clarifications') payload = await cached(`${key(tdoc)}|broadcast`, async () => broadcastRows(
                     await ContestModel.getMultiClarification(tdoc.domainId, tdoc.docId, 0), tdoc.pids, labelsOf(tdoc),
                 ));
@@ -377,6 +412,7 @@ export function applyScreens(ctx: Context, dependencies: {
     ctx.Route('contest_xcpcio_screens', '/contest/:tid/screens', ScreensHandler);
     ctx.Route('contest_xcpcio_screen_view', '/contest/:tid/screen/:token/:type', ScreenViewHandler);
     ctx.Route('contest_xcpcio_screen_data', '/contest/:tid/screen/:token/:type/data', ScreenDataHandler);
+    ctx.Route('contest_xcpcio_screen_reaction', '/contest/:tid/screen/:token/:type/videos/:vid', ScreenReactionHandler);
     ctx.Route('contest_xcpcio_screen_image', '/contest/:tid/screen/:token/:type/images/:mid', ScreenImageHandler);
     ctx.i18n.load('zh', { contest_xcpcio_screens: '大屏' });
 }

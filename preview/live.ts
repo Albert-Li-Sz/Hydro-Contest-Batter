@@ -20,7 +20,7 @@ const verdicts = ['CORRECT', 'CORRECT', 'WRONG_ANSWER', 'TIME_LIMIT_EXCEEDED', '
  * that started 90 minutes ago, freezes one hour before the end, and keeps receiving submissions.
  */
 export function createLivePreview(env: Environment, logoNames: Record<string, string>, version: string,
-    demo: () => BoardData, settings: () => BoardSettings) {
+    demo: () => BoardData, settings: () => BoardSettings, reactions?: ReturnType<typeof import('./reactions').createReactionsPreview>) {
     const base = '/contest/demo';
     const codeBase = resolverCodeBase(version);
     let token = 'live0000000000000000000000000000000000000000000000';
@@ -44,13 +44,19 @@ export function createLivePreview(env: Environment, logoNames: Record<string, st
     let next = 0;
     const timer = setInterval(() => {
         // A new submission is judged a few seconds later, so the queue shows both phases.
-        const team = template.teams[Math.floor(Math.random() * template.teams.length)];
+        const recordingTeams = capture.activeRecordingTeams();
+        const active = template.teams.filter((t) => recordingTeams.includes(Number(t.team_id)));
+        const participants = active.length ? active : template.teams;
+        const team = participants[Math.floor(Math.random() * participants.length)];
         const record = {
             submission_id: `live-${next++}`, team_id: team.team_id, problem_id: Math.floor(Math.random() * template.contest.problem_quantity),
             timestamp: Date.now() - contest.beginAt.getTime(), status: 'PENDING',
         };
         submissions.push(record);
-        setTimeout(() => { record.status = verdicts[Math.floor(Math.random() * verdicts.length)]; }, 6000).unref();
+        setTimeout(() => {
+            record.status = verdicts[Math.floor(Math.random() * verdicts.length)];
+            capture.judged(record);
+        }, 6000).unref();
     }, 9000);
     timer.unref();
     let visualConfig = defaultVisualConfig(contest.title);
@@ -72,6 +78,7 @@ export function createLivePreview(env: Environment, logoNames: Record<string, st
             return {
                 contest, data, settings: current, identity: current.showIdentity, logoNames, now: Date.now(),
                 boards: resolverBoards(data, current, current.showIdentity),
+                reactionVideos: Object.fromEntries((reactions?.visible() ?? []).map(v=>[v.rid,[{type:'Video',url:v.url}]])),
                 medias: capture.medias(data),
             };
         },
@@ -142,6 +149,10 @@ export function createLivePreview(env: Environment, logoNames: Record<string, st
         }
         const admin = /^\/contest\/demo\/live\/api\/admin\/(.*)$/.exec(url.pathname);
         if (admin) {
+            if (admin[1] === 'replay') {
+                response.writeHead(200, {'Content-Type':'application/json'}).end(JSON.stringify(reactions?.replay(url.searchParams) ?? []));
+                return true;
+            }
             hub.touch();
             if (!hub.info) await hub.refresh();
             const result = await adminApi(hub, store, {

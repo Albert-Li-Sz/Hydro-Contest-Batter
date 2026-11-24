@@ -64,6 +64,8 @@ const sameSecret = (given: string, expected: string) => {
 export function applyLive(ctx: Context, dependencies: {
     loadSettings: (tdoc: Tdoc) => Promise<BoardSettings>;
     loadData: (tdoc: Tdoc, identity: boolean) => Promise<BoardData>;
+    publicVideos?: (tdoc: Tdoc) => Promise<{ rid: string; url: string }[]>;
+    staffReplay?: (tdoc: Tdoc, filter: { rid?: string; teamUid?: string }) => Promise<unknown>;
     intervalMs?: number;
     /** 画面采集 (plugin setting): off, its pages and sockets are not offered and teams have no video. */
     capture?: boolean;
@@ -167,9 +169,12 @@ export function applyLive(ctx: Context, dependencies: {
                         if (!current) return null;
                         const settings = await dependencies.loadSettings(current);
                         // Live shows specific public verdicts while respecting the freeze and venue identity rule.
-                        const data = await dependencies.loadData(current, settings.showIdentity);
+                        const [data, publicVideos] = await Promise.all([dependencies.loadData(current, settings.showIdentity),
+                            dependencies.publicVideos?.(current).catch(() => []) ?? []]);
+                        const reactionVideos: Record<string, { type: string; url: string }[]> = Object.create(null);
+                        for (const { rid, url } of publicVideos) (reactionVideos[rid] ??= []).push({ type: 'Video', url });
                         return {
-                            contest: current, data, settings, identity: settings.showIdentity, logoNames, now: Date.now(),
+                            contest: current, data, settings, reactionVideos, identity: settings.showIdentity, logoNames, now: Date.now(),
                             boards: resolverBoards(data, settings, settings.showIdentity),
                             hidden: !ContestModel.canShowScoreboard.call(nobody as never, current, false),
                             // 画面采集: a broken capture setup must not take the rest of the broadcast down.
@@ -365,8 +370,15 @@ export function applyLive(ctx: Context, dependencies: {
             hub.touch();
             if (!hub.info) await hub.refresh();
             const subpath = /\/live\/api\/admin\/(.*)$/.exec(this.request.path)?.[1] || '';
+            if (subpath === 'replay' && this.request.method.toUpperCase() === 'GET') {
+                const { rid, teamUid } = this.request.query;
+                this.response.body = (typeof rid === 'string' || typeof teamUid === 'string')
+                    ? await dependencies.staffReplay?.(this.tdoc, { rid: typeof rid === 'string' ? rid : undefined,
+                        teamUid: typeof teamUid === 'string' ? teamUid : undefined }) ?? [] : [];
+                return;
+            }
             // 画面采集 for the console's 画面采集 page: devices, the teams they show, and what may go on air.
-            if (subpath === 'capture' && this.request.method === 'GET') {
+            if (subpath === 'capture' && this.request.method.toUpperCase() === 'GET') {
                 this.response.type = 'application/json';
                 this.response.body = JSON.stringify(capture ? await capture.directorStatus(this.tdoc) : { available: false, devices: [] });
                 return;

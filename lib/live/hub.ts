@@ -482,6 +482,7 @@ export class LiveHub {
     private mediaFor(runId: string, mediaType: string) {
         const run = this.runs.get(runId);
         if (!run || run.isHidden) return [];
+        if (mediaType === 'reactionVideo') return run.reactionVideos;
         return this.info?.teams.find((team) => team.id === run.teamId)?.medias[mediaType] ?? [];
     }
 

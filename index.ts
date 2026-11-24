@@ -11,6 +11,7 @@ import { buildRosterTeam, defaultProfileFields, FilterField, rosterFields } from
 import { replacementRequest } from './lib/access';
 import { describeTeam, memberIds, type TeamEntry } from './lib/teams';
 import { applyResolver } from './lib/resolver-routes';
+import { applyReactions } from './lib/reactions-routes';
 import { applyScreens } from './lib/screens-routes';
 import { applyLive } from './lib/live/routes';
 import { applyMonitor } from './lib/monitor-routes';
@@ -28,6 +29,7 @@ import { displaySpecialAwards } from './lib/special-awards';
 import { applyBoardRules, labelsHidden } from './lib/ccpc-board';
 
 export const name = 'scoreboard-xcpcio-plus';
+export const inject = ['storage'];
 export const Config = Schema.object({
     asDefault: Schema.boolean().default(true).description('将 ACM 比赛默认计分板替换为增强榜'),
     publicByDefault: Schema.boolean().default(false).description('未保存过设置的比赛默认开放免登录公开榜单'),
@@ -342,7 +344,11 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     // Links that work without a Hydro login register here, so they can be revoked after the contest.
     const links = new ContestLinks<Tdoc>();
     const balloons = applyBalloons(ctx, { loadSettings, links });
-    applyScreens(ctx, { loadSettings, loadData, machines: monitor.machines, balloons: balloons.screen, links });
+    const reactions = config.live !== false && config.liveCapture !== false ? applyReactions(ctx, {
+        loadSettings, loadData: loadContestData, links, screenDuringContest: async (tdoc): Promise<boolean> => (await live?.capture?.get(tdoc))?.screenDuringContest ?? false,
+    }) : undefined;
+    applyScreens(ctx, { loadSettings, loadData, machines: monitor.machines, balloons: balloons.screen, links,
+        screenVideos: reactions?.screenVideos, playScreenVideo: reactions?.playScreenVideo, screenLayouts: reactions?.screenLayouts });
     applyOverview(ctx, { loadSettings, loadData });
     const results = applyResults(ctx, { loadSettings, loadData, statusOf: boardStatus, resolver });
     applyCcs(ctx, { loadSettings, loadData: loadPlain });
@@ -350,11 +356,11 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     applyPresence(ctx);
     applyPrintServers(ctx, { receipts: balloons.receipts });
     const live = config.live !== false
-        ? applyLive(ctx, { loadSettings, loadData: (tdoc, identity) => loadData(tdoc, false, identity, 'live'), capture: config.liveCapture !== false, captureStunPort: config.liveCaptureStunPort ?? 3478, links })
+        ? applyLive(ctx, { loadSettings, loadData: (tdoc, identity) => loadData(tdoc, false, identity, 'live'), capture: config.liveCapture !== false, publicVideos: reactions?.publicVideos, staffReplay: reactions?.staffReplay, captureStunPort: config.liveCaptureStunPort ?? 3478, links })
         : null;
     applyClarificationDesk(ctx, { links, liveTicker: live?.announceOnTicker });
     applyControl(ctx, {
-        loadSettings, saveSettings, balloons: balloons.control, capture: live?.capture ?? null, live: !!live, review: results.reviewSummary,
+        loadSettings, saveSettings, reactions, balloons: balloons.control, capture: live?.capture ?? null, live: !!live, review: results.reviewSummary,
     });
     ctx.Route('contest_xcpcio_plus_public', '/contest/:tid/xcpcio-public', PublicBoardHandler);
     // CCPC 新榜单模式: Hydro's own board views (HTML, CSV) show every label; until the freeze they are for staff only.

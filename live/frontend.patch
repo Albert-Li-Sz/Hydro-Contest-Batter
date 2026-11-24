@@ -1464,6 +1464,57 @@ index a53d511..738e9d5 100644
                  >
                      <DeleteIcon />
                  </IconButton>
+diff --git a/src/frontend/admin-overlay/src/components/ReplayPanel.tsx b/src/frontend/admin-overlay/src/components/ReplayPanel.tsx
+new file mode 100644
+index 0000000..0874444
+--- /dev/null
++++ b/src/frontend/admin-overlay/src/components/ReplayPanel.tsx
+@@ -0,0 +1,45 @@
++import { useEffect, useState } from "react";
++import { BASE_URL_BACKEND } from "@admin/config";
++import { Stack } from "@mui/material";
++
++type Clip = { label: string; urls: string[] };
++type Run = { rid: string; team: string; problem: string; videos: { label: string; url: string }[];
++    streams: { stream: string; segments: { url: string; startMs: number }[] }[] };
++
++export default function ReplayPanel({ rid, teamUid }: { rid?: string; teamUid?: string }) {
++    const [open, setOpen] = useState(false);
++    const [runs, setRuns] = useState<Run[]>([]);
++    const [state, setState] = useState("");
++    const [clip, setClip] = useState<Clip | null>(null);
++    const [index, setIndex] = useState(0);
++    useEffect(() => {
++        setClip(null);
++        setIndex(0);
++        setRuns([]);
++        if (!open || (!rid && !teamUid)) return;
++        const abort = new AbortController();
++        setState("正在读取回放…");
++        const filter = new URLSearchParams(rid ? { rid } : { teamUid: teamUid! });
++        fetch(BASE_URL_BACKEND + "/replay?" + filter, { signal: abort.signal, credentials: "same-origin" })
++            .then(async response => {
++                if (!response.ok) throw new Error(String(response.status));
++                return await response.json() as Run[];
++            })
++            .then(data => { if (!abort.signal.aborted) { setRuns(data); setState(data.length ? "" : "暂无可回放的片段"); } })
++            .catch(() => { if (!abort.signal.aborted) setState("读取回放失败，请重新展开"); });
++        return () => abort.abort();
++    }, [open, rid, teamUid]);
++    if (!rid && !teamUid) return null;
++    return <details onToggle={e => setOpen(e.currentTarget.open)}>
++        <summary>提交回放</summary>
++        {state}
++        {open && <Stack spacing={1}>{runs.map(run => {
++            const clips = [...run.videos.map(v => ({ label: v.label, urls: [v.url] })),
++                ...run.streams.map(s => ({ label: s.stream === "screen" ? "屏幕片段" : "摄像头片段",
++                    urls: [...s.segments].sort((a,b) => a.startMs-b.startMs).map(segment => segment.url) }))];
++            return <div key={run.rid}>{run.team} · {run.problem} {clips.filter(c => c.urls.length > 0).map((c,i) =>
++                <button key={i} type="button" onClick={() => { setClip(c); setIndex(0); }}>{c.label}</button>)}</div>;
++        })}{clip && <video key={clip.urls[index]} controls autoPlay playsInline src={clip.urls[index]}
++            style={{maxWidth:"100%",maxHeight:"52vh"}} onEnded={() => { if (index+1 < clip.urls.length) setIndex(index+1); }} />}</Stack>}
++    </details>;
++}
 diff --git a/src/frontend/admin-overlay/src/components/TeamSpotlight.tsx b/src/frontend/admin-overlay/src/components/TeamSpotlight.tsx
 index a77057d..9dbd57a 100644
 --- a/src/frontend/admin-overlay/src/components/TeamSpotlight.tsx
@@ -2144,19 +2195,21 @@ index a20babe..8985ade 100644
                                  onClick={() =>
                                      setIsGroupsExpand(!isGroupsExpand)
 diff --git a/src/frontend/admin-overlay/src/components/pages/Analytics.tsx b/src/frontend/admin-overlay/src/components/pages/Analytics.tsx
-index e423af0..d80e028 100644
+index e423af0..06c20a0 100644
 --- a/src/frontend/admin-overlay/src/components/pages/Analytics.tsx
 +++ b/src/frontend/admin-overlay/src/components/pages/Analytics.tsx
-@@ -34,6 +34,8 @@ import {
+@@ -34,6 +34,10 @@ import {
      CommonTeamViewInstancesState,
      useTeamViewWidgetService,
  } from "@admin/services/teamViewService";
 +import { language, t } from "shared-code/i18n";
 +import { zhCN } from "@mui/x-data-grid/locales";
++
++import ReplayPanel from "../ReplayPanel";
  
  const featuredRunMediaTypes = [
      TeamMediaType.screen,
-@@ -78,7 +80,7 @@ const buildMessagesTableColumns = (
+@@ -78,7 +82,7 @@ const buildMessagesTableColumns = (
      },
      {
          field: "comments",
@@ -2165,7 +2218,7 @@ index e423af0..d80e028 100644
          flex: 3,
          sortable: false,
          valueGetter: (v: AnalyticsMessageComment[]) =>
-@@ -125,7 +127,7 @@ const buildMessagesTableColumns = (
+@@ -125,7 +129,7 @@ const buildMessagesTableColumns = (
      },
      {
          field: "teamId",
@@ -2174,7 +2227,7 @@ index e423af0..d80e028 100644
          flex: 2,
          valueGetter: (id: string) => {
              const team = teams[id];
-@@ -139,7 +141,7 @@ const buildMessagesTableColumns = (
+@@ -139,7 +143,7 @@ const buildMessagesTableColumns = (
      },
      {
          field: "problemId",
@@ -2183,7 +2236,7 @@ index e423af0..d80e028 100644
          width: 70,
          valueGetter: (_, message) =>
              message.runInfo &&
-@@ -152,13 +154,13 @@ const buildMessagesTableColumns = (
+@@ -152,13 +156,13 @@ const buildMessagesTableColumns = (
      },
      {
          field: "runId",
@@ -2199,7 +2252,7 @@ index e423af0..d80e028 100644
          width: 50,
          valueGetter: (_, message): string => {
              if (message.runInfo?.result?.type === RunResult.Type.ICPC) {
-@@ -171,7 +173,7 @@ const buildMessagesTableColumns = (
+@@ -171,7 +175,7 @@ const buildMessagesTableColumns = (
      },
      {
          field: "relativeTimeMs",
@@ -2208,7 +2261,7 @@ index e423af0..d80e028 100644
          width: 70,
          renderCell: (
              params: GridRenderCellParams<AnalyticsMessage, number>,
-@@ -208,6 +210,7 @@ function MessagesTable({
+@@ -208,6 +212,7 @@ function MessagesTable({
  
      return (
          <DataGrid
@@ -2216,16 +2269,17 @@ index e423af0..d80e028 100644
              ref={ref}
              rows={messages}
              columns={buildMessagesTableColumns(
-@@ -258,7 +261,7 @@ const FeaturedRunControl = ({
+@@ -258,7 +263,8 @@ const FeaturedRunControl = ({
  }: FeaturedRunControlProps) => {
      return (
          <>
 -            Featured run:&nbsp;
++            <ReplayPanel rid={selectedEvent?.runInfo?.id} />
 +            {t("Featured run:")}&nbsp;
              <TeamMediaSwitcher
                  mediaTypes={featuredRunMediaTypes}
                  onSwitch={(mediaType) =>
-@@ -280,7 +283,7 @@ const FeaturedRunControl = ({
+@@ -280,7 +286,7 @@ const FeaturedRunControl = ({
                      }}
                  >
                      <div>
@@ -2234,7 +2288,7 @@ index e423af0..d80e028 100644
                          {featuredRunStatus.teamInfo?.shortName})
                      </div>
                      &nbsp;
-@@ -331,7 +334,7 @@ const TeamViewControl = ({ selectedEvent }: TeamViewControlProps) => {
+@@ -331,7 +337,7 @@ const TeamViewControl = ({ selectedEvent }: TeamViewControlProps) => {
                          )
                      }
                  >
@@ -2243,7 +2297,7 @@ index e423af0..d80e028 100644
                  </Button>
                  <Button
                      color="error"
-@@ -340,7 +343,7 @@ const TeamViewControl = ({ selectedEvent }: TeamViewControlProps) => {
+@@ -340,7 +346,7 @@ const TeamViewControl = ({ selectedEvent }: TeamViewControlProps) => {
                          teamViewService.hide(TeamViewPosition.SINGLE)
                      }
                  >
@@ -2252,7 +2306,7 @@ index e423af0..d80e028 100644
                  </Button>
              </ButtonGroup>
          </>
-@@ -436,7 +439,7 @@ function Analytics() {
+@@ -436,7 +442,7 @@ function Analytics() {
                                  )
                              }
                          >
@@ -2261,7 +2315,7 @@ index e423af0..d80e028 100644
                          </Button>
                          <TextField
                              sx={{ width: "84px" }}
-@@ -447,7 +450,7 @@ function Analytics() {
+@@ -447,7 +453,7 @@ function Analytics() {
                              }
                              value={advertisementTtl}
                              size="small"
@@ -2270,7 +2324,7 @@ index e423af0..d80e028 100644
                              variant="outlined"
                              InputProps={{ style: { height: "30px" } }}
                          />
-@@ -463,7 +466,7 @@ function Analytics() {
+@@ -463,7 +469,7 @@ function Analytics() {
                                  )
                              }
                          >
@@ -2279,7 +2333,7 @@ index e423af0..d80e028 100644
                          </Button>
                      </ButtonGroup>
                      &nbsp;
-@@ -484,7 +487,7 @@ function Analytics() {
+@@ -484,7 +490,7 @@ function Analytics() {
                                  )
                              }
                          >
@@ -2288,7 +2342,7 @@ index e423af0..d80e028 100644
                          </Button>
                          <TextField
                              sx={{ width: "84px" }}
-@@ -493,7 +496,7 @@ function Analytics() {
+@@ -493,7 +499,7 @@ function Analytics() {
                              }
                              value={tickerMsgTtl}
                              size="small"
@@ -2297,7 +2351,7 @@ index e423af0..d80e028 100644
                              variant="outlined"
                              InputProps={{ style: { height: "30px" } }}
                          />
-@@ -509,7 +512,7 @@ function Analytics() {
+@@ -509,7 +515,7 @@ function Analytics() {
                                  )
                              }
                          >
@@ -2672,10 +2726,18 @@ index c07d134..7a56f68 100644
      );
  };
 diff --git a/src/frontend/admin-overlay/src/components/pages/TeamView.tsx b/src/frontend/admin-overlay/src/components/pages/TeamView.tsx
-index b228ed4..e9af12d 100644
+index b228ed4..3cfc1dc 100644
 --- a/src/frontend/admin-overlay/src/components/pages/TeamView.tsx
 +++ b/src/frontend/admin-overlay/src/components/pages/TeamView.tsx
-@@ -58,6 +58,7 @@ import {
+@@ -37,6 +37,7 @@ import BottomRightIcon from "@mui/icons-material/SouthEast";
+ import VisibilityIcon from "@mui/icons-material/Visibility";
+ import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
+ import ArrowDropDown from "@mui/icons-material/ArrowDropDown";
++import ReplayPanel from "../ReplayPanel";
+ import { TeamTable, TeamViewData } from "../TeamTable";
+ import TeamMediaSwitcher, {
+     DEFAULT_MEDIA_TYPES,
+@@ -58,6 +59,7 @@ import {
  } from "@admin/services/teamViewService";
  import { ObjectStatus } from "@admin/services/abstractSingleWidget";
  import { useLocalStorageState } from "@admin/utils";
@@ -2683,7 +2745,7 @@ index b228ed4..e9af12d 100644
  
  interface TeamInfoWithStatus extends TeamInfo {
      shown?: boolean;
-@@ -100,8 +101,8 @@ interface UseTeamsListReturn {
+@@ -100,8 +102,8 @@ interface UseTeamsListReturn {
  
  const AUTOMODE_TEAM: TeamInfoWithStatus = {
      id: null,
@@ -2694,7 +2756,7 @@ index b228ed4..e9af12d 100644
      hashTag: "",
      groups: [],
      organizationId: "",
-@@ -260,15 +261,15 @@ const VariantSelect: React.FC<VariantSelectProps> = ({
+@@ -260,15 +262,15 @@ const VariantSelect: React.FC<VariantSelectProps> = ({
          >
              <ToggleButton value="single">
                  <SingleTeamViewIcon />
@@ -2713,7 +2775,7 @@ index b228ed4..e9af12d 100644
              </ToggleButton>
          </ToggleButtonGroup>
      );
-@@ -314,22 +315,22 @@ const InstanceStatus: React.FC<InstanceStatusProps> = ({
+@@ -314,22 +316,22 @@ const InstanceStatus: React.FC<InstanceStatusProps> = ({
                          onClick={onShow(instanceId)}
                      >
                          {selectedInstance === instanceId
@@ -2742,7 +2804,7 @@ index b228ed4..e9af12d 100644
          </Paper>
      );
  };
-@@ -408,10 +409,10 @@ const MultipleModeSwitch: React.FC<MultipleModeSwitchProps> = ({
+@@ -408,10 +410,10 @@ const MultipleModeSwitch: React.FC<MultipleModeSwitchProps> = ({
      return (
          <Tooltip
              sx={{ display: "flex", alignContent: "center" }}
@@ -2755,7 +2817,7 @@ index b228ed4..e9af12d 100644
                  <Switch onChange={(_, newV) => setIsMultipleMode(newV)} />
                  <ButtonGroup>
                      <Button
-@@ -419,7 +420,7 @@ const MultipleModeSwitch: React.FC<MultipleModeSwitchProps> = ({
+@@ -419,7 +421,7 @@ const MultipleModeSwitch: React.FC<MultipleModeSwitchProps> = ({
                          onClick={() => currentService?.showAll()}
                          startIcon={<VisibilityIcon />}
                      >
@@ -2764,7 +2826,7 @@ index b228ed4..e9af12d 100644
                      </Button>
                      <Button
                          variant="contained"
-@@ -427,7 +428,7 @@ const MultipleModeSwitch: React.FC<MultipleModeSwitchProps> = ({
+@@ -427,7 +429,7 @@ const MultipleModeSwitch: React.FC<MultipleModeSwitchProps> = ({
                          onClick={() => currentService?.hideAll()}
                          startIcon={<VisibilityOffIcon />}
                      >
@@ -2773,7 +2835,7 @@ index b228ed4..e9af12d 100644
                      </Button>
                  </ButtonGroup>
              </Box>
-@@ -466,7 +467,11 @@ const TeamViewManager: React.FC = () => {
+@@ -466,7 +468,11 @@ const TeamViewManager: React.FC = () => {
      } = useTeamsList(rawTeams, status);
  
      useEffect(() => {
@@ -2786,7 +2848,15 @@ index b228ed4..e9af12d 100644
      }, [singleService]);
  
      const [teamsAvailableMedias, teamsHasAchievement] = useMemo(() => {
-@@ -653,7 +658,7 @@ const TeamViewManager: React.FC = () => {
+@@ -633,6 +639,7 @@ const TeamViewManager: React.FC = () => {
+                     setIsMultipleMode={setIsMultipleMode}
+                 />
+             </Box>
++            <ReplayPanel teamUid={selectedTeamId == null ? undefined : String(selectedTeamId)} />
+             <InstancesManager
+                 variant={variant}
+                 status={status}
+@@ -653,7 +660,7 @@ const TeamViewManager: React.FC = () => {
                                  defaultValue={searchValue}
                                  size="small"
                                  margin="none"
@@ -2795,7 +2865,7 @@ index b228ed4..e9af12d 100644
                                  variant="outlined"
                                  fullWidth
                              />
-@@ -666,7 +671,7 @@ const TeamViewManager: React.FC = () => {
+@@ -666,7 +673,7 @@ const TeamViewManager: React.FC = () => {
                      )}
                      {selectedTeamId !== undefined && (
                          <FormControl fullWidth sx={{ mb: 1 }}>
@@ -2804,7 +2874,7 @@ index b228ed4..e9af12d 100644
                              <TextField
                                  defaultValue={selectedTeam?.name}
                                  variant="standard"
-@@ -688,7 +693,7 @@ const TeamViewManager: React.FC = () => {
+@@ -688,7 +695,7 @@ const TeamViewManager: React.FC = () => {
                              <Grid container>
                                  <Grid size={{ xs: 12, sm: 4 }}>
                                      <FormLabel component="legend">
@@ -2813,7 +2883,7 @@ index b228ed4..e9af12d 100644
                                      </FormLabel>
                                  </Grid>
                                  <Grid size={{ xs: 12, sm: 8 }}>
-@@ -700,7 +705,7 @@ const TeamViewManager: React.FC = () => {
+@@ -700,7 +707,7 @@ const TeamViewManager: React.FC = () => {
                                  </Grid>
                                  <Grid size={{ xs: 12, sm: 4 }}>
                                      <FormLabel component="legend">
@@ -2822,7 +2892,7 @@ index b228ed4..e9af12d 100644
                                      </FormLabel>
                                  </Grid>
                                  <Grid size={{ xs: 12, sm: 8 }}>
-@@ -715,7 +720,7 @@ const TeamViewManager: React.FC = () => {
+@@ -715,7 +722,7 @@ const TeamViewManager: React.FC = () => {
                                  </Grid>
                                  <Grid size={{ xs: 10, sm: 4 }}>
                                      <FormLabel component="legend">
@@ -2831,7 +2901,7 @@ index b228ed4..e9af12d 100644
                                      </FormLabel>
                                  </Grid>
                                  <Grid size={{ xs: 2, sm: 8 }}>
-@@ -729,7 +734,7 @@ const TeamViewManager: React.FC = () => {
+@@ -729,7 +736,7 @@ const TeamViewManager: React.FC = () => {
                                      <>
                                          <Grid size={{ xs: 10, sm: 4 }}>
                                              <FormLabel component="legend">
@@ -2840,7 +2910,7 @@ index b228ed4..e9af12d 100644
                                              </FormLabel>
                                          </Grid>
                                          <Grid size={{ xs: 2, sm: 8 }}>
-@@ -757,7 +762,7 @@ const TeamViewManager: React.FC = () => {
+@@ -757,7 +764,7 @@ const TeamViewManager: React.FC = () => {
                                      <>
                                          <Grid size={{ xs: 10, sm: 4 }}>
                                              <FormLabel component="legend">
@@ -2849,7 +2919,7 @@ index b228ed4..e9af12d 100644
                                              </FormLabel>
                                          </Grid>
                                          <Grid size={{ xs: 2, sm: 8 }}>
-@@ -780,7 +785,7 @@ const TeamViewManager: React.FC = () => {
+@@ -780,7 +787,7 @@ const TeamViewManager: React.FC = () => {
                                  variant="contained"
                                  onClick={onShow}
                              >

@@ -16,13 +16,16 @@
   </header>
   <p id="recording" class="capture-recording" role="alert" hidden><strong id="recording-what">● 正在录制</strong>保持本窗口打开，可以最小化。</p>
   <p id="status" role="status" aria-live="polite"></p>
+  <p id="record-notice" hidden>本场按赛事设置录制比赛画面。录像供赛事工作人员回看，反应视频可按赛事公布的范围公开，保存期限以本场参赛须知为准。</p>
+  <p id="record-status" role="status" aria-live="polite"></p>
   <section class="capture-tiles">
     <figure id="screen-tile"><video id="screen-video" muted autoplay playsinline></video><figcaption>屏幕 · <span id="screen-state"></span></figcaption></figure>
     <figure id="webcam-tile"><video id="webcam-video" muted autoplay playsinline></video><figcaption>摄像头 · <span id="webcam-state"></span></figcaption></figure>
   </section>
-  <div class="capture-actions"><button type="button" id="start">开始采集</button><span id="watching"></span></div>
+  <div class="capture-actions"><button type="button" id="start">开始采集</button><button type="button" id="record-test" disabled>设备自检</button><span id="watching"></span></div>
 </main>
 <script type="application/json" id="capture-runtime">{{ runtimeJson | safe }}</script>
+<script src="{{ codeBase }}/js/vendor/fix-webm-duration.js"></script>
 <script type="module" src="{{ codeBase }}/js/hydro-live-capture-device.js"></script>
 </body>
 </html>

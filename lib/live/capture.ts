@@ -6,6 +6,7 @@
  * tested without Hydro; lib/live/capture-routes.ts connects it to Hydro.
  */
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { defaultRecordingSettings, normalizeRecording, type RecordingSettings } from '../recording';
 import type { MediaType } from './types';
 
 export class CaptureError extends Error {
@@ -43,10 +44,11 @@ export interface CaptureSettings {
     webcamHeight: 360 | 480 | 720;
     /** STUN/TURN servers; none is enough when the OBS computer and the contestants share a network. */
     iceServers: IceServer[];
+    recording: RecordingSettings;
 }
 
 export const defaultCaptureSettings = (): CaptureSettings => ({
-    enabled: false, screenDuringContest: true, webcam: true, prompt: true, webcamAudio: false, screenHeight: 720, screenFps: 15, webcamHeight: 480, iceServers: [],
+    enabled: false, screenDuringContest: true, webcam: true, prompt: true, webcamAudio: false, screenHeight: 720, screenFps: 15, webcamHeight: 480, iceServers: [], recording: defaultRecordingSettings(),
 });
 
 function pick<T>(value: unknown, allowed: readonly T[], label: string, fallback: T): T {
@@ -95,6 +97,8 @@ export function normalizeCaptureSettings(input: unknown, base = defaultCaptureSe
     settings.screenFps = pick(raw.screenFps, [5, 10, 15, 30] as const, '屏幕帧率', settings.screenFps);
     settings.webcamHeight = pick(raw.webcamHeight, [360, 480, 720] as const, '摄像头分辨率', settings.webcamHeight);
     if (raw.iceServers !== undefined) settings.iceServers = parseIceServers(raw.iceServers);
+    try { settings.recording = normalizeRecording(raw.recording, base.recording || defaultRecordingSettings(), settings); }
+    catch (error) { throw new CaptureError((error as Error).message); }
     return settings;
 }
 
@@ -103,7 +107,7 @@ export function captureProfile(settings: CaptureSettings) {
     return {
         screen: { height: settings.screenHeight, width: Math.round((settings.screenHeight * 16) / 9), frameRate: settings.screenFps },
         webcam: settings.webcam ? { height: settings.webcamHeight, width: Math.round((settings.webcamHeight * 16) / 9), frameRate: 15, audio: settings.webcamAudio } : null,
-        iceServers: settings.iceServers,
+        iceServers: settings.iceServers, recording: settings.recording,
     };
 }
 
@@ -129,6 +133,7 @@ export interface CaptureDevice {
     /** What the capture page has captured right now. */
     streams: CaptureStream[];
     client: { agent: string; ip: string; screen: string } | null;
+    recordingStatus?: { backlogBytes: number; backlogSeconds: number; failures: number; at: number };
 }
 
 export const newCaptureSecret = () => randomBytes(24).toString('base64url');
@@ -416,7 +421,7 @@ export class CaptureRelay {
         else this.deliverToViewer(envelope.id, envelope.message);
     }
 
-    private toDevice(device: string, message: Record<string, unknown>) {
+    toDevice(device: string, message: Record<string, unknown>) {
         if (!this.deliverToDevice(device, message)) this.bus({ origin: this.instance, to: 'device', id: device, message });
     }
 
@@ -439,6 +444,7 @@ export class CaptureRelay {
         }
         // Not connected to this process: the bus finds the process that has it.
         if (!endpoint) return false;
+        if (message.type === 'clip-request' || message.type === 'test-start' || message.type === 'record-config') { endpoint.send(message); return true; }
         const session = String(message.session);
         if (message.type === 'offer') this.deviceSessions.set(session, { viewer: String(message.viewer), device });
         else if (!this.deviceSessions.has(session)) return true;

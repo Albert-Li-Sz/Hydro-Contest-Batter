@@ -72,7 +72,7 @@ function run(command, args, quiet = false) {
     if (result.status !== 0) throw new Error(`${command} ${args.join(' ')} 执行失败${quiet ? `\n${result.stderr || result.stdout}` : ''}`);
 }
 
-function checkPackage(directory) {
+export function checkPackage(directory) {
     const pkg = readJson(path.join(directory, 'package.json'));
     if (pkg.name !== packageName || pkg.main !== 'index.ts' || !/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(pkg.version)) {
         throw new Error(`不是本插件的安装包 ${directory}`);
@@ -90,6 +90,18 @@ function checkPackage(directory) {
         'public/hydro-resolver/logos/index.json',
         'public/hydro-live/admin/index.html', 'public/hydro-live/overlay/index.html',
     ];
+    const [major, minor] = pkg.version.split('.').map(Number);
+    if (major > 1 || major === 1 && minor >= 21) {
+        const resolver = `public/hydro-resolver/${pkg.version}`;
+        files.push(
+            'lib/recording-routes.ts', 'lib/reactions-routes.ts',
+            `${resolver}/js/hydro-capture-recorder.js`, `${resolver}/js/hydro-recording-buffer.js`, `${resolver}/js/hydro-recording-media.js`,
+            `${resolver}/js/vendor/fix-webm-duration.js`, `${resolver}/js/hydro-recordings.js`, `${resolver}/hydro-recordings.css`,
+            `${resolver}/js/hydro-reactions.js`, `${resolver}/js/hydro-reaction-layout.js`, `${resolver}/js/hydro-reactions-public.js`, `${resolver}/hydro-reactions.css`,
+            'public/hydro-resolver/assets/font/NotoSansSC-VF.ttf', 'public/hydro-resolver/assets/reaction-samples/screen.mp4',
+            'public/hydro-resolver/assets/reaction-samples/webcam.mp4', 'licenses/fix-webm-duration-MIT.txt',
+        );
+    }
     for (const file of files) {
         if (!fs.statSync(path.join(directory, file), { throwIfNoEntry: false })?.isFile()) {
             throw new Error(`安装包缺少 ${file}，请下载 0.8.1 起的完整安装包`);
@@ -239,11 +251,13 @@ function install(config) {
     }
 }
 
-try {
-    const config = options(process.argv.slice(2));
-    if (config) install(config);
-    else help();
-} catch (error) {
-    console.error(error.message);
-    process.exitCode = 1;
+if (process.argv[1] && fs.existsSync(process.argv[1]) && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
+    try {
+        const config = options(process.argv.slice(2));
+        if (config) install(config);
+        else help();
+    } catch (error) {
+        console.error(error.message);
+        process.exitCode = 1;
+    }
 }

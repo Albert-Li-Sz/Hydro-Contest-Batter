@@ -1,0 +1,80 @@
+"""Build the separate media-machine source archive from a pinned upstream checkout."""
+
+import argparse
+import hashlib
+import io
+import shutil
+import subprocess
+import tarfile
+import tempfile
+from pathlib import Path
+
+PIN = "5d42acb846870b032605d161cf26f26ca556e77e"
+UPSTREAM = "https://github.com/icpc/reactions-generator.git"
+HERE = Path(__file__).resolve().parent
+
+
+def build(output, checkout):
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        if checkout is None:
+            checkout = root / "repo"
+            subprocess.run(
+                [
+                    "git",
+                    "clone",
+                    "--filter=blob:none",
+                    "--no-checkout",
+                    UPSTREAM,
+                    str(checkout),
+                ],
+                check=True,
+            )
+        archive = subprocess.check_output(["git", "-C", str(checkout), "archive", PIN])
+        source = root / "src"
+        with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+            tar.extractall(source, filter="data")
+        pkg = source / "reactions_generator"
+        for name in ["hydro_render.py", "hydro_worker.py"]:
+            shutil.copy2(HERE / name, pkg)
+        shutil.copy2(HERE / "test_hydro_worker.py", source / "tests")
+        shutil.copy2(HERE / "docker-compose.yml", source / "docker-compose.yml")
+        shutil.copy2(HERE / "LICENSE-upstream-MIT.txt", source / "LICENSE")
+        (pkg / "fonts").mkdir()
+        shutil.copy2(
+            HERE.parent / "resolver/public/assets/font/NotoSansSC-VF.ttf", pkg / "fonts"
+        )
+        shutil.copy2(HERE.parent / "licenses/Noto-Sans-SC-OFL.txt", pkg / "fonts")
+        worker = pkg / "worker.py"
+        original = worker.read_text()
+        signature = "    poll_interval: float = 2.0,\n) -> None:"
+        entry = "    if total_workers <= 0 or ("
+        assert original.count(signature) == original.count(entry) == 1
+        worker.write_text(
+            original.replace(
+                signature,
+                "    poll_interval: float = 2.0,\n    hydro_upload: bool = False,\n) -> None:",
+            ).replace(
+                entry,
+                "    if hydro_upload:\n        from reactions_generator.hydro_worker import continuous\n\n        continuous(url, output_directory, total_workers, worker_id, hardware, poll_interval, sound)\n        return\n"
+                + entry,
+            )
+        )
+        shutil.copy2(HERE.parent / "LICENSE", source / "LICENSE-Hydro-AGPL.txt")
+        shutil.copy2(HERE / "README.md", source / "HYDRO.md")
+        (source / "README.md").write_text(
+            (source / "README.md").read_text()
+            + "\nHydro contest mode: see [HYDRO.md](HYDRO.md).\n"
+        )
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(output, "w:gz") as tar:
+            tar.add(source, arcname="reactions-generator-hydro")
+        print(output.name, hashlib.file_digest(output.open("rb"), "sha256").hexdigest())
+
+
+if __name__ == "__main__":
+    args = argparse.ArgumentParser(description=__doc__)
+    args.add_argument("output", type=Path)
+    args.add_argument("--checkout", type=Path)
+    opt = args.parse_args()
+    build(opt.output, opt.checkout)

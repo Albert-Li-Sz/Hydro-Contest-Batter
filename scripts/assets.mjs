@@ -1,15 +1,23 @@
+import { existsSync } from 'node:fs';
 import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { scopeBoardCss } from '../lib/style-scope.mjs';
+import { checkPackage } from './manage-addon.mjs';
 import { patchBoardEngine, patchBoardLayouts, patchBoardSharing } from '../lib/patch-engine.mjs';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const dist = path.join(path.dirname(require.resolve('@xcpcio/board-app/package.json')), 'dist');
 const { version } = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
 if (!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version)) throw new Error('无效的插件版本号');
+// Published archives carry the built assets, while their large build inputs only live in the checkout.
+if (!existsSync(path.join(root, 'resolver/public/assets')) && !existsSync(path.join(root, 'live/dist'))) {
+    checkPackage(root);
+    console.log(`Using packaged XCPCIO, Resolver and Live assets for ${version}`);
+    process.exit(0);
+}
+const { scopeBoardCss } = await import('../lib/style-scope.mjs');
+const dist = path.join(path.dirname(require.resolve('@xcpcio/board-app/package.json')), 'dist');
 const publicRoot = path.join(root, 'public/hydro-xcpcio');
 const target = path.join(publicRoot, version);
 const html = await readFile(path.join(dist, 'index.html'), 'utf8');

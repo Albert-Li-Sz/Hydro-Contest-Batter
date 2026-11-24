@@ -131,6 +131,11 @@ function card(type) {
     if (runtime.variants[type]) {
         fields.append(el('label', { text: '样式' }, select(runtime.variants[type], item.variant, (value) => { item.variant = value; })));
     }
+    if (type === 'reactions') {
+        const layouts = [['', '使用公开页版式'], ...(runtime.reactionLayouts || []).map(layout => [layout.id, layout.name])];
+        if (item.layoutId && !layouts.some(([id]) => id === item.layoutId)) layouts.push([item.layoutId, item.layoutId]);
+        fields.append(el('label', { text: '轮播版式' }, select(layouts, item.layoutId || '', value => { item.layoutId = value; })));
+    }
     if (type === 'groups') {
         fields.append(el('label', { text: '分组方式' }, select(runtime.groupSources, item.source, (value) => { item.source = value; })));
     }

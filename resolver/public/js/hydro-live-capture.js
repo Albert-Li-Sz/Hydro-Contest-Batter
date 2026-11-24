@@ -3,6 +3,7 @@
 import {
     $, copyText, el, field, formatTime, get, input, notify, openDialog, post, runtime,
 } from './hydro-manage-common.js';
+import { installRecordingTabs } from './hydro-recordings.js';
 import { CaptureViewer, socketUrl } from './hydro-capture-viewer.js';
 
 const state = { devices: [], teams: [], settings: null, screenNow: false, contest: null, selected: new Set(), filter: 'all', seat: '', loadFailed: false };
@@ -194,7 +195,9 @@ function renderTable() {
                     device.teamUid !== null ? tag('手动') : null),
                 el('td', {}, ...device.online
                     ? (device.streams.length ? device.streams.map((stream) => tag(streamName[stream], 'manage-tag--ok')) : [tag('在线', 'manage-tag--ok')])
-                    : [tag(device.lastSeen ? '离线' : '未打开', device.lastSeen ? 'manage-tag--bad' : '')]),
+                    : [tag(device.lastSeen ? '离线' : '未打开', device.lastSeen ? 'manage-tag--bad' : '')],
+                    device.online && device.recordingStatus?.backlogBytes > 0 ? tag(`待传 ${(device.recordingStatus.backlogBytes / 1048576).toFixed(1)} MB · ${device.recordingStatus.backlogSeconds || 0} 秒`) : null,
+                    device.online && device.recordingStatus?.failures > 0 ? tag(`上传失败 ${device.recordingStatus.failures} 次`, 'manage-tag--bad') : null),
                 el('td', { class: 'manage-nowrap manage-small', text: formatTime(device.lastSeen) }),
                 el('td', { class: 'manage-small', text: device.client ? [device.client.ip, device.client.screen].filter(Boolean).join(' · ') : '—' }),
                 el('td', { class: 'col-actions manage-nowrap' },
@@ -354,5 +357,6 @@ const refresh = () => { if (!document.hidden && !document.querySelector('dialog[
 ensureViewer().onDevices = () => { clearTimeout(pushed); pushed = setTimeout(refresh, 300); };
 // A tab coming back reloads at once instead of waiting for the next poll.
 document.addEventListener('visibilitychange', refresh);
+installRecordingTabs(state, load);
 load();
 setInterval(refresh, 20000);

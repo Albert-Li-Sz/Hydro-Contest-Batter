@@ -7,6 +7,7 @@ import {
     ConnectionHandler, ContestModel, Context, Handler, NotFoundError, ObjectId, param, PERM, Tdoc, Types, UserModel,
 } from 'hydrooj';
 import type { BoardData } from '../board';
+import { applyRecording } from '../recording-routes';
 import { seatOf } from '../print';
 import { toScriptJson } from '../settings';
 import { isTeamEntry, loadSeats, memberIds, type TeamEntry } from '../teams';
@@ -214,6 +215,7 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
                 throw new CaptureError(`座位 ${item.seat} 已有采集设备`);
             }
             await devices.updateOne({ _id: doc._id }, { $set: item });
+            if (doc.teamUid !== item.teamUid || doc.seat !== item.seat) relay.kickDevice(doc._id, '机位绑定已更改，重新连接后生效', 4005);
             mediaCache.delete(doc.contestKey);
             this.response.body = { ok: true };
         }
@@ -271,7 +273,7 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
                         : bySeat.get(doc.seat.toLowerCase()) ?? null;
                     return {
                         id: doc._id, name: doc.name, seat: doc.seat, teamUid: doc.teamUid, team, url: captureUrl(this.tdoc, doc),
-                        online: isCaptureOnline(doc, now), streams: isCaptureOnline(doc, now) ? doc.streams : [], lastSeen: doc.lastSeen, client: doc.client,
+                        online: isCaptureOnline(doc, now), streams: isCaptureOnline(doc, now) ? doc.streams : [], lastSeen: doc.lastSeen, client: doc.client, recordingStatus: doc.recordingStatus,
                     };
                 }),
             };
@@ -302,6 +304,10 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
     /** A capture page's socket: by its link (secret) or by the signed-in contestant. */
     abstract class DeviceConnectionHandler extends ConnectionHandler {
         deviceId = '';
+        recordingContest?: Tdoc;
+        recordingTeam: number | null = null;
+        closingReason = 'offline';
+        lastMetrics = 0;
         endpoint?: Parameters<CaptureRelay['attachDevice']>[1];
         recheck?: NodeJS.Timeout;
         statusTimer?: NodeJS.Timeout;
@@ -317,6 +323,8 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
             // The capture page shows the reason (the socket closes with it) and tries again later.
             if (!settings.enabled) throw new CaptureError('本场比赛尚未启用画面采集，启用后会自动连接', 403);
             this.deviceId = doc._id;
+            this.recordingContest = tdoc;
+            this.recordingTeam = await recording.teamFor(tdoc, doc);
             const connection = `${relay.instance}/${randomUUID()}`;
             this.endpoint = {
                 contestKey, connection,
@@ -325,9 +333,10 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
             };
             relay.attachDevice(doc._id, this.endpoint);
             const agent = String(this.request.headers['user-agent'] || '').slice(0, 200);
-            await devices.updateOne({ _id: doc._id }, { $set: { connection, lastSeen: new Date(), streams: [], client: { agent, ip: String(this.request.ip || ''), screen: '' } } });
+            await devices.updateOne({ _id: doc._id }, { $set: { connection, lastSeen: new Date(), recordingTeam: this.recordingTeam, streams: [], client: { agent, ip: String(this.request.ip || ''), screen: '' } } });
             relay.devicesChanged(contestKey);
-            this.send({ type: 'config', name: doc.name, seat: doc.seat, ...captureProfile(settings), stunPort });
+            this.send({ type: 'config', name: doc.name, seat: doc.seat, ...captureProfile(settings), stunPort, serverTime: Date.now(), beginAt: +tdoc.beginAt, endAt: +tdoc.endAt, deviceId: doc._id, teamUid: this.recordingTeam });
+            if (this.recordingTeam !== null) await recording.resume(tdoc, doc, this.recordingTeam, settings);
             // An incoming socket event also works while the browser throttles background timers.
             this.statusTimer = setInterval(() => this.send({ type: 'requestStatus' }), 15_000);
             this.statusTimer.unref?.();
@@ -343,6 +352,20 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
 
         async message(input: unknown) {
             const message = input as Record<string, unknown> | null;
+            if (message?.type === 'clock') {
+                this.send({ type: 'clock', clientTime: message.clientTime, serverTime: Date.now() });
+                return;
+            }
+            if (['record-status', 'test-report', 'test-request'].includes(String(message?.type)) && message && this.recordingContest && this.endpoint) {
+                if (message.closed === true) this.closingReason = 'closed';
+                if (message.type === 'record-status' && !message.rid && !message.gap && !message.closed && Date.now() - this.lastMetrics < 1000) return;
+                this.lastMetrics = Date.now();
+                const current = await devices.findOne({ _id: this.deviceId, connection: this.endpoint.connection });
+                if (!current || !await this.stillValid(current)) return;
+                try { await recording.message(this.recordingContest, current, this.recordingTeam, message); }
+                catch (e) { this.send({ type: 'record-error', message: String((e as Error).message || e) }); }
+                return;
+            }
             if (message?.type === 'status') {
                 const streams = (Array.isArray(message.streams) ? message.streams : []).filter((stream): stream is CaptureStream => captureStreams.includes(stream as CaptureStream));
                 const screen = typeof message.screen === 'string' ? message.screen.slice(0, 40) : '';
@@ -362,7 +385,8 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
             if (this.statusTimer) clearInterval(this.statusTimer);
             if (!this.endpoint) return;
             relay.detachDevice(this.deviceId, this.endpoint);
-            await devices.updateOne({ _id: this.deviceId, connection: this.endpoint.connection }, { $set: { connection: null, streams: [] } }).catch(() => null);
+            const left = await devices.updateOne({ _id: this.deviceId, connection: this.endpoint.connection }, { $set: { connection: null, streams: [], offlineReason: this.closingReason, offlineAt: Date.now(), offlineTeam: this.recordingTeam } }).catch(() => null);
+            if (left?.matchedCount && this.recordingContest && this.recordingTeam !== null) await recording.disconnect(this.recordingContest, this.deviceId, this.recordingTeam, this.closingReason);
             relay.devicesChanged(this.endpoint.contestKey);
         }
     }
@@ -496,10 +520,13 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
             if (await participation(tdoc, handler.user._id) === null) return;
             handler.UiContext.xcpcioCapture = {
                 url: `${helpers.contestBase(tdoc)}/live-capture/me`, channel: `xcpcio-capture-${tdoc.docId}`, contest: tdoc.title,
-                screenPublic: settings.screenDuringContest, webcam: settings.webcam,
+                screenPublic: settings.screenDuringContest, webcam: settings.webcam, ...(settings.recording.clips.enabled || settings.recording.archive.enabled ? { recording: true } : {}),
             };
         } catch { /* the contest page works without the prompt */ }
     });
+
+    const recording = applyRecording(ctx, { ...helpers, loadSettings, devices, teamSeats, participantDevice, contestantContext,
+        send: (id, message) => relay.toDevice(id, message) });
 
     // ---------------------------------------------------------------- Viewers
 

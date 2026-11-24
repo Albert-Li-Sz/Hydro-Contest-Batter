@@ -15,6 +15,22 @@ const state = { socket: null, profile: null, screen: null, webcam: null, session
 // The contestant's own capture window (opened from the contest's prompt) tells the contest pages it is capturing.
 const channel = !blocked && runtime.channel && 'BroadcastChannel' in window ? new BroadcastChannel(runtime.channel) : null;
 const pageTitle = document.title;
+let recorder;
+const recorderOptions = {
+    uploadUrl: runtime.ws.replace(/\/ws(?=[?#]|$)/, '/segments'), send, sources: () => state,
+    show: ({ active, enabled, backlogBytes, backlogSeconds, error, testing, supported }) => {
+        $('record-notice').hidden = !enabled;
+        const sharing = !!(state.screen || state.webcam);
+        const action = active ? '正在录制' : '正在采集';
+        document.title = sharing ? `● ${action} · 请勿关闭 · ${pageTitle}` : pageTitle;
+        $('recording-what').textContent = '● ' + action + (state.screen && state.webcam ? '屏幕和摄像头' : state.screen ? '屏幕' : '摄像头');
+        const text = [active ? '录像中' : enabled ? '等待录像' : '', testing ? '设备测试中' : '',
+            backlogBytes ? `待上传 ${(backlogBytes / 1048576).toFixed(1)} MB（${backlogSeconds} 秒）` : '', error || ''].filter(Boolean);
+        const message = text.join(' · ');
+        if ($('record-status').textContent !== message) $('record-status').textContent = message;
+        $('record-test').disabled = !state.connected || !supported || testing || !(state.screen || state.webcam);
+    },
+};
 /** The contest's STUN/TURN servers, and Hydro's own STUN server on the host this page came from. */
 const iceServers = () => [...state.profile?.iceServers || [], ...state.profile?.stunPort ? [{ urls: `stun:${location.hostname}:${state.profile.stunPort}` }] : []];
 
@@ -37,11 +53,10 @@ if (channel) setInterval(announce, 2000);
 function render() {
     const recording = !!state.screen || !!state.webcam;
     // The tab and the window title say it too, so it is not closed by mistake.
-    document.title = recording ? `● 正在录制 · 请勿关闭 · ${pageTitle}` : pageTitle;
     $('recording').hidden = !recording;
-    $('recording-what').textContent = state.screen && state.webcam ? '● 正在录制屏幕和摄像头' : state.screen ? '● 正在录制屏幕' : '● 正在录制摄像头';
     document.body.dataset.recording = String(recording);
     announce();
+    recorder?.sync();
     $('screen-video').srcObject = state.screen;
     $('webcam-video').srcObject = state.webcam;
     $('screen-state').textContent = state.screen ? '正在采集' : '未采集';
@@ -64,7 +79,9 @@ function render() {
 }
 
 function send(message) {
-    if (state.socket?.readyState === WebSocket.OPEN) state.socket.send(JSON.stringify(message));
+    if (state.socket?.readyState !== WebSocket.OPEN) return false;
+    state.socket.send(JSON.stringify(message));
+    return true;
 }
 
 let lastReportedAt = 0;
@@ -217,6 +234,11 @@ function connect() {
         if (event.data === 'pong') return;
         let message;
         try { message = JSON.parse(event.data); } catch { return; }
+        if (['clock', 'test-start', 'clip-request', 'record-error'].includes(message.type)) {
+            recorder.message(message).catch((error) => recorder.warn(error));
+            return;
+        }
+        if (message.type === 'record-config') { await recorder.config({ ...state.profile, ...message }); return; }
         if (message.type === 'requestStatus') { reportStatus(); return; }
         if (message.type === 'config') {
             // On connecting (with the device's name), and again whenever a manager changes the settings.
@@ -224,6 +246,7 @@ function connect() {
             state.profile = { ...previous, ...message };
             if (typeof message.name === 'string') $('device-name').textContent = message.name;
             if (typeof message.seat === 'string') $('device-seat').textContent = message.seat ? `座位 ${message.seat}` : '';
+            await recorder.config(state.profile);
             if (previous) await applyProfile(previous);
             await capture();
         } else if (message.type === 'offer') {
@@ -244,6 +267,7 @@ function connect() {
         render();
         const reason = String(event.reason || '').replace(/^\w*Error:\s*/, '');
         // 4004: the link was regenerated, the device deleted or capture turned off; 4009: opened elsewhere.
+        if ([4000, 4004, 4005, 4009].includes(event.code)) recorder.reset();
         if (event.code === 4004 || event.code === 4009) {
             state.stopped = true;
             setStatus(reason || '采集链接已失效，请向管理员获取新的链接', 'bad');
@@ -264,6 +288,9 @@ if (blocked) {
     $('start').disabled = true;
     setStatus(blocked, 'bad');
 } else {
+    $('record-test').addEventListener('click', () => {
+        if (send({ type: 'test-request' })) $('record-status').textContent = '已请求设备自检，等待 Hydro 下发测试。';
+    });
     $('start').addEventListener('click', () => capture(true));
     setInterval(() => {
         if (state.socket?.readyState !== WebSocket.OPEN) return;
@@ -272,8 +299,14 @@ if (blocked) {
     }, 15000);
     // The browser asks before closing the window while it is recording.
     window.addEventListener('beforeunload', (event) => {
-        if (state.screen || state.webcam) { event.preventDefault(); event.returnValue = '正在录制，关闭后录制会中断'; }
+        if (state.screen || state.webcam) { event.preventDefault(); event.returnValue = '画面采集中，关闭后将中断'; }
     });
-    window.addEventListener('pagehide', () => channel?.postMessage({ type: 'closed' }));
-    connect();
+    window.addEventListener('pagehide', () => {
+        send({ type: 'record-status', closed: true });
+        channel?.postMessage({ type: 'closed' });
+    });
+    import('./hydro-capture-recorder.js').then(({ CaptureRecorder }) => {
+        recorder = new CaptureRecorder(recorderOptions);
+        connect();
+    }).catch((error) => setStatus('无法加载录制器：' + error.message, 'bad'));
 }

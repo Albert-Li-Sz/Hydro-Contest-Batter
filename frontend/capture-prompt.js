@@ -93,10 +93,11 @@ export function installCapturePrompt(info) {
         const open = element('button', { type: 'button', class: 'primary', text: interrupted ? '重新开启' : '开启画面采集', onclick: () => openWindow(hint) });
         const later = element('button', { type: 'button', text: '稍后', onclick: () => { storage('setItem', laterKey, String(Date.now())); closeDialog(); } });
         const dialog = element('div', { class: 'xcpcio-capture-dialog', role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': 'xcpcio-capture-title', 'data-tone': interrupted ? 'bad' : '' },
-            element('h2', { id: 'xcpcio-capture-title', text: interrupted ? '画面采集已中断' : `本场比赛录制${info.webcam === false ? '屏幕' : '屏幕和摄像头'}` }),
+            element('h2', { id: 'xcpcio-capture-title', text: interrupted ? '画面采集已中断' : `本场比赛${info.recording ? '录制' : '采集'}${info.webcam === false ? '屏幕' : '屏幕和摄像头'}` }),
             element('ol', {},
                 element('li', { text: `在弹出的窗口中点击“开始采集”，选择“整个屏幕”并分享${info.webcam === false ? '' : '，允许使用摄像头'}。` }),
                 element('li', { text: '保持该窗口打开，可以最小化。' })),
+            ...(info.recording ? [element('p', { text: '本场按赛事设置录制比赛画面，供工作人员回看。反应视频公开范围及录像保存期限见本场参赛须知。' })] : []),
             hint,
             element('div', { class: 'xcpcio-capture-actions' }, ...interrupted ? [] : [later], open));
         state.dialog = element('div', { class: 'xcpcio-capture-mask' }, dialog);

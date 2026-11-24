@@ -11,6 +11,7 @@ const titles = {
     balloons: ['气球配送图', 'Balloon delivery'],
     announce: ['通过播报', 'Accepted submissions'],
     judges: ['评测机状态', 'Judge status'],
+    reactions: ['反应视频轮播', 'Reaction videos'],
     poster: ['图片海报', 'Posters'],
     clarifications: ['比赛公告', 'Contest announcements'],
     'problem-list': ['题目列表', 'Problems'],
@@ -116,7 +117,7 @@ export class HydroScreenExtras {
         const total = pages ? pages.length : ({
             groups: item.variant === 'group' ? data.length : count(data, rows),
             outcomes: count(data, rows),
-            'team-intro': data.length, poster: data.length, clarifications: data.length, announce: data.length,
+            'team-intro': data.length, reactions: data.length, poster: data.length, clarifications: data.length, announce: data.length,
             'problem-list': count(data, rows), judges: count(data.machines || [], rows),
         })[type] || 1;
         const current = tick % Math.max(1, total);
@@ -151,6 +152,16 @@ export class HydroScreenExtras {
         else if (type === 'floor' || type === 'balloons') this.venue(body, pages[current], data, type, item.variant);
         else if (type === 'announce' && data.length) this.announce(body, data[current]);
         else if (type === 'judges') this.judges(body, page(data.machines), data);
+        else if (type === 'reactions' && data.length) {
+            const clip = data[current];
+            const video = document.createElement('video');
+            video.autoplay = video.muted = video.playsInline = true;
+            video.loop = total === 1;
+            video.src = clip.url;
+            video.style.cssText = 'width:100%;height:100%;object-fit:contain';
+            video.setAttribute('aria-label', [clip.team, clip.problem].join(' · '));
+            body.append(video);
+        }
         else if (type === 'poster' && data.length) body.append(el('div', 'screen-poster', image(data[current], this.t('比赛海报', 'Contest poster'))));
         else if (type === 'clarifications' && data.length) this.clarification(body, data[current]);
         else if (type === 'problem-list' && data.length) this.problems(body, page(data));

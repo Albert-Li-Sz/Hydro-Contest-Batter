@@ -37,6 +37,8 @@ export interface LiveSource {
     now: number;
     /** Before the public board may be shown (contest not started): no teams, no runs. */
     hidden?: boolean;
+    /** Published reaction videos keyed by submission id. */
+    reactionVideos?: Record<string, MediaType[]>;
     /** Each team's camera and screen from 画面采集 (lib/live/capture.ts), by team id. */
     medias?: Record<string, Record<string, MediaType[]>>;
 }
@@ -199,7 +201,7 @@ export function buildRuns(source: LiveSource, info: ContestInfo): RunInfo[] {
             : { type: 'IN_PROGRESS', testedPart: 0, isAfterFirstOk: false, ...(record.status === 'FROZEN' ? { frozen: true } : {}) };
         return {
             id: record.submission_id, result, problemId: String(record.problem_id), teamId: record.team_id,
-            time: record.timestamp, languageId: null, reactionVideos: [], isHidden: false,
+            time: record.timestamp, languageId: null, reactionVideos: verdict ? source.reactionVideos?.[record.submission_id] ?? [] : [], isHidden: false,
         };
     });
     const solved = new Set<string>();

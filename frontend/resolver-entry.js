@@ -1,5 +1,6 @@
 const entryIds = ['xcpcio-resolver-entry', 'xcpcio-screens-entry', 'xcpcio-live-entry', 'xcpcio-capture-entry', 'xcpcio-monitor-entry', 'xcpcio-overview-entry', 'xcpcio-awards-entry', 'xcpcio-balloons-entry', 'xcpcio-presence-entry', 'xcpcio-clarification-desk-entry'];
 const resultsEntryId = 'xcpcio-results-entry';
+const reactionsEntryId = 'xcpcio-reactions-entry';
 const controlEntryId = 'xcpcio-control-entry';
 const entries = (url, { live = true, capture = false } = {}) => [
     // 赛事中控: the settings of every page below that a contest day needs, in one place.
@@ -14,13 +15,14 @@ const entries = (url, { live = true, capture = false } = {}) => [
     ...live ? [[entryIds[2], url.replace(/\/resolver$/, '/live'), 'icon-play', '直播']] : [],
     // 画面采集: contestants' screens and webcams (with the live module and its plugin setting).
     ...live && capture ? [[entryIds[3], url.replace(/\/resolver$/, '/live/capture'), 'icon-security', '画面采集']] : [],
+    ...live && capture ? [[reactionsEntryId, url.replace(/\/resolver$/, '/reactions/manage'), 'icon-play', '反应视频']] : [],
     // Which contestant computers are on, and which look wrong (check-in before the start).
     [entryIds[8], url.replace(/\/resolver$/, '/presence'), 'icon-user--multiple', '机位监控'],
     [entryIds[4], url.replace(/\/resolver$/, '/monitor'), 'icon-stopwatch', '评测监控'],
     [entryIds[5], url.replace(/\/resolver$/, '/overview'), 'icon-pie-chart', '赛况总览'],
     [entryIds[9], url.replace(/\/resolver$/, '/clarification-desk'), 'icon-comment', '答疑台'],
 ];
-const removeEntries = () => { for (const id of [...entryIds, resultsEntryId, controlEntryId]) document.getElementById(id)?.remove(); };
+const removeEntries = () => { for (const id of [...entryIds, resultsEntryId, controlEntryId, reactionsEntryId]) document.getElementById(id)?.remove(); };
 
 /** Add the entries after CCS, including when CCS finishes loading later. */
 export function installResolverEntry(url, options = {}) {

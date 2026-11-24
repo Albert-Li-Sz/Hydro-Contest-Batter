@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { defaultSettings } from '../lib/settings';
 import { resolverBoards } from '../lib/resolver-data';
 import { broadcastRows, decodePoster, defaultScreenConfig, hiddenBeforeStart, normalizeScreenConfig, presentationItem, saveScreenConfig,
-    screenCategories, screenData, screenProjection, screenTypes } from '../lib/screens-data';
+    reactionPlaylist, screenCategories, screenData, screenProjection, screenTypes } from '../lib/screens-data';
 import { demoData } from './fixture';
 
 const settings = { ...defaultSettings, showIdentity: true, manualBoards: [{ id: 'mixed', name: '混合榜', teamIds: ['1', '4', '7'] }] };
@@ -44,6 +44,14 @@ describe('big-screen configuration', () => {
 });
 
 describe('additional screens', () => {
+    it('limits reaction playback to the chosen board, layout and verdict', () => {
+        const item = { ...defaultScreenConfig().items.reactions, layoutId: 'portrait' };
+        const v = { teamUid: 1, team: 'Alpha', problem: 'A', accepted: true, firstSolve: true, layoutId: 'portrait', url: '/public/run' };
+        const feed = [v, { ...v, firstSolve: false }, { ...v, teamUid: 2 }, { ...v, layoutId: 'landscape' }];
+        expect(reactionPlaylist(feed, item, new Set(['1']))).toEqual([{ url: v.url, team: 'Alpha', problem: 'A' }]);
+        expect(reactionPlaylist(feed, { ...item, variant: 'accepted' }, null)).toHaveLength(3);
+        expect(reactionPlaylist([], item, null)).toEqual([]);
+    });
     it('lists every screen once, loads legacy settings and keeps uploads through settings saves', () => {
         expect(screenCategories.flatMap(([, types]) => types)).toEqual([...screenTypes]);
         const id = 'a'.repeat(24);

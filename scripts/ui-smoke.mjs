@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { recordingWorkflow, venueWorkflow } from './recording-workflow-check.mjs';
 import { captureContinuity } from './capture-continuity-check.mjs';
 import { resolverAudience } from './resolver-audience-check.mjs';
 
@@ -22,14 +23,15 @@ const themed = [
     `${contest}/scoreboard/xcpcio-plus`, `${contest}/xcpcio-settings`, `${contest}/resolver`, `${contest}/screens`,
     `${contest}/live`, `${contest}/live/capture`, `${contest}/monitor`, `${contest}/presence`, `${contest}/overview`, `${contest}/balloons`,
     '/manage/xcpcio-users', '/manage/xcpcio-users#seats', '/manage/xcpcio-judges', '/manage/xcpcio-rejudge', '/manage/xcpcio-printers',
-    `${contest}/clarification-desk`,
+    `${contest}/clarification-desk`, ...['recordings', 'settings', 'tests'].map((tab) => `${contest}/live/capture#${tab}`),
+    `${contest}/reactions/manage`, `${contest}/reactions/manage/layouts`, `${contest}/reactions`,
     `${contest}/results`, `${contest}/control`, `${contest}/rejudge-review`,
 ];
 const plain = [`${contest}/live-capture/me?as=1`, `${contest}/problems?as=1`, `${contest}/presence?phase=before`,
     ...['controls', 'capture', 'scoreboard', 'ticker', 'teamSpotlight', 'contestInfo'].map((page) => `${contest}/live/admin/${page}`), `${contest}/live/admin`];
 const screens = ['scoreboard', 'leaders', 'tiles', 'first-solves', 'queue', 'clock', 'countdown', 'message', 'resolver', 'problem-stats',
     'rank-trend', 'outcomes', 'groups', 'logo-wall', 'team-intro', 'problem-colors', 'floor', 'balloons', 'announce', 'judges', 'poster',
-    'clarifications', 'problem-list'].map((type) => `${screen}/${type}`);
+    'clarifications', 'problem-list', 'reactions'].map((type) => `${screen}/${type}`);
 const ignoredConsole = /favicon|404 \(Not Found\)|NotAllowedError|Permission denied|Could not start video/;
 
 const failures = [];
@@ -230,6 +232,8 @@ async function interactions(browser, base) {
             const seat = info.devices.find((d) => d.teamId === '1');
             return !seat?.online ? 'disconnected' : seat.streams.includes('screen') ? 'recording' : 'connected';
         };
+        await recordingWorkflow(manage, device, context, base, contest);
+        if (process.env.UI_SMOKE === 'recording') return;
         await captureContinuity(device, contestantPage, captureState);
         // Screens save themselves.
         where = 'screens';
@@ -473,9 +477,10 @@ try {
     // UI_SMOKE=interactions skips the page sweep while working on an interaction.
     const mode = process.env.UI_SMOKE;
     if (!mode) await sweep(browser, base);
+    if (mode === 'venue') await venueWorkflow(browser, base, contest);
     if (!mode || mode === 'resolver') console.log('Resolver audience', JSON.stringify(await resolverAudience(browser, base)));
     if (!mode || mode === 'live') await broadcastStyles(browser, base);
-    if (!mode || mode === 'interactions') await interactions(browser, base);
+    if (!mode || mode === 'interactions' || mode === 'recording') await interactions(browser, base);
     if (process.env.BASELINE_PREVIEW) console.log('Resolver v1.18.0', JSON.stringify(await resolverAudience(browser, process.env.BASELINE_PREVIEW, true)));
 } finally {
     await browser?.close();

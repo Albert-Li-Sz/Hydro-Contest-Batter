@@ -131,7 +131,12 @@ function render() {
         capture ? group('画面采集',
             row(check('画面采集', capture.enabled, (value) => save('capture', { enabled: value })),
                 check('摄像头', capture.webcam, (value) => save('capture', { webcam: value }), { disabled: !capture.enabled }),
+                el('span', { text: `提交片段${capture.clips ? '开启' : '关闭'} · 全程留档${capture.archive ? '开启' : '关闭'}` }),
                 link('采集设备', links.capture), link('直播', links.live))) : null,
+        data.reactions ? group('反应视频', row(
+            el('span', { text: `已完成 ${data.reactions.ready} · 等待 ${data.reactions.waiting} · 失败 ${data.reactions.failed}` }),
+            check('公开反应视频', data.reactions.publicEnabled, (enabled) => save('reactions', { enabled })),
+            link('管理视频和版式', links.reactions))) : null,
         group('重测复核',
             row(el('span', { text: review ? [`${review.changes} 条提交结果有变化`, review.pending ? `${review.pending} 条评测中` : '', review.stale ? `${review.stale} 个滚榜会话基于旧结果` : ''].filter(Boolean).join(' · ') : '—' }),
                 link('重测复核', links.review), link('批量重测', links.rejudge))),

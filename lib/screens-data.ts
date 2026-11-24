@@ -9,29 +9,30 @@ import { memoryLimitMb, timeLimitMs } from './ccs/source';
 
 export const screenTypes = [
     'scoreboard', 'leaders', 'tiles', 'first-solves', 'queue', 'clock', 'countdown', 'message', 'resolver',
-    'problem-stats', 'rank-trend', 'outcomes', 'groups', 'logo-wall', 'team-intro', 'problem-colors',
+    'problem-stats', 'rank-trend', 'outcomes', 'groups', 'logo-wall', 'team-intro', 'problem-colors', 'reactions',
     'floor', 'balloons', 'announce', 'judges', 'poster', 'clarifications', 'problem-list',
 ] as const;
 export type ScreenType = typeof screenTypes[number];
 export const screenCategories: [string, ScreenType[]][] = [
     ['常用', ['scoreboard', 'leaders', 'tiles', 'first-solves', 'queue', 'clock', 'countdown', 'message', 'resolver']],
     ['统计图表', ['problem-stats', 'rank-trend', 'outcomes']],
-    ['榜单与展示', ['groups', 'logo-wall', 'team-intro', 'problem-colors']],
+    ['榜单与展示', ['groups', 'logo-wall', 'team-intro', 'problem-colors', 'reactions']],
     ['场馆与现场', ['floor', 'balloons', 'announce', 'judges']],
     ['信息与编排', ['poster', 'clarifications', 'problem-list']],
 ];
 /** Screens drawn from one board's teams: the board can be chosen. */
 export const standingsTypes = new Set<ScreenType>([
     'scoreboard', 'leaders', 'tiles', 'first-solves', 'queue', 'problem-stats', 'rank-trend', 'outcomes', 'groups', 'logo-wall', 'team-intro',
-    'floor', 'balloons', 'announce',
+    'floor', 'balloons', 'announce', 'reactions',
 ]);
 /** Like the public board, these show nothing before the contest starts. */
 export const hiddenBeforeStart = new Set<ScreenType>([
-    'scoreboard', 'leaders', 'tiles', 'first-solves', 'queue', 'problem-stats', 'rank-trend', 'outcomes', 'groups', 'floor', 'balloons', 'announce', 'problem-list', 'problem-colors',
+    'scoreboard', 'leaders', 'tiles', 'first-solves', 'queue', 'problem-stats', 'rank-trend', 'outcomes', 'groups', 'floor', 'balloons', 'announce', 'problem-list', 'problem-colors', 'reactions',
 ]);
-export const intervalTypes = new Set<ScreenType>(['groups', 'team-intro', 'poster', 'clarifications', 'announce']);
+export const intervalTypes = new Set<ScreenType>(['groups', 'team-intro', 'poster', 'clarifications', 'announce', 'reactions']);
 
 export interface ScreenItem {
+    layoutId?: string;
     boardId: string;
     variant: string;
     target: 'end' | 'start' | 'custom';
@@ -51,7 +52,7 @@ export interface ScreenConfig {
 }
 
 export const screenLabels: Record<ScreenType, string> = {
-    scoreboard: '实时榜单', leaders: '领先队伍榜', tiles: '方块榜', 'first-solves': '首解列表', queue: '判题队列',
+    reactions: '反应视频轮播', scoreboard: '实时榜单', leaders: '领先队伍榜', tiles: '方块榜', 'first-solves': '首解列表', queue: '判题队列',
     clock: '比赛时钟', countdown: '倒计时', message: '文字公告', resolver: '滚榜观众画面',
     'problem-stats': '题目通过统计', 'rank-trend': '排名走势图', outcomes: '评测结果分布', groups: '分组排行轮播',
     'logo-wall': '学校 Logo 墙', 'team-intro': '队伍巡礼', 'problem-colors': '题目与气球颜色', floor: '赛场平面图',
@@ -66,6 +67,7 @@ export const screenVariants: Partial<Record<ScreenType, [string, string][]>> = {
     groups: [['group', '逐组轮播（每组前几名）'], ['all', '各组领先一览']],
     'logo-wall': [['wall', 'Logo 墙'], ['fade', '逐个淡入'], ['slide', '横向滚动']],
     floor: [['status', '过题数与最新结果'], ['problems', '各题通过情况']],
+    reactions: [['first', '只播一血'], ['accepted', '所有通过']],
     announce: [['all', '播报所有通过'], ['first', '只播报一血']],
 };
 /** 分组排行 groups. */
@@ -122,6 +124,10 @@ export function normalizeScreenConfig(raw: unknown, base = defaultScreenConfig()
         if (item === undefined) continue;
         if (!item || typeof item !== 'object' || Array.isArray(item)) throw new ScreenError(`${screenLabels[type]}配置无效`);
         const next = config.items[type];
+        if (type === 'reactions' && item.layoutId !== undefined) {
+            if (typeof item.layoutId !== 'string' || !/^[\w-]{0,80}$/.test(item.layoutId)) throw new ScreenError('版式编号无效');
+            next.layoutId = item.layoutId;
+        }
         if (item.boardId !== undefined) {
             if (typeof item.boardId !== 'string' || !/^[\w-]{1,80}$/.test(item.boardId)) throw new ScreenError(`${screenLabels[type]}的分榜无效`);
             next.boardId = item.boardId;
@@ -177,6 +183,21 @@ export function saveScreenConfig(input: unknown, base: ScreenConfig) {
 }
 
 const exemptStatuses = new Set(['CORRECT', 'COMPILATION_ERROR', 'PRESENTATION_ERROR', 'CANCELED']);
+
+export interface ScreenReaction {
+    url: string; teamUid: string | number; team: string; problem: string;
+    layoutId: string; firstSolve: boolean; accepted: boolean;
+}
+
+export function eligibleScreenReaction(video: Pick<ScreenReaction, 'accepted' | 'firstSolve' | 'teamUid'>, item: ScreenItem, teamIds: Set<string> | null) {
+    return (item.variant === 'first' ? video.firstSolve : video.accepted) && (!teamIds || teamIds.has(String(video.teamUid)));
+}
+
+/** Staff replay URLs never enter an audience screen. */
+export function reactionPlaylist(videos: ScreenReaction[], item: ScreenItem, teamIds: Set<string> | null) {
+    return videos.filter(v => (!item.layoutId || v.layoutId === item.layoutId) && eligibleScreenReaction(v, item, teamIds))
+        .map(({ url, team, problem }) => ({ url, team, problem }));
+}
 
 /** The program item handed to PresentationView.render(). */
 export function presentationItem(type: ScreenType, item: ScreenItem, data: BoardData) {

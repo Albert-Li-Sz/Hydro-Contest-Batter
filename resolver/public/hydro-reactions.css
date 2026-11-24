@@ -1,0 +1,247 @@
+.rx-tabs,
+.rx-tools,
+.rx-actions,
+.rx-fields {
+    display: flex;
+    gap: 0.65rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.rx-tabs {
+    border-bottom: 1px solid #ccd5df;
+    margin-bottom: 1.2rem;
+}
+.rx-tabs button {
+    padding: 0.7rem 0.9rem;
+    border: 0;
+    background: transparent;
+    color: #36495a;
+    cursor: pointer;
+}
+.rx-tabs button[aria-current='true'] {
+    box-shadow: inset 0 -3px #187595;
+    color: #115770;
+    font-weight: 600;
+}
+.rx-tools,
+.rx-actions,
+.rx-fields {
+    margin: 0.65rem 0;
+}
+.rx-fields label,
+.rx-tools label,
+.rx-editor label {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.9rem;
+}
+.rx-tools select,
+.rx-editor select,
+.rx-fields select,
+.rx-editor input,
+.rx-fields input,
+.rx-tools input {
+    padding: 0.32rem 0.45rem;
+    border: 1px solid #b5c1cc;
+    border-radius: 0.2rem;
+    background: white;
+    color: #253443;
+    max-width: 100%;
+}
+.rx-tools button,
+.rx-actions button,
+.rx-editor button,
+.rx-public button,
+.rx-row button {
+    background: #f4f7fa;
+    color: #253443;
+    border: 1px solid #b5c1cc;
+    padding: 0.35rem 0.65rem;
+    border-radius: 0.2rem;
+    cursor: pointer;
+}
+.rx-row {
+    display: grid;
+    grid-template-columns: minmax(11rem, 1.4fr) minmax(8rem, 1fr) auto;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.2rem;
+    border-bottom: 1px solid #dfe5ea;
+}
+.rx-row small {
+    display: block;
+    color: #536578;
+}
+.rx-row button,
+.rx-row a {
+    margin: 0.12rem 0.22rem;
+}
+.rx-actions a {
+    color: #13657c;
+}
+.rx-editor {
+    display: grid;
+    grid-template-columns: minmax(230px, 1fr) minmax(245px, 1fr);
+    gap: 1.1rem;
+    align-items: start;
+}
+.rx-canvas-host {
+    background: #e4e9ee;
+    padding: 1rem;
+    display: grid;
+    place-items: center;
+}
+.rx-canvas {
+    width: 100%;
+    max-height: 58vh;
+    position: relative;
+    container-type: inline-size;
+    overflow: hidden;
+    isolation: isolate;
+    touch-action: none;
+    background-position: center;
+    background-size: cover;
+}
+.rx-item {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    color: #fff;
+    background: rgba(30, 75, 90, 0.9);
+    font: 600 clamp(9px, 4cqw, 24px) / 1.15 sans-serif;
+    cursor: move;
+    user-select: none;
+    text-align: center;
+}
+.rx-item[data-kind='screen'] {
+    background: #253340;
+}
+.rx-item[data-kind='text'],
+.rx-item[data-kind='image'],
+.rx-item[data-kind='logo'] {
+    background: transparent;
+}
+.rx-item[aria-selected='true'] {
+    outline: 2px solid #f7c74b;
+    outline-offset: -2px;
+}
+.rx-item img,
+.rx-item video {
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+.rx-handle {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 16px;
+    height: 16px;
+    cursor: nwse-resize;
+    background: #f4bb3d;
+}
+.rx-guideline {
+    position: absolute;
+    background: #f8c64c;
+    pointer-events: none;
+    z-index: 20000;
+}
+.rx-editor fieldset {
+    padding: 0.6rem;
+    margin: 0.65rem 0;
+    border: 1px solid #cbd5dd;
+}
+.rx-code {
+    white-space: pre-wrap;
+    word-break: break-all;
+    padding: 0.85rem;
+    background: #f1f5f8;
+    border-radius: 0.3rem;
+}
+.rx-error {
+    color: #ac2828;
+}
+#rx-status {
+    margin: 0.5rem 0;
+}
+.rx-public {
+    margin: 0;
+    background: #101d2a;
+    color: #f1f5f9;
+    font:
+        16px/1.5 system-ui,
+        sans-serif;
+    min-height: 100vh;
+}
+.rx-public main {
+    max-width: 1180px;
+    margin: auto;
+    padding: clamp(1rem, 4vw, 3rem);
+}
+.rx-public h1 {
+    margin: 0;
+    font-size: clamp(2rem, 5vw, 4rem);
+    line-height: 1.12;
+}
+.rx-public header p {
+    color: #b4cad6;
+}
+.rx-public .rx-tools {
+    padding: 1rem 0;
+}
+.rx-wall {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fill, minmax(min(16rem, 100%), 1fr));
+}
+.rx-card {
+    background: #203344;
+    border: 1px solid #415462;
+    padding: 1rem;
+    border-radius: 0.4rem;
+}
+.rx-card h2 {
+    font-size: 1.15rem;
+    margin: 0.6rem 0;
+}
+.rx-card small {
+    color: #c4d7e1;
+}
+.rx-card strong {
+    color: #f9cf77;
+}
+.rx-dialog {
+    max-width: min(840px, 94vw);
+    width: 100%;
+    color: #182c3a;
+    background: white;
+    border: none;
+    box-sizing: border-box;
+    padding: 1.2rem;
+}
+.rx-dialog::backdrop {
+    background: #0a141ed6;
+}
+.rx-dialog video {
+    width: 100%;
+    max-height: 64vh;
+    background: #0d1620;
+}
+.rx-dialog a {
+    color: #12647b;
+}
+.rx-dialog .rx-actions {
+    justify-content: flex-end;
+}
+@media (max-width: 720px) {
+    .rx-editor,
+    .rx-row {
+        grid-template-columns: 1fr;
+    }
+    .rx-canvas {
+        max-height: 48vh;
+    }
+}

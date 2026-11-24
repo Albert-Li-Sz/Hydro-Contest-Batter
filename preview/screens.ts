@@ -9,12 +9,14 @@ import { resolverBoards, resolverCodeBase } from '../lib/resolver-data';
 import { ResolverSessions } from '../lib/resolver-sessions';
 import {
     decodePoster, defaultScreenConfig, groupSources, hiddenBeforeStart, intervalTypes, maxPosterImages, presentationItem,
-    saveScreenConfig, screenCategories, screenData, ScreenError, screenLabels, screenProjection, ScreenType, screenTypes, screenVariants, standingsTypes,
+    reactionPlaylist, saveScreenConfig, screenCategories, screenData, ScreenError, screenLabels, screenProjection, ScreenType, screenTypes, screenVariants, standingsTypes,
 } from '../lib/screens-data';
 
 /** Local preview of the big-screen pages. Mirrors lib/screens-routes.ts without Hydro or MongoDB. */
 export function createScreensPreview(env: Environment, logoNames: Record<string, string>, version: string, db: Context['db'],
-    announcements: () => { subject: number; text: string; at: number }[] = () => []) {
+    announcements: () => { subject: number; text: string; at: number }[] = () => [],
+    publicVideos = (_layoutId?: string) => [] as {layoutId:string; teamUid:number; firstSolve:boolean; accepted:boolean; url:string; team:string; problem:string}[],
+    reactionLayouts = () => [] as { id: string; name: string }[]) {
     const codeBase = resolverCodeBase(version);
     const sessions = new ResolverSessions(db);
     const base = '/contest/demo';
@@ -66,7 +68,7 @@ export function createScreensPreview(env: Environment, logoNames: Record<string,
                         base: `${base}/screens`, contestUrl: `${base}/scoreboard/xcpcio-plus`, linkBase: `${base}/screen/${token}`,
                         title: data.contest.contest_name, config, types: screenTypes, labels: screenLabels, variants: screenVariants, query: url.search,
                         categories: screenCategories, groupSources, intervalTypes: [...intervalTypes],
-                        standingsTypes: [...standingsTypes], boards: boards.map(({ id, name }) => ({ id, name })),
+                        reactionLayouts: reactionLayouts(), standingsTypes: [...standingsTypes], boards: boards.map(({ id, name }) => ({ id, name })),
                         sessions: own.map((row) => ({ id: row.id, createdAt: row.createdAt, title: row.overview.title,
                             board: boards.find((board) => board.id === row.config.boardId)?.name || row.config.boardId, rehearsal: row.config.rehearsal })),
                         contest: { start: new Date(data.contest.start_time * 1000).toISOString(), end: new Date(data.contest.end_time * 1000).toISOString() },
@@ -112,6 +114,7 @@ export function createScreensPreview(env: Environment, logoNames: Record<string,
             let payload: unknown;
             const problems = data.contest.problem_id as string[];
             if (type === 'poster') payload = item.images.map((id) => `${base}/screen/${token}/poster/images/${id}`);
+            else if (type === 'reactions') payload = reactionPlaylist(publicVideos(item.layoutId || undefined), item, boardId === 'all' ? null : new Set(board?.teamIds));
             else if (type === 'clarifications') payload = announcements().map((item) => ({
                 ...item, subject: item.subject === -1 ? '技术' : problems[item.subject - 101] || '',
             }));

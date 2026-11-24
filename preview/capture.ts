@@ -1,3 +1,4 @@
+import { recordingPreview } from './recording';
 import fs from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
@@ -20,7 +21,7 @@ import { startStunServer } from '../lib/live/stun';
 export function createCapturePreview(env: Environment, options: {
     codeBase: string;
     base: string;
-    contest: { title: string; endAt: Date };
+    contest: { title: string; beginAt: Date; endAt: Date };
     /** The demo teams and the seats they sit at. */
     teams: () => { uid: number; name: string; seat: string }[];
     overlayToken: () => string;
@@ -34,6 +35,7 @@ export function createCapturePreview(env: Environment, options: {
     // Hydro's own STUN server, on a port of its own here so it does not meet a local 3478.
     const stunPort = Number(process.env.XCPCIO_PREVIEW_STUN || 13478);
     if (stunPort) startStunServer(stunPort, (message) => console.warn(`preview STUN: ${message}`));
+    const recording = recordingPreview(base, () => settings, contest, options.teams, devices, (id, data) => relay.toDevice(id, data));
     let counter = 0;
     const captureUrl = (device: CaptureDevice) => `${base}/live-capture/${device._id}/${device.secret}`;
 
@@ -131,6 +133,13 @@ export function createCapturePreview(env: Environment, options: {
     const json = (response: ServerResponse, status: number, body: unknown) => response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(body));
 
     async function handle(request: IncomingMessage, response: ServerResponse, url: URL, readBody: (request: IncomingMessage) => Promise<any>) {
+        const uploadMatch = /^\/contest\/demo\/live-capture\/([a-f\d]{24})\/([\w-]+)\/segments$/.exec(url.pathname);
+        const ownUpload = url.pathname === base + '/live-capture/me/segments';
+        const uploadDevice = ownUpload ? participantDevice(asTeam(url)) : uploadMatch ? devices.get(uploadMatch[1]) : undefined;
+        if ((ownUpload || uploadMatch) && (!uploadDevice || (uploadMatch && !captureSecretMatches(uploadMatch[2], uploadDevice.secret)))) {
+            json(response, 403, { error: '无效的采集链接' }); return true;
+        }
+        if (await recording.handle(request, response, url, readBody, uploadDevice)) return true;
         if (url.pathname === `${base}/live/capture`) {
             if (request.method === 'POST') {
                 const body = await readBody(request);
@@ -180,7 +189,7 @@ export function createCapturePreview(env: Environment, options: {
         // A stand-in for a Hydro contest page of a contestant: the prompt that opens the capture window.
         if (url.pathname === `${base}/problems`) {
             const info = settings.enabled && settings.prompt
-                ? { url: `${base}/live-capture/me${url.search}`, channel: 'xcpcio-capture-demo', contest: contest.title, screenPublic: settings.screenDuringContest, webcam: settings.webcam } : null;
+                ? { url: `${base}/live-capture/me${url.search}`, channel: 'xcpcio-capture-demo', contest: contest.title, screenPublic: settings.screenDuringContest, webcam: settings.webcam, recording: settings.recording.clips.enabled || settings.recording.archive.enabled } : null;
             response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>比赛题目 · ${contest.title}</title></head>
 <body style="font-family:sans-serif;padding:24px"><h1>${contest.title}</h1><p>（预览：参赛选手看到的比赛页面${info ? '' : '。本场比赛未启用画面采集或未开启弹窗提示，所以没有提示'}）</p><p><a href="${base}/problems${url.search}">换一页</a></p>
 <script type="module">import { installCapturePrompt } from '/preview-frontend/capture-prompt.js'; const info = ${JSON.stringify(info)}; if (info) installCapturePrompt(info);</script></body></html>`);
@@ -235,11 +244,12 @@ export function createCapturePreview(env: Environment, options: {
                 relay.attachDevice(device._id, endpoint);
                 Object.assign(device, { connection, lastSeen: new Date(), streams: [], client: { agent: String(request.headers['user-agent'] || ''), ip: '127.0.0.1', screen: '' } });
                 relay.devicesChanged(contestKey);
-                ws.send(JSON.stringify({ type: 'config', name: device.name, seat: device.seat, ...captureProfile(settings), stunPort }));
+                ws.send(JSON.stringify({ type: 'config', name: device.name, seat: device.seat, deviceId: device._id, teamUid: recording.uidOf(device) ?? null, serverTime: Date.now(), beginAt: +contest.beginAt, endAt: +contest.endAt, ...captureProfile(settings), stunPort }));
                 const statusTimer = setInterval(() => endpoint.send({ type: 'requestStatus' }), 15_000);
                 let reported = '';
                 keepAlive(ws, (message) => {
                     const input = message as Record<string, unknown>;
+                    if (device.connection !== connection || recording.message(device, input)) return;
                     if (input?.type === 'status') {
                         if (device.connection !== connection) return;
                         device.lastSeen = new Date();
@@ -284,7 +294,7 @@ export function createCapturePreview(env: Environment, options: {
     }
 
     return {
-        handle, upgrade, medias,
+        handle, upgrade, medias, activeRecordingTeams: recording.activeTeams, judged: recording.judged,
         revoke: (token: string) => relay.closeViewers(contestKey, 4004, '直播链接已作废', (endpoint) => endpoint.kind !== 'overlay' || endpoint.token === token),
     };
 }

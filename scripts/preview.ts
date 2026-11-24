@@ -21,6 +21,7 @@ import { createPrintersPreview } from '../preview/printers';
 import { createBalloonsPreview } from '../preview/balloons';
 import { createClarificationPreview } from '../preview/clarification-desk';
 import { previewDatabase } from '../preview/resolver-memory-db';
+import { createReactionsPreview } from '../preview/reactions';
 import { createControlPreview } from '../preview/control';
 import { dropAfterAccept, hideProblemLabels } from '../lib/ccpc-board';
 
@@ -38,9 +39,10 @@ const pluginVersion = JSON.parse(await fs.readFile(path.join(root, 'package.json
 // Resolver and screen previews share one in-memory store so the audience screen can follow a session.
 const previewDb = previewDatabase().db;
 const resolverPreview = createResolverPreview(env, logoNames, pluginVersion, previewDb);
+const reactionsPreview = createReactionsPreview(env, pluginVersion);
 const screensPreview = createScreensPreview(env, logoNames, pluginVersion, previewDb, () => clarificationPreview.announcements().map((item) => ({
     subject: item.subject, text: item.content, at: item.docId.getTimestamp().getTime(),
-})));
+})), reactionsPreview.visible, reactionsPreview.layouts);
 const monitorPreview = createMonitorPreview(env, pluginVersion, demoData);
 const presencePreview = createPresencePreview(env, pluginVersion, demoData);
 const overviewPreview = createOverviewPreview(env, pluginVersion);
@@ -49,7 +51,7 @@ const managePreview = createManagePreview(env, pluginVersion);
 // 气球配送 tickets print on the receipt printers of the print servers preview, which takes them from it.
 const balloonsPreview = createBalloonsPreview(env, pluginVersion, demoData, () => printersPreview.receiptPrinters());
 const printersPreview = createPrintersPreview(env, pluginVersion, demoData, () => balloonsPreview.receipts);
-const livePreview = createLivePreview(env, logoNames, pluginVersion, demoData, () => settings);
+const livePreview = createLivePreview(env, logoNames, pluginVersion, demoData, () => settings, reactionsPreview);
 const clarificationPreview = createClarificationPreview(env, pluginVersion, (text) => {
     livePreview.hub.tickerMessage.createTemporaryFromInput({ type: 'text', part: 'long', periodMs: 30_000, text }, 5 * 60_000);
 });
@@ -59,7 +61,7 @@ const saveState = async (next: typeof settings) => {
     await fs.rename(`${statePath}.tmp`, statePath);
     settings = next;
 };
-const controlPreview = createControlPreview(env, pluginVersion, demoData, { get: () => settings, set: saveState });
+const controlPreview = createControlPreview(env, pluginVersion, demoData, { get: () => settings, set: saveState }, reactionsPreview);
 const base = '/contest/demo';
 let unlocked = false;
 const boardUrl = `${base}/scoreboard/xcpcio-plus`;
@@ -85,6 +87,7 @@ const server = http.createServer(async (request, response) => {
         };
         const fixtureQuery = ['wide', 'team'].includes(url.searchParams.get('fixture') || '') ? `&fixture=${url.searchParams.get('fixture')}` : '';
         const boardQuery = fixtureQuery + ['running', 'frozen'].filter((key) => url.searchParams.get(key) === '1').map((key) => `&${key}=1`).join('');
+        if (await reactionsPreview.handle(request, response, url)) return;
         if (await ccsPreview.handle(request, response, url)) return;
         if (await resolverPreview(request, response, url, displayData, settings)) return;
         if (await screensPreview(request, response, url, displayData, settings)) return;

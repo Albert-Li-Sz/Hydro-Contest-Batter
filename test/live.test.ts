@@ -30,6 +30,16 @@ function withSubmissions(submissions: BoardData['submissions']): BoardData {
 }
 
 describe('live contest model', () => {
+    it('attaches public reactions only to judged, visible runs and clears withdrawn videos', () => {
+        const media = [{ type: 'Video', url: '/contest/example/reactions/video/ref' }];
+        const live = source({ reactionVideos: { accepted: media, frozen: media } }, withSubmissions([
+            { submission_id: 'accepted', team_id: '1', problem_id: 0, timestamp: minute, status: 'CORRECT' },
+            { submission_id: 'frozen', team_id: '1', problem_id: 1, timestamp: 2*minute, status: 'FROZEN' },
+        ]));
+        const info = buildContestInfo(live);
+        expect(buildRuns(live, info).map(r => r.reactionVideos)).toEqual([media, []]);
+        expect(buildRuns({ ...live, reactionVideos: {} }, info).every(r => !r.reactionVideos.length)).toBe(true);
+    });
     it('follows Hydro contest time, freeze and unlock', () => {
         const contest = { title: 't', beginAt: begin, endAt: end, lockAt: lock };
         expect(contestStatus(contest, begin.getTime() - 1).type).toBe('before');

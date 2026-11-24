@@ -17,7 +17,7 @@ const statusNames: Record<number, string> = { 1: 'CORRECT', 2: 'WRONG_ANSWER', 3
  * contest's clock. The review shows three rejudged submissions of the demo contest, one already restored.
  */
 export function createControlPreview(env: Environment, version: string, demo: () => BoardData,
-    board: { get: () => BoardSettings; set: (settings: BoardSettings) => Promise<void> }) {
+    board: { get: () => BoardSettings; set: (settings: BoardSettings) => Promise<void> }, reactions?: ReturnType<typeof import('./reactions').createReactionsPreview>) {
     const codeBase = resolverCodeBase(version);
     const base = '/contest/demo';
     let balloons = { ...defaultBalloonSettings(), enabled: true };
@@ -95,12 +95,13 @@ export function createControlPreview(env: Environment, version: string, demo: ()
                 specialAwards: settings.specialAwards.length, publicAccess: settings.publicAccess, showIdentity: settings.showIdentity, ccsApi: settings.ccsApi,
             },
             balloons: { enabled: balloons.enabled, afterFreeze: balloons.afterFreeze, first: balloons.first, teamColors: balloons.teamColors, tickets: balloons.tickets.enabled },
-            capture: { enabled: capture.enabled, screenDuringContest: capture.screenDuringContest, webcam: capture.webcam },
+            reactions: reactions?.summary(),
+            capture: { clips:capture.recording.clips.enabled, archive:capture.recording.archive.enabled, enabled: capture.enabled, screenDuringContest: capture.screenDuringContest, webcam: capture.webcam },
             review: { changes: summary.total, pending: summary.pending, stale: summary.sessions.filter((session) => session.stale).length },
             links: {
                 settings: `${base}/xcpcio-settings`, board: `${base}/scoreboard/xcpcio-plus`, publicBoard: settings.publicAccess ? `${base}/xcpcio-public` : null,
                 results: `${base}/results`, review: `${base}/rejudge-review`, resolver: `${base}/resolver`, screens: `${base}/screens`, balloons: `${base}/balloons`,
-                live: `${base}/live`, capture: `${base}/live/capture`, presence: `${base}/presence`, monitor: `${base}/monitor`, overview: `${base}/overview`,
+                reactions: `${base}/reactions/manage`, live: `${base}/live`, capture: `${base}/live/capture`, presence: `${base}/presence`, monitor: `${base}/monitor`, overview: `${base}/overview`,
                 desk: `${base}/clarification-desk`, printers: '/manage/xcpcio-printers', rejudge: '/manage/xcpcio-rejudge', edit: `${base}/edit`,
             },
         };
@@ -137,6 +138,7 @@ export function createControlPreview(env: Environment, version: string, demo: ()
             const { operation, payload } = await operate(request);
             if (operation === 'board') await board.set(patchBoard(board.get(), payload));
             else if (operation === 'balloons') balloons = normalizeBalloonSettings(payload, [100, 101, 102], balloons);
+            else if (operation === 'reactions') reactions?.setPublic(payload.enabled===true);
             else if (operation === 'capture') capture = normalizeCaptureSettings(payload, capture);
             else if (operation === 'print') allowPrint = payload.allowPrint === true;
             else if (operation === 'unlock') unlocked = true;

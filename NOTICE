@@ -73,3 +73,8 @@ reading Hydro contest data instead of a CDS feed; ranks, medals and first solves
 use this plugin's shared Hydro rules instead of ICPC Live's tie-breaking. Title templates in live/media/
 are copied unchanged from config/_media of the same commit.
 
+
+The capture device includes the original fix-webm-duration 1.0.6 script.
+https://github.com/yusitnikov/fix-webm-duration
+MIT License, Copyright (c) 2018 Yury Sitnikov, reproduced in
+licenses/fix-webm-duration-MIT.txt.

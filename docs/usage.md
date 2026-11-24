@@ -96,11 +96,11 @@ Schema 测试固定使用官方 2026-01 分支文件；上游 schema 对 runs �
 
 需要 Node.js 22 或以上版本及 Hydro 5.x。使用运行 Hydro 的系统用户操作；命令中的 `$HOME` 对应这个用户。自 0.8.1 起，安装包包含供 Hydro 直接加载的源码和完整预构建资源。
 
-下载 `hydro-scoreboard-xcpcio-plus-1.20.0.tgz` 并放入当前目录。首次安装按以下步骤解压、注册 addon 并重启服务。
+下载 `hydro-scoreboard-xcpcio-plus-1.21.0.tgz` 并放入当前目录。首次安装按以下步骤解压、注册 addon 并重启服务。
 
 ```bash
 mkdir -p "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
-tar -xzf hydro-scoreboard-xcpcio-plus-1.20.0.tgz \
+tar -xzf hydro-scoreboard-xcpcio-plus-1.21.0.tgz \
   -C "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus" --strip-components=1
 hydrooj addon add "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 pm2 restart hydrooj
@@ -112,7 +112,7 @@ pm2 restart hydrooj
 
 ```bash
 mkdir -p xcpcio-update
-tar -xzf hydro-scoreboard-xcpcio-plus-1.20.0.tgz -C xcpcio-update
+tar -xzf hydro-scoreboard-xcpcio-plus-1.21.0.tgz -C xcpcio-update
 bash xcpcio-update/package/install.sh install
 # 已有安装时
 bash xcpcio-update/package/install.sh upgrade
@@ -613,6 +613,35 @@ Hydro 的系统管理员（`PRIV_EDIT_SYSTEM`）可在控制面板（`/manage`�
 - 评测结果：可多选，如只重测 TLE、MLE；不选为全部结果，已取消的提交始终不重测。“AC 不参与重测”默认勾选，已通过的提交保持原结果。
 - 先“预览数量”查看按结果、按题目的统计，确认后开始重测。与 Hydro 题目页的“重测”相同：原结果清空后重新排队，优先级低于新提交，比赛中的提交按比赛设置显示结果，任务带有重测标记，可配合评测机控制的“任务范围”分流。一次最多 100000 条，按每批 2000 条加入评测队列。
 - 重测记录：页面下方保留每次重测的时间、操作人、范围与筛选条件、提交数和进度，记录永久保存在 `xcpcio.manage.rejudge.jobs`。点击“查看变化”可看到结果如何变化，例如“AC → WA × 3”“WA → AC × 5”，以及每条提交重测前后的结果与得分（默认只看结果变化的提交，可切换为全部），提交编号可打开 Hydro 的评测记录；仍在评测的提交显示为“评测中”，页面每 5 秒更新。重测前的结果在清空前写入 `xcpcio.manage.rejudge.items`，重测后的结果在 Hydro 评测完成时记录；若期间 Hydro 重启错过了评测完成，打开记录时按提交的当前结果补全。同一提交被再次重测时，新结果记入最近的一次重测。
+
+## 录制与反应视频
+
+### 比赛前
+
+1. 在比赛的「画面采集」启用设备，在「录制设置」选择提交片段、全程留档或两者。旧比赛升级后需要主动开启录像。摄像头声音沿用本场的麦克风设置，默认关闭。
+2. 确认录制范围、评测前后保留的秒数和各路画质。填写上行带宽，再用容量估算和热身赛实测决定最终设置。留档摄像头默认关闭。
+3. 在「测试」让一台设备试录并上传。掉帧、CPU 压力和吞吐量按浏览器能力显示。热身赛可让在线设备进行 3–15 分钟的全场压力测试，对照接收曲线、积压、失败率和场馆路由器数据。试录文件清理后仍可查看报告。
+4. 在参赛须知注明录制内容、用途、联系人、实际保存期限和公开范围。可采用下列文字，将方括号替换为本场安排。
+
+> 本场将录制参赛电脑的屏幕与[摄像头／麦克风，如启用]，供赛事工作人员回看。经赛事审核的反应视频将按[公开范围和时间]展示。原始录像保存至[日期]，有关录像的问题请联系[赛事联系人]。
+
+### 赛中与赛后
+
+选手在采集窗口授权后，仅分享实时画面时显示「正在采集」，启用录像后显示「正在录制」和上传积压。提交片段默认从提交前 20 秒开始，持续至通过后 40 秒或其他判定后 10 秒，最长 120 秒。屏幕与摄像头各自按段缓存。断网恢复后继续上传，已超出保留窗口的时段记为缺段。「录像」按队伍、题目、结果和状态查看提交片段，留档按时间接续播放。清理前核对文件数和字节数，删除整场录像需输入比赛名称。
+
+在「反应视频 → 媒体机」生成本场专用令牌。下载同一发布页的 `reactions-generator-hydro-1.21.0.tar.gz`，在媒体机解压并进入解压目录。Docker 安装如下，地址由管理页提供。
+
+```sh
+docker build -t reactions-generator-hydro:1.21.0 .
+docker run --rm -v "$PWD/out:/app/out" reactions-generator-hydro:1.21.0 \
+  all 'https://hydro.example/d/system/contest/CONTEST/reactions-api/TOKEN' --hydro-upload
+```
+
+本机运行可安装 Python 3.12、Poetry 和 FFmpeg/FFprobe，再执行 `poetry install` 和 `poetry run main all '本场媒体机地址' --hydro-upload`。多机示例、硬件编码参数及失败任务重试方式见发布附件内的 HYDRO.md。媒体机令牌可在比赛管理中单独更换。
+
+在「版式」选择横屏、竖屏或自定义尺寸，调整摄像头、屏幕、卡片、文字和图片。每个版式可选择适用一血、通过或其他结果。一条提交可生成多个成品。通过「视频」检查、下载、撤下、恢复或重渲染成品。通过「公开设置」选择范围、时机、版式、学校和下载选项。公开默认关闭，启用后的默认时机为解除封榜后。赛中隐藏题号、封榜时段、直播屏幕限制和撤下状态都影响观众可看到的内容。选择隐藏学校时，系统会排除已经把学校字段或学校 Logo 合成到画面里的视频。自定义背景图、文字、上传图片和实拍画面的内容需由工作人员在公开前检查。
+
+导播台在「精选提交」或「队伍画面」中展开「提交回放」，可预看原始片段和成品。公开 OBS 精选提交使用可公开的反应视频。「大屏 → 反应视频轮播」可选择一血或所有通过、分榜和播放间隔。版式默认跟随公开页，也可另选横屏等版式；每次播放仍核对撤下、封榜、屏幕和学校公开规则。
 
 ## 直播
 
