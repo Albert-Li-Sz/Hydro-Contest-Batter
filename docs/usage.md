@@ -96,11 +96,11 @@ Schema 测试固定使用官方 2026-01 分支文件；上游 schema 对 runs �
 
 需要 Node.js 22 或以上版本及 Hydro 5.x。使用运行 Hydro 的系统用户操作；命令中的 `$HOME` 对应这个用户。自 0.8.1 起，安装包包含供 Hydro 直接加载的源码和完整预构建资源。
 
-下载 `hydro-scoreboard-xcpcio-plus-1.19.0.tgz` 并放入当前目录。首次安装按以下步骤解压、注册 addon 并重启服务。
+下载 `hydro-scoreboard-xcpcio-plus-1.19.1.tgz` 并放入当前目录。首次安装按以下步骤解压、注册 addon 并重启服务。
 
 ```bash
 mkdir -p "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
-tar -xzf hydro-scoreboard-xcpcio-plus-1.19.0.tgz \
+tar -xzf hydro-scoreboard-xcpcio-plus-1.19.1.tgz \
   -C "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus" --strip-components=1
 hydrooj addon add "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 pm2 restart hydrooj
@@ -112,7 +112,7 @@ pm2 restart hydrooj
 
 ```bash
 mkdir -p xcpcio-update
-tar -xzf hydro-scoreboard-xcpcio-plus-1.19.0.tgz -C xcpcio-update
+tar -xzf hydro-scoreboard-xcpcio-plus-1.19.1.tgz -C xcpcio-update
 bash xcpcio-update/package/install.sh install
 # 已有安装时
 bash xcpcio-update/package/install.sh upgrade
@@ -412,9 +412,9 @@ Hydro 5.1 起支持组队比赛（比赛设置中允许组队）。组队参赛�
 
 比赛所有者和有“编辑比赛”权限的管理员可在比赛侧边栏的“机位监控”进入（`/contest/<比赛ID>/presence`），仅支持 ACM 比赛，页面每 5 秒刷新。它回答两个问题：每支队伍的电脑现在是否在线，以及哪里不对劲。
 
-- 参赛者打开比赛页时签到，页面每 20 秒发送一次在线心跳。同一浏览器的多个比赛标签页共用心跳。机位监控显示在线、可能离线（45 秒没有心跳或设备连接）和离线（2 分钟），从未打开比赛页的队伍显示未登录。
+- 参赛者打开比赛页时签到，页面每 20 秒发送一次在线心跳。同一浏览器的多个比赛标签页共用心跳。机位监控显示在线、可能离线（90 秒没有心跳或设备连接）和离线（3 分钟），从未打开比赛页的队伍显示未登录。浏览器会把后台页面的计时器压到约每分钟一次，所以浏览器放在编辑器后面时仍显示在线。
 - 启用画面采集后，详情显示“采集中”“已连接未采集”或“未连接”。采集中表示至少一台绑定设备正在共享屏幕。独立采集窗口可在比赛页切换、最小化或关闭后继续工作，实时设备连接也计为在线。停止屏幕共享后可在采集窗口重新授权。未启用采集的比赛只显示签到和在线状态。
-- 座位图：按考场分组（座位号去掉末尾编号后的前缀，与气球配送相同），座位号按自然顺序排列，没有座位的队伍排在最后。格子颜色表示状态，右上角数字为告警数，橙色小方块表示画面采集未连接。点击格子查看队员、当前 IP、IP 登录绑定的地址、10 分钟内用过的 IP、浏览器版本、首次上线时间和画面采集状态。
+- 座位图：按考场分组（座位号去掉末尾编号后的前缀，与气球配送相同），座位号按自然顺序排列，没有座位的队伍排在最后。格子颜色表示状态，右上角数字为告警数；可能离线和离线的格子显示多久没有心跳，其余格子在启用采集时显示采集状态。点击格子查看队员、当前 IP、IP 登录绑定的地址、10 分钟内用过的 IP、浏览器版本、首次上线时间和画面采集状态。
 - 告警（右侧列表，按严重程度排列，点击查看详情）：
   - 与其他队伍同一 IP：两支在线的队伍从同一个地址报告，通常是换了座位或共用电脑。
   - IP 与座位不符：队伍（或其队员）有 IP 登录绑定，当前地址却不在其中。

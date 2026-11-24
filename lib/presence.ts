@@ -6,9 +6,13 @@
 import { zoneOf } from './balloons';
 
 export const BEAT_MS = 20_000;
-/** No report for this long: the computer may be off. */
-export const WEAK_MS = 45_000;
-export const OFFLINE_MS = 120_000;
+/**
+ * No report for this long: the computer may be off. Browsers hold back timers of pages hidden for
+ * a few minutes to about one a minute (Chrome's intensive throttling), and contestants keep the
+ * browser behind their editor, so a quiet minute is normal; beyond 90 seconds it is not.
+ */
+export const WEAK_MS = 90_000;
+export const OFFLINE_MS = 180_000;
 /** Addresses used within this window count as in use at once. */
 export const IP_WINDOW_MS = 10 * 60_000;
 const IPS_KEPT = 8;

@@ -76,10 +76,10 @@ function counts(data) {
 }
 
 function note(team, now) {
+    // How long a quiet computer has been silent matters more than its capture state.
+    if (team.state === 'weak' || team.state === 'offline') return `${ago(now - team.lastSeen)}前`;
     if (team.capture) return captureLabels[team.capture];
-    if (team.state === 'online') return '';
-    if (team.state === 'never') return '';
-    return `${ago(now - team.lastSeen)}前`;
+    return '';
 }
 
 function tile(team, now, phase) {

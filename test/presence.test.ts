@@ -40,6 +40,8 @@ describe('reports', () => {
         expect(stateOf(null, now)).toBe('never');
         expect(stateOf({ lastSeen: new Date(now - 1000) }, now)).toBe('online');
         expect(stateOf({ lastSeen: new Date(now - 1000) }, now)).toBe('online');
+        // A hidden tab's timer fires about once a minute (Chrome's intensive throttling): still online.
+        expect(stateOf({ lastSeen: new Date(now - 65_000) }, now)).toBe('online');
         expect(stateOf({ lastSeen: new Date(now - WEAK_MS) }, now)).toBe('weak');
         expect(stateOf({ lastSeen: new Date(now - OFFLINE_MS) }, now)).toBe('offline');
     });

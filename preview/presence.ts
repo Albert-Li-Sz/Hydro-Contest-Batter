@@ -43,7 +43,7 @@ export function createPresencePreview(env: Environment, version: string, demo: (
             };
             beat(now - 50 * 60_000 - index * 7_000);
             if (index === 26) beat(now - 6 * 60_000, '10.3.0.250');
-            const lastSeen = index === 5 ? now - 70_000 : index === 17 ? now - 7 * 60_000 : now - (index % 4) * 4_000 - 1_000;
+            const lastSeen = index === 5 ? now - 100_000 : index === 17 ? now - 7 * 60_000 : now - (index % 4) * 4_000 - 1_000;
             beat(lastSeen, ip, index === 29 ? oldChrome : chrome);
             if (!doc) return;
             const record = doc as PresenceDoc;
