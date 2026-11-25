@@ -160,6 +160,10 @@ async function screenSurvivesWebcamFailure(context, url, mode, uid) {
 // real MediaRecorder / IndexedDB, multipart HTTP, reports, Range playback and cleanup.
 export async function recordingWorkflow(manage, device, context, base, contest) {
     const url = base + contest + '/live/capture';
+    // Screen and camera permissions finish independently. This test measures both sources.
+    for (const stream of streams) {
+        await device.locator('#' + stream + '-state').filter({ hasText: '正在采集' }).waitFor({ timeout: 15000 });
+    }
     await device.getByRole('button', { name: '设备自检' }).click();
     await device.locator('#record-status').filter({ hasText: '设备测试中' }).waitFor();
     await manage.getByRole('tab', { name: '录制设置' }).click();
@@ -184,14 +188,14 @@ export async function recordingWorkflow(manage, device, context, base, contest) 
         const test = (await response.json()).tests.find((t) => t.kind === 'device' && t.endedAt && t.targets.length);
         if (test) {
             const metric = Object.values(test.devices)[0];
-            report = { bytes: metric.bytes, uploads: metric.uploads, throughput: metric.throughputMbps, bitrates: metric.bitrates, archiveScreenCodec: metric.archiveScreenCodec, archiveWebcamCodec: metric.archiveWebcamCodec, failures: metric.failures };
+            report = { bytes: metric.bytes, uploads: metric.uploads, throughput: metric.throughputMbps, bitrates: metric.bitrates, archiveScreenCodec: metric.archiveScreenCodec, archiveWebcamCodec: metric.archiveWebcamCodec, failures: metric.failures, error: metric.recordingError };
         } else await new Promise((resolve) => setTimeout(resolve, 1000));
     }
     assert.ok(report, 'No self-test result. Device: ' + await device.locator('#record-status').innerText());
-    assert.ok(report.bytes > 0 && report.uploads > 0 && report.throughput > 0, 'self-test must actually upload encoded media: ' + JSON.stringify(report));
-    for (const key of ['clipScreen', 'clipWebcam', 'archiveScreen', 'archiveWebcam']) assert.ok(report.bitrates[key] > 0, key);
-    for (const codec of [report.archiveScreenCodec, report.archiveWebcamCodec]) assert.ok(['hevc', 'av1', 'h264'].includes(codec));
     assert.equal(report.failures, 0, JSON.stringify(report));
+    assert.ok(report.bytes > 0 && report.uploads > 0 && report.throughput > 0, 'self-test must actually upload encoded media: ' + JSON.stringify(report));
+    for (const key of ['clipScreen', 'clipWebcam', 'archiveScreen', 'archiveWebcam']) assert.ok(report.bitrates[key] > 0, key + ': ' + JSON.stringify(report));
+    for (const codec of [report.archiveScreenCodec, report.archiveWebcamCodec]) assert.ok(['hevc', 'av1', 'h264'].includes(codec));
     await manage.getByRole('button', { name: '刷新报告' }).click();
     await manage.getByText(/本次测试.*达标/).first().waitFor();
     await manage.getByRole('tab', { name: '录像', exact: true }).click();
