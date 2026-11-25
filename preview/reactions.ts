@@ -1,9 +1,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { randomBytes } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Environment } from 'nunjucks';
-import { defaultLayouts, defaultReactionPublic, layoutWarnings, normalizeLayout, publicSettings } from '../lib/reactions';
+import { defaultLayouts, defaultReactionPublic, ReactionError, updateArtwork, publicSettings } from '../lib/reactions';
 import { resolverCodeBase } from '../lib/resolver-data';
 import { toScriptJson } from '../lib/settings';
 import { readRange } from '../lib/recording';
@@ -15,10 +15,12 @@ export function createReactionsPreview(env: Environment, version: string) {
     const layouts = defaultLayouts();
     let config = { ...defaultReactionPublic, enabled: true };
     const connections = new Map<string, { id: string; name: string; revision: number; issuedAt: Date }>();
+    const assets = new Map<string, { data: Buffer; mime: string }>();
     const at = Date.now();
     const url = base + '/sample.mp4';
+    const sampleVideo = readFileSync(path.join(__dirname, '../resolver/public/assets/reaction-template/portrait-demo.mp4'));
     const videos = [
-        { rid: 's-2', teamUid: 102, team: '橙子队', school: '示例大学', problem: 'A', firstSolve: true, offset: 0 },
+        { rid: 's-2', teamUid: 102, team: '星河队', school: '示例大学', problem: 'A', firstSolve: true, offset: 0 },
         { rid: 's-5', teamUid: 105, team: '飞鸟队', school: '工程学院', problem: 'C', firstSolve: false, offset: 5000 },
     ].map((v) => ({
         ...v,
@@ -34,7 +36,7 @@ export function createReactionsPreview(env: Environment, version: string) {
         updatedAt: at,
         priority: v.firstSolve ? 0 : 1,
         durationMs: 3000,
-        bytes: 35000,
+        bytes: sampleVideo.length,
         error: '',
         worker: 'preview',
         url,
@@ -87,8 +89,30 @@ export function createReactionsPreview(env: Environment, version: string) {
         const json = (data: unknown, status = 200) =>
             response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(data));
         try {
-            if (route === '/sample.mp4') {
-                const data = await readFile(path.join(__dirname, 'media/reaction-demo.mp4')),
+            if (route === '/manage/assets' && request.method === 'POST') {
+                const chunks: Buffer[] = [];
+                let size = 0;
+                for await (const chunk of request) {
+                    size += chunk.length;
+                    if (size > 10 * 1024 ** 2 + 16384) throw new Error('图片过大');
+                    chunks.push(chunk);
+                }
+                const form = await new Response(Buffer.concat(chunks), { headers: { 'Content-Type': request.headers['content-type'] || '' } }).formData();
+                const file = form.get('file');
+                if (!file || typeof file === 'string' || file.size > 10 * 1024 ** 2) throw new Error('请选择 PNG 或 JPEG');
+                const data = Buffer.from(await file.arrayBuffer());
+                const mime = data.subarray(0, 8).toString('hex') === '89504e470d0a1a0a' ? 'image/png'
+                    : data.subarray(0, 3).toString('hex') === 'ffd8ff' ? 'image/jpeg' : null;
+                if (!mime) throw new Error('图片格式无效');
+                const id = randomBytes(12).toString('hex');
+                assets.set(id, { data, mime });
+                json({ id });
+            } else if (route.startsWith('/manage/assets/')) {
+                const file = assets.get(route.slice('/manage/assets/'.length));
+                if (!file) json({ error: '图样不存在' }, 404);
+                else response.writeHead(200, { 'Content-Type': file.mime }).end(file.data);
+            } else if (route === '/sample.mp4') {
+                const data = sampleVideo,
                     range = readRange(request.headers.range, data.length);
                 response
                     .writeHead(range ? 206 : 200, {
@@ -155,20 +179,23 @@ export function createReactionsPreview(env: Environment, version: string) {
                     connections.delete(b.id);
                 }
                 if (b.action === 'layout') {
-                    const id = b.layout.id || randomBytes(8).toString('hex'),
-                        idx = layouts.findIndex((v) => v.id === id);
-                    const layout = normalizeLayout(b.layout, id, (layouts[idx]?.revision || 0) + 1),
-                        warnings = layoutWarnings(layout, b.encoder === 'nvidia_full');
-                    if (warnings.length && !b.confirmWarnings) {
-                        json({ warnings });
-                        return true;
-                    }
-                    if (idx < 0) layouts.push(layout);
-                    else layouts[idx] = layout;
+                    const idx = layouts.findIndex((v) => v.id === b.layout?.id);
+                    const layout = updateArtwork(layouts[idx], b.layout);
+                    if (layout.artwork && !assets.has(layout.artwork)) throw new Error('本场比赛中找不到这张图样');
+                    layouts[idx] = layout;
+                    json({ ok: true, id: layout.id, revision: layout.revision });
+                    return true;
+                }
+                if (b.action === 'sample') {
+                    const v = videos.find((v) => v.rid === b.rid);
+                    const layout = layouts.find((l) => l.id === b.layoutId);
+                    if (!v || !layout) throw new Error('请选择提交和版式');
+                    videos.push({ ...v, id: 'sample-' + randomBytes(12).toString('hex'), state: 'waiting', hidden: true,
+                        url: '', layoutId: layout.id, layoutName: layout.name });
                 }
                 for (const v of videos.filter((v) => v.id === b.id || b.ids?.includes(v.id))) {
                     if (b.action === 'hide' || b.action === 'restore') v.hidden = b.action === 'hide';
-                    if (b.action === 'retry' || b.action === 'sample') v.state = 'waiting';
+                    if (b.action === 'retry') v.state = 'waiting';
                 }
                 json({ ok: true });
             } else if (route === '' || route === '/manage' || route === '/manage/layouts') {
@@ -186,7 +213,7 @@ export function createReactionsPreview(env: Environment, version: string) {
                 );
             } else json({ error: '链接不存在' }, 404);
         } catch (e) {
-            json({ error: (e as Error).message }, 400);
+            json({ error: (e as Error).message }, e instanceof ReactionError ? e.status : 400);
         }
         return true;
     }

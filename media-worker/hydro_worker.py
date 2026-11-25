@@ -24,7 +24,7 @@ else:
     from hydro_connection import Connection, load_connection, safe_error
     from hydro_render import render
 
-VERSION = "1.21.2"
+VERSION = "1.23.0"
 SAFE_ID = re.compile(r"[a-zA-Z0-9_-]{1,100}")
 
 
@@ -33,7 +33,9 @@ def partition(key, count):
 
 
 def request(method, url, *, source=None, attempts=4, secret="", **kwargs):
-    headers = {"Authorization": "Bearer " + secret} if secret else {}
+    headers = {"X-Hydro-Reaction-Template": "icpc-v1"}
+    if secret:
+        headers["Authorization"] = "Bearer " + secret
     kwargs.update(headers=headers, allow_redirects=False)
     for index in range(attempts):
         try:
@@ -90,6 +92,7 @@ def process_partition(
     state = {
         "name": name,
         "version": VERSION,
+        "template": "icpc-v1",
         "partition": f"{worker_id}/{total_workers}",
         "current": None,
         "queue": 0,

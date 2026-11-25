@@ -62,15 +62,13 @@ async function save(name, payload) {
     return r;
 }
 function render() {
-    document.getElementById('rx-tabs').replaceChildren(
-        ...tabs.map(([id, label]) => {
-            const b = button(label, () => {
-                if (tab !== id) location.hash = id;
-            });
-            b.setAttribute('aria-current', String(id === tab));
-            return b;
-        }),
-    );
+    const nav = document.getElementById('rx-tabs');
+    if (!nav.childElementCount) nav.append(...tabs.map(([id, label]) => el('a', { href: '#' + id, text: label })));
+    for (const link of nav.children) {
+        if (link.hash === '#' + tab) link.setAttribute('aria-current', 'page');
+        else link.removeAttribute('aria-current');
+    }
+    root.setAttribute('aria-busy', 'false');
     root.replaceChildren();
     if (tab === 'layouts') {
         editLayout(root, data, load);
@@ -90,15 +88,12 @@ function render() {
         const done = data.stats?.done ?? videos.filter((v) => v.readyAt >= hour && v.state === 'ready').length,
             fail = data.stats?.fail ?? videos.filter((v) => v.state === 'failed' && v.updatedAt >= hour).length;
         root.append(
-            el('p', { class: 'rx-queue-summary' }, '最近一小时完成 ' + done + ' 条', el('span', {}, '失败率 ', ratioMeter('渲染失败率', done + fail ? fail / (done + fail) * 100 : null, { shape: 'ring', tone: fail ? 'bad' : 'ok' }))),
-            el('p', {
-                text:
-                    '待处理 ' +
-                    (data.stats?.waiting ?? videos.filter((v) => ['waiting', 'stale'].includes(v.state)).length) +
-                    ' 条 · 渲染中 ' +
-                    (data.stats?.rendering ?? videos.filter((v) => v.state === 'rendering').length) +
-                    ' 条',
-            }),
+            el('dl', { class: 'rx-metrics' }, ...[
+                ['待处理', data.stats?.waiting ?? videos.filter((v) => ['waiting', 'stale'].includes(v.state)).length],
+                ['渲染中', data.stats?.rendering ?? videos.filter((v) => v.state === 'rendering').length],
+                ['一小时内完成', done],
+                ['一小时失败率', ratioMeter('渲染失败率', done + fail ? fail / (done + fail) * 100 : null, { shape: 'ring', tone: fail ? 'bad' : 'ok' })],
+            ].map(([name, value]) => el('div', {}, el('dt', { text: name }), el('dd', {}, value)))),
             ...data.workers
                 .filter((w) => w.current && Date.now() - w.lastSeen < 60000)
                 .map((w) => el('p', { text: `${w.name} · ${w.current.runId} / ${w.current.layoutId}` })),
@@ -136,39 +131,27 @@ function render() {
                   .sort((a, b) => a.priority - b.priority || a.submittedAt - b.submittedAt)
             : rows.sort((a, b) => b.submittedAt - a.submittedAt);
     if (!rows.length) {
-        root.append(el('p', { text: '暂无符合条件的视频' }));
+        root.append(el('p', { class: 'rx-empty', text: tab === 'queue' ? '渲染队列为空' : '暂无符合条件的视频' }));
         return;
     }
     const maxPage = data.paging?.pages ?? Math.max(1, Math.ceil(rows.length / 40));
     page = Math.min(maxPage, page);
+    const list = el('div', { class: 'rx-library' },
+        el('div', { class: 'rx-video-row rx-list-head', 'aria-hidden': true },
+            ...['提交', '版式', '状态', '操作'].map((text) => el('span', { text }))));
     for (const v of data.paging ? videos : rows.slice((page - 1) * 40, page * 40)) {
-        root.append(
-            el(
-                'div',
-                { class: 'rx-row' },
-                el(
-                    'div',
-                    {},
-                    el('strong', { text: v.team + ' · ' + v.problem + ' · ' + v.verdict }),
-                    el('small', { text: formatTime(v.submittedAt) }),
-                ),
-                el(
-                    'div',
-                    {},
-                    el('span', { text: v.layoutName + ' · ' + (states[v.state] || v.state) + (v.hidden ? ' · 已撤下' : '') }),
-                    v.error ? el('small', { class: 'rx-error', text: v.error }) : null,
-                ),
-                el(
-                    'div',
-                    {},
-                    v.url ? button('预览', () => play(v, true, false)) : null,
-                    v.url ? el('a', { href: v.url + '?download=1', text: '下载' }) : null,
-                    button('重渲染', () => save('retry', { id: v.id })),
-                    button(v.hidden ? '恢复' : '撤下', () => save(v.hidden ? 'restore' : 'hide', { id: v.id })),
-                ),
-            ),
-        );
+        const more = el('details', { class: 'rx-more' }, el('summary', { 'aria-label': v.team + '的更多操作' }, '更多'),
+            el('div', {}, v.url ? el('a', { href: v.url + '?download=1', text: '下载 MP4' }) : null,
+                button('重渲染', () => save('retry', { id: v.id })),
+                button(v.hidden ? '恢复' : '撤下', () => save(v.hidden ? 'restore' : 'hide', { id: v.id }))));
+        list.append(el('article', { class: 'rx-video-row' },
+            el('div', {}, el('strong', { text: v.team }), el('small', { text: v.problem + ' · ' + v.verdict + ' · ' + formatTime(v.submittedAt) })),
+            el('span', { class: 'rx-video-layout', text: v.layoutName }),
+            el('div', {}, el('span', { class: 'rx-state', 'data-state': v.hidden ? 'hidden' : v.state,
+                text: v.hidden ? '已撤下' : states[v.state] || v.state }), v.error ? el('small', { class: 'rx-error', text: v.error }) : null),
+            el('div', { class: 'rx-video-actions' }, v.url ? button('预览', () => play(v, true, false)) : null, more)));
     }
+    root.append(list);
     if (maxPage > 1)
         root.append(
             pageControls(page, maxPage, (number) => {
@@ -345,7 +328,7 @@ function publication() {
     ]);
     flag('download', '允许下载');
     root.append(
-        fields,
+        el('h2', { text: '观众访问' }), fields,
         helpTip('学校隐私', '隐藏学校时，含学校名称或 Logo 的成品也会从公开页隐藏。'),
         el(
             'div',

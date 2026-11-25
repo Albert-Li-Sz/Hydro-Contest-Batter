@@ -1,4 +1,6 @@
 import base64
+import importlib.util
+import subprocess
 import json
 import os
 from contextlib import chdir
@@ -89,6 +91,65 @@ class WorkerTests(unittest.TestCase):
         )
         for secret in (code, TEST_KEY, "storage-secret"):
             self.assertNotIn(secret, message)
+
+    def test_icpc_decoration_changes_only_the_footer(self):
+        from PIL import Image, ImageChops
+
+        if (Path(__file__).resolve().parent / "hydro_worker.py").exists():
+            import hydro_template as template
+        else:
+            from reactions_generator import hydro_template as template
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            replacement = folder / "strip.png"
+            Image.new("RGB", (90, 110), "cyan").save(replacement)
+            with Image.open(template.PORTRAIT) as source, Image.open(template.backdrop(folder, replacement)) as rendered:
+                changed = ImageChops.difference(source.convert("RGB"), rendered)
+                self.assertEqual(changed.getbbox(), (0, 1728, 1080, 1920))
+                self.assertEqual(rendered.getpixel((0, 1728)), (0, 255, 255))
+
+    @unittest.skipUnless(importlib.util.find_spec("reactions_generator"), "requires the packaged upstream renderer")
+    def test_fixed_templates_encode_both_sources_and_the_upstream_card(self):
+        from PIL import Image
+        from reactions_generator import hydro_template as template
+        import io
+
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            assets = {}
+            streams = []
+            for kind, color in (("screen", "blue"), ("webcam", "red")):
+                source = folder / (kind + ".mp4")
+                subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i",
+                                f"color=c={color}:s=96x54:r=24", "-t", "1", "-c:v", "libx264", str(source)], check=True)
+                assets[kind] = source
+                streams.append({"hydro": {"stream": kind, "windowStartMs": 1000, "windowEndMs": 2000,
+                                          "segments": [{"url": kind, "startMs": 1000, "endMs": 2000}]}})
+            detail = {"team": {"displayName": "示例队", "rankBefore": 8, "rankAfter": 4},
+                      "problem": {"letter": "A"}, "result": {"verdict": {"shortName": "AC", "isAccepted": True}},
+                      "time": 60000, "judgedAtMs": 1500, "reactionVideos": streams}
+            card = template.submission_card(detail, None, 15, 30)
+            for orientation in ("icpc-portrait", "icpc-landscape"):
+                working = folder / orientation
+                working.mkdir()
+                target = working / "result.mp4"
+                with patch.object(media, "download", side_effect=lambda _, url, dest, **kwargs: assets[url]):
+                    duration = media.render("http://localhost", {"layout": {"template": orientation}}, detail, working, target)
+                self.assertEqual(duration, 1000)
+                layers = {item["kind"]: item for item in template.rectangles(orientation)}
+                for frame in (3, 24):
+                    data = subprocess.check_output(["ffmpeg", "-loglevel", "error", "-i", str(target),
+                        "-vf", f"select=eq(n\\,{frame})", "-frames:v", "1", "-f", "image2pipe", "-c:v", "png", "-"])
+                    with Image.open(io.BytesIO(data)) as output:
+                        self.assertEqual(output.size, (1080, 1920) if orientation.endswith("portrait") else (1920, 1080))
+                        for kind, channel in (("screen", 2), ("webcam", 0)):
+                            item = layers[kind]
+                            x, y = item["x"] + item["width"] // 2, item["y"] + item["height"] // 2
+                            self.assertGreater(output.getpixel((x, y))[channel], 230)
+                        item = layers["card"]
+                        expected = card.render_frame(frame).getpixel((500, 100))[:3]
+                        actual = output.getpixel((item["x"] + 500, item["y"] + 100))[:3]
+                        self.assertLess(max(abs(a-b) for a,b in zip(actual, expected)), 14)
 
     def test_timeline(self):
         a = {"startMs": 900, "endMs": 1400}

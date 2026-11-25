@@ -1,3 +1,5 @@
+import { clarificationIcon } from '../resolver/public/js/hydro-clarification-icon.js';
+
 const entryIds = ['xcpcio-resolver-entry', 'xcpcio-screens-entry', 'xcpcio-live-entry', 'xcpcio-capture-entry', 'xcpcio-monitor-entry', 'xcpcio-overview-entry', 'xcpcio-awards-entry', 'xcpcio-balloons-entry', 'xcpcio-presence-entry', 'xcpcio-clarification-desk-entry'];
 const resultsEntryId = 'xcpcio-results-entry';
 const reactionsEntryId = 'xcpcio-reactions-entry';
@@ -20,7 +22,7 @@ const entries = (url, { live = true, capture = false } = {}) => [
     [entryIds[8], url.replace(/\/resolver$/, '/presence'), 'icon-user--multiple', '机位签到与监控'],
     [entryIds[4], url.replace(/\/resolver$/, '/monitor'), 'icon-stopwatch', '评测队列与监控'],
     [entryIds[5], url.replace(/\/resolver$/, '/overview'), 'icon-pie-chart', '赛况总览'],
-    [entryIds[9], url.replace(/\/resolver$/, '/clarification-desk'), 'icon-comment', '答疑与公告'],
+    [entryIds[9], url.replace(/\/resolver$/, '/clarification-desk'), 'clarification', '答疑与公告'],
 ];
 const removeEntries = () => { for (const id of [...entryIds, resultsEntryId, controlEntryId, reactionsEntryId]) document.getElementById(id)?.remove(); };
 
@@ -56,7 +58,13 @@ export function installResolverEntry(url, options = {}) {
                 link.href = href;
                 link.setAttribute('data-no-instant', '');
                 const icon = document.createElement('span');
-                icon.className = `icon ${iconName}`;
+                icon.setAttribute('aria-hidden', 'true');
+                if (iconName === 'clarification') {
+                    icon.className = 'icon';
+                    icon.append(clarificationIcon());
+                } else {
+                    icon.className = `icon ${iconName}`;
+                }
                 link.append(icon, document.createTextNode(` ${label}`));
                 entry.append(link);
             }

@@ -108,11 +108,11 @@ Schema 测试固定使用官方 2026-01 分支文件；上游 schema 对 runs �
 
 需要 Node.js 22 或以上版本及 Hydro 5.x。使用运行 Hydro 的系统用户操作；命令中的 `$HOME` 对应这个用户。自 0.8.1 起，安装包包含供 Hydro 直接加载的源码和完整预构建资源。
 
-下载 `hydro-scoreboard-xcpcio-plus-1.22.1.tgz` 并放入当前目录。首次安装按以下步骤解压、注册 addon 并重启服务。
+下载 `hydro-scoreboard-xcpcio-plus-1.23.0.tgz` 并放入当前目录。首次安装按以下步骤解压、注册 addon 并重启服务。
 
 ```bash
 mkdir -p "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
-tar -xzf hydro-scoreboard-xcpcio-plus-1.22.1.tgz \
+tar -xzf hydro-scoreboard-xcpcio-plus-1.23.0.tgz \
   -C "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus" --strip-components=1
 hydrooj addon add "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 pm2 restart hydrooj
@@ -126,7 +126,7 @@ pm2 restart hydrooj
 
 ```bash
 mkdir -p xcpcio-update
-tar -xzf hydro-scoreboard-xcpcio-plus-1.22.1.tgz -C xcpcio-update
+tar -xzf hydro-scoreboard-xcpcio-plus-1.23.0.tgz -C xcpcio-update
 bash xcpcio-update/package/install.sh install
 # 已有安装时
 bash xcpcio-update/package/install.sh upgrade
@@ -757,7 +757,7 @@ Hydro 的系统管理员（`PRIV_EDIT_SYSTEM`）可在控制面板（`/manage`�
    HYDRO_MEDIA_CONNECTION=hydro-reactions:此处粘贴完整连接码
    ```
 
-3. 执行配置校验、拉取和启动。配置默认使用 CPU 与固定版本公共镜像 `ghcr.io/albert-li-sz/reactions-generator-hydro:1.21.2`。输出保存在本机 `./out`。
+3. 执行配置校验、拉取和启动。配置默认使用 CPU 与固定版本公共镜像 `ghcr.io/albert-li-sz/reactions-generator-hydro:1.23.0`。输出保存在本机 `./out`。
 
    ```sh
    docker compose config --quiet
@@ -778,9 +778,9 @@ Windows 可在 Docker Desktop 中运行同一 Compose 配置。赛场无法访�
 
 ### 版式与公开播放
 
-在「版式」选择横屏、竖屏或自定义尺寸，调整摄像头、屏幕、卡片、文字和图片。每个版式可选择适用一血、通过或其他结果。一条提交可生成多个成品。通过「视频」检查、下载、撤下、恢复或重渲染成品。通过「公开设置」选择范围、时机、版式、学校和下载选项。公开默认关闭，启用后的默认时机为解除封榜后。赛中隐藏题号、封榜时段、直播屏幕限制和撤下状态都影响观众可看到的内容。选择隐藏学校时，系统会排除已经把学校字段或学校 Logo 合成到画面里的视频。自定义背景图、文字、上传图片和实拍画面的内容需由工作人员在公开前检查。
+在「版式」播放 ICPC 横屏或竖屏示例。竖屏从上到下排列摄像头、成绩卡、屏幕，最底部可上传 1080 × 192 像素的 PNG 或 JPEG 图样。横屏以摄像头为底，左上显示成绩卡，右上显示屏幕。保存图样后，可选一条提交生成私有样片。在「视频」中可以预览；展开「更多」可下载、撤下、恢复或重渲染。通过「公开设置」选择范围、时机、版式、学校和下载选项。公开默认关闭，启用后的默认时机为解除封榜后。赛中隐藏题号、封榜时段、直播屏幕限制和撤下状态都影响观众可看到的内容。选择隐藏学校时，系统会排除已经把学校字段或学校 Logo 合成到画面里的视频。公开前请核对实拍画面和自选底部图样。
 
-![在版式编辑器的预览画布调整屏幕、摄像头与信息卡片的位置](images/media-worker/layout-editor.png)
+![竖屏成片示例和底部图样设置](images/media-worker/layout-editor.png)
 
 导播台在「精选提交」或「队伍画面」中展开「提交回放」，可预看原始片段和成品。公开 OBS 精选提交使用可公开的反应视频。「大屏画面与链接 → 反应视频轮播」可选择一血或所有通过、分榜和播放间隔。版式默认跟随公开页，也可另选横屏等版式；每次播放仍核对撤下、封榜、屏幕和学校公开规则。
 

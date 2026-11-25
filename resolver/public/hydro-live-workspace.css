@@ -1,0 +1,9 @@
+.live-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+.live-workspace > .section { margin: 0; min-width: 0; }
+.live-workspace .live-source { display: grid; gap: 1rem; }
+.live-workspace .live-source .resolver-actions { margin-top: 0; }
+.live-workspace .live-address { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+.live-workspace .live-address .textbox { flex: 1 1 18rem; min-width: 0; margin: 0; font: .85rem var(--code-font-family, monospace); }
+.live-workspace .button { margin: 0; }
+.live-workspace pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.live-workspace > p { margin: 0; }

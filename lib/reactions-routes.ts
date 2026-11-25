@@ -8,7 +8,7 @@ import { ContestModel, type Context, Handler, NotFoundError, ObjectId, param, PE
 import type { ContestLinks } from './links';
 import { resolverCodeBase } from './resolver-data';
 import { toScriptJson } from './settings';
-import { layoutWarnings, normalizeLayout, publicSettings, ReactionError, type ReactionLayout } from './reactions';
+import { updateArtwork, publicSettings, ReactionError, type ReactionLayout } from './reactions';
 import { contestKey, createReactionStore, reactionBase, runDetails, videoId, videoKey, type ReactionDependencies } from './reactions-store';
 import { serveRecordingMedia } from './recording-store';
 import { proxyReactionMedia } from './reaction-media';
@@ -199,22 +199,12 @@ export function applyReactions(ctx: Context, deps: ReactionDependencies & { link
             } else if (action === 'revokeLegacy') {
                 await store.configs.updateOne({ _id: this.key }, { $unset: { token: '', tokenAt: '' } });
             } else if (action === 'layout') {
-                const history = await store.versions(this.key),
-                    id = b.layout?.id || new ObjectId().toHexString();
-                if (!shortId(id)) throw new ReactionError('版式编号无效');
-                const old = history.filter((v) => v.layout.id === id).at(-1);
-                if ((old?.layout.revision || 0) !== (b.layout?.revision || 0)) throw new ReactionError('版式已经更新，请刷新后再保存', 409);
-                const layout = normalizeLayout(b.layout, id, (old?.layout.revision || 0) + 1);
-                const warnings = layoutWarnings(layout, b.encoder === 'nvidia_full');
-                if (warnings.length && b.confirmWarnings !== true) {
-                    this.response.body = { warnings };
-                    return;
-                }
-                const ids = [
-                    ...new Set([layout.background.image, ...layout.items.map((i) => i.props.image)].filter((a): a is string => !!a)),
-                ];
-                if (ids.length && (await store.assets.countDocuments({ _id: { $in: ids }, contestKey: this.key })) !== ids.length)
-                    throw new ReactionError('版式素材不存在');
+                const history = await store.versions(this.key);
+                const old = store.latest(history).find(l => l.id === b.layout?.id);
+                const layout = updateArtwork(old, b.layout);
+                const id = layout.id;
+                if (layout.artwork && !await store.assets.findOne({ _id: layout.artwork, contestKey: this.key }))
+                    throw new ReactionError('本场比赛中找不到这张图样');
                 try {
                     await store.layouts.insertOne({
                         _id: `${this.key}/${id}/${layout.revision}`,
@@ -230,7 +220,6 @@ export function applyReactions(ctx: Context, deps: ReactionDependencies & { link
                 this.response.body = { ok: true, id, revision: layout.revision };
                 return;
             } else if (['hide', 'restore', 'retry', 'sample'].includes(action)) {
-                let v;
                 if (action === 'sample') {
                     const clip = (await store.clipList(this.key, { rid: String(b.rid), state: { $in: ['ready', 'partial'] } }))[0];
                     const layout = store.latest(await store.versions(this.key)).find((l) => l.id === b.layoutId);
@@ -257,12 +246,14 @@ export function applyReactions(ctx: Context, deps: ReactionDependencies & { link
                         updatedAt: Date.now(),
                     });
                 } else {
-                    v = await this.video(String(b.id));
+                    const v = await this.video(String(b.id));
                     if (action === 'retry') {
                         if (v.state === 'ineligible') throw new ReactionError('该提交不适用当前版式');
+                        const layout = v.layout.template ? v.layout : store.latest(await store.versions(this.key)).find(l => l.id === v.layoutId);
+                        if (!layout) throw new ReactionError('请选择固定版式重新生成样片');
                         await store.videos.updateOne(
                             { _id: v._id, generation: v.generation },
-                            { $set: { state: 'waiting', error: '', updatedAt: Date.now() }, $inc: { generation: 1 } },
+                            { $set: { layout, layoutRevision: layout.revision, state: 'waiting', error: '', updatedAt: Date.now() }, $inc: { generation: 1 } },
                         );
                     } else {
                         await store.videos.updateOne(
@@ -527,6 +518,7 @@ export function applyReactions(ctx: Context, deps: ReactionDependencies & { link
         wireLayout(layout: ReactionLayout) {
             return {
                 ...layout,
+                artwork: layout.artwork ? this.signed('assets', layout.artwork) : null,
                 background: {
                     ...layout.background,
                     image: layout.background.image ? this.signed('assets', layout.background.image) : null,
@@ -587,6 +579,7 @@ export function applyReactions(ctx: Context, deps: ReactionDependencies & { link
                         {
                             $match: {
                                 contestKey: this.key,
+                                ...(this.request.headers['x-hydro-reaction-template'] !== 'icpc-v1' ? { 'layout.template': { $exists: false } } : {}),
                                 $or: [
                                     { state: { $in: ['waiting', 'stale', 'failed'] } },
                                     { state: 'rendering', leaseAt: { $lt: Date.now() - 60_000 } },
@@ -726,6 +719,7 @@ export function applyReactions(ctx: Context, deps: ReactionDependencies & { link
                     {
                         _id: videoKey(this.key, current.runId, current.layoutId),
                         generation: current.generation,
+                        ...(b.template !== 'icpc-v1' ? { 'layout.template': { $exists: false } } : {}),
                         $or: [
                             { state: { $in: ['waiting', 'stale', 'failed'] } },
                             { state: 'rendering', worker: name, workerOwner: owner ?? { $exists: false } },

@@ -1,7 +1,7 @@
 services:
   reactions:
     build: .
-    image: reactions-generator-hydro:1.21.2
+    image: reactions-generator-hydro:1.23.0
     restart: unless-stopped
     secrets:
       - hydro_media_env

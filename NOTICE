@@ -78,3 +78,5 @@ The capture device includes the original fix-webm-duration 1.0.6 script.
 https://github.com/yusitnikov/fix-webm-duration
 MIT License, Copyright (c) 2018 Yury Sitnikov, reproduced in
 licenses/fix-webm-duration-MIT.txt.
+
+Reaction video templates use the ICPC Live mark from icpc/reactions-generator (5d42acb), Hydro branding from hydro-dev/Hydro, and the decorative skyline from the supplied contest layout. The bundled demonstrations use synthetic video sources.

@@ -2,19 +2,19 @@
 {% extends "layout/basic.html" %}
 {% block content %}
 <link rel="stylesheet" href="{{ codeBase }}/hydro-config.css">
-<link rel="stylesheet" href="{{ codeBase }}/hydro-screens.css">
-<div class="row resolver-config" id="hydro-resolver-config"><div class="medium-12 columns" id="hydro-screens">
+<link rel="stylesheet" href="{{ codeBase }}/hydro-live-workspace.css">
+<div class="row resolver-config" id="hydro-resolver-config"><div class="medium-12 columns"><div class="live-workspace">
   <section class="section visible">
     <div class="section__header resolver-heading"><div><h1 class="section__title">直播导播与 OBS</h1><p class="resolver-muted" id="contest-title"></p></div><div class="xc-actions"><a class="button" href="control#media">比赛配置</a><a class="button" id="back-link">返回比赛</a></div></div>
     <div id="message" class="section__body resolver-error" role="alert" hidden></div>
   </section>
-  <section class="section visible screen-card">
+  <section class="section visible">
     <div class="section__header resolver-heading"><h2 class="section__title">导播台</h2><a class="button primary" id="open-admin" target="_blank" rel="noopener" aria-label="打开导播台">打开</a></div>
   </section>
-  <section class="section visible screen-card">
-    <div class="section__header"><h2 class="section__title">直播画面</h2></div>
-    <div class="section__body">
-      <div class="screen-link"><input class="textbox" id="overlay-link" readonly aria-label="直播画面链接"><button type="button" class="button" id="copy-overlay">复制链接</button><a class="button" id="open-overlay" target="_blank" rel="noopener" aria-label="打开直播画面">打开</a></div>
+  <section class="section visible">
+    <div class="section__header"><h2 class="section__title">OBS 直播画面</h2></div>
+    <div class="section__body live-source">
+      <div class="live-address"><input class="textbox" id="overlay-link" readonly aria-label="直播画面链接"><button type="button" class="button" id="copy-overlay">复制链接</button><a class="button" id="open-overlay" target="_blank" rel="noopener" aria-label="打开直播画面">打开画面</a></div>
       <details>
         <summary>OBS 浏览器源设置</summary>
         <p>添加「浏览器」来源，填入直播链接，尺寸设为 1920 × 1080。在「自定义 CSS」中填入以下内容，使背景透明。</p>
@@ -25,7 +25,7 @@
   </section>
   <dialog id="reset-confirm" aria-labelledby="reset-title"><form method="dialog"><h2 id="reset-title">作废直播画面链接</h2><p>旧链接立即失效。请在 OBS 中换成新链接。</p><div class="resolver-actions"><button class="button" value="cancel">取消</button><button class="button primary" value="confirm">作废并重新生成</button></div></form></dialog>
   <p class="resolver-muted">直播移植自 <a href="https://github.com/icpc/live-v3" target="_blank" rel="noopener">ICPC Live v3.5.1</a> · <a href="/hydro-live/LICENSE.txt">MIT</a></p>
-</div></div>
+</div></div></div>
 <script type="application/json" id="live-runtime">{{ runtimeJson | safe }}</script>
 <script type="module" src="{{ codeBase }}/js/hydro-live.js"></script>
 {% endblock %}

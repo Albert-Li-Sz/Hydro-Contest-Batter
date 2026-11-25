@@ -1,3 +1,4 @@
+import { clarificationIcon } from './hydro-clarification-icon.js';
 // Quick settings save through their owning modules. The recording editor shares its explicit save
 // action with the capture page so staff can review both sources and their combined bandwidth.
 import { helpTip } from './hydro-ui.js';
@@ -59,7 +60,7 @@ const text = (label, value, onchange, attrs = {}) => {
     input.addEventListener('change', () => onchange(input.value));
     return el('label', { class: 'control-field' }, label, input);
 };
-const link = (label, href) => href ? el('a', { href, text: label }) : null;
+const link = (label, href, icon = null) => href ? el('a', { href }, icon, icon ? ' ' + label : label) : null;
 const related = (...links) => el('div', { class: 'control-links' }, ...links);
 const group = (title, ...children) => el('section', { class: 'manage-group control-group' }, el('h3', {}, title), ...children);
 const row = (...children) => el('div', { class: 'control-row' }, ...children);
@@ -178,7 +179,7 @@ function media({ capture, reactions, links }) {
 
 function work({ review, links }) {
     return [
-        group('赛场运行', related(link('机位签到与监控', links.presence), link('答疑与公告', links.desk),
+        group('赛场运行', related(link('机位签到与监控', links.presence), link('答疑与公告', links.desk, clarificationIcon()),
             link('气球配送', links.balloons + '#deliver'), link('评测队列与监控', links.monitor))),
         group('成绩与复核', review ? el('p', { text: '结果变更 ' + review.changes + ' · 评测中 ' + review.pending + ' · 待更新会话 ' + review.stale }) : null,
             related(link('重测复核', links.review), link('批量重测', links.rejudge), link('成绩快照与导出', links.results))),

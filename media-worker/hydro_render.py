@@ -108,6 +108,8 @@ def timeline(segments, start, end):
 
 
 def scale(width, height, fit):
+    if fit == "fill":
+        return f"scale={width}:{height},setsar=1"
     mode = "increase" if fit == "cover" else "decrease"
     finish = (
         f"crop={width}:{height}"
@@ -147,16 +149,16 @@ def has_audio(path):
     return bool(json.loads(streams)["streams"])
 
 
-def make_track(folder, kind, spans, assets, item, bg):
+def make_track(folder, kind, spans, assets, item, bg, fps=FPS):
     w, h = item["width"], item["height"]
     chunks = []
     elapsed = frames = 0
     for index, (segment, offset, length) in enumerate(spans):
         elapsed += length
-        next_frames = round(elapsed * FPS / 1000)
+        next_frames = round(elapsed * fps / 1000)
         if next_frames == frames:
             continue
-        seconds = (next_frames - frames) / FPS
+        seconds = (next_frames - frames) / fps
         frames = next_frames
         output = folder / f"{kind}-{index}.mp4"
         args = []
@@ -175,7 +177,7 @@ def make_track(folder, kind, spans, assets, item, bg):
             ]
             audio = kind == "webcam" and has_audio(path)
         else:
-            args += ["-f", "lavfi", "-i", f"color=c={bg}:s={w}x{h}:r={FPS}"]
+            args += ["-f", "lavfi", "-i", f"color=c={bg}:s={w}x{h}:r={fps}"]
         if not audio:
             args += ["-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo"]
         # Some recorder fragments end one frame earlier than their wall clock.
@@ -186,7 +188,7 @@ def make_track(folder, kind, spans, assets, item, bg):
             "-map",
             "0:a:0" if audio else "1:a:0",
             "-vf",
-            f"{scale(w, h, item.get('fit'))},fps={FPS},tpad=stop_mode=clone:stop_duration={seconds}",
+            f"{scale(w, h, item.get('fit'))},fps={fps},tpad=stop_mode=clone:stop_duration={seconds}",
             "-af",
             "apad",
             "-t",
@@ -305,7 +307,20 @@ def render(
     base, task, detail, work, output, encoder="cpu", font=FONT, sound=None, secret=""
 ):
     layout = task["layout"]
-    width, height = (int(layout["canvas"][k]) for k in ("width", "height"))
+    template = layout.get("template")
+    if template:
+        if __package__:
+            from . import hydro_template as official
+        else:
+            import hydro_template as official
+        if template not in ("icpc-portrait", "icpc-landscape"):
+            raise ValueError("Unknown ICPC layout")
+    fps = 30 if template else FPS
+    width, height = (
+        ((1080, 1920) if template == "icpc-portrait" else (1920, 1080))
+        if template
+        else (int(layout["canvas"][k]) for k in ("width", "height"))
+    )
     if not all(16 <= n <= 3840 and n % 2 == 0 for n in (width, height)):
         raise ValueError("Invalid canvas")
     media = {
@@ -320,19 +335,29 @@ def render(
     duration = (end - start) / 1000
     if not math.isfinite(duration) or not 0 < duration <= 120:
         raise ValueError("Invalid recording window")
-    bg = layout.get("background", {})
+    bg = {"color": "#ffffff"} if template else layout.get("background", {})
     background = color(bg.get("color"))
-    items = sorted(
-        (i for i in layout["items"] if i.get("visible", True)), key=lambda i: i["z"]
-    )
-    items = [dict(i) for i in items]
-    urls = set()
+    if template:
+        items = official.rectangles(template)
+    else:
+        items = sorted(
+            (dict(item) for item in layout["items"] if item.get("visible", True)),
+            key=lambda item: item["z"],
+        )
+    artwork = layout.get("artwork") if template == "icpc-portrait" else None
+    urls = {artwork} if artwork else set()
     org = detail.get("team", {}).get("organization") or {}
     logo = (org.get("logo") or {}).get("url")
-    if logo and any(
-        i["kind"] == "logo"
-        or (i["kind"] == "card" and "logo" in layout.get("card", {}).get("fields", []))
-        for i in items
+    if logo and (
+        template
+        or any(
+            i["kind"] == "logo"
+            or (
+                i["kind"] == "card"
+                and "logo" in layout.get("card", {}).get("fields", [])
+            )
+            for i in items
+        )
     ):
         urls.add(logo)
     if bg.get("image"):
@@ -366,15 +391,17 @@ def render(
         }
         for url, job in jobs.items():
             assets[url] = job.result()
-    args = ["-f", "lavfi", "-i", f"color=c={background}:s={width}x{height}:r={FPS}"]
+    args = ["-f", "lavfi", "-i", f"color=c={background}:s={width}x{height}:r={fps}"]
     cuda = encoder == "nvidia_full"
     init = ",format=yuv420p,hwupload" if cuda else ""
     graph = [f"[0:v]setsar=1{init}[layer0]"]
     layers = []
-    if bg.get("image"):
+    if template == "icpc-portrait" or bg.get("image"):
         layers.append(
             (
-                assets[bg["image"]],
+                official.backdrop(work, assets.get(artwork))
+                if template
+                else assets[bg["image"]],
                 {"width": width, "height": height, "x": 0, "y": 0, "fit": "cover"},
                 True,
             )
@@ -392,11 +419,22 @@ def render(
                 timeline(media.get(kind, {}).get("segments", []), start, end),
                 assets,
                 item,
-                background,
+                "#000000" if template else background,
+                fps,
             )
             if kind == "webcam":
                 voice = len(layers) + 1
             layers.append((track, item, False))
+        elif template and kind == "card":
+            layers.append(
+                (
+                    official.animated_card(
+                        work, detail, assets.get(logo), start, duration, fps
+                    ),
+                    item,
+                    False,
+                )
+            )
         elif kind in ("card", "text"):
             final = graphic(work, idx, item, layout, detail, assets.get(logo), font)
             reveal = max(
@@ -428,10 +466,14 @@ def render(
                 layers.append((asset, item, True))
     for idx, (src, item, still) in enumerate(layers, 1):
         if still:
-            args += ["-loop", "1", "-framerate", str(FPS)]
+            args += ["-loop", "1", "-framerate", str(fps)]
         args += ["-i", src]
         upload = (
-            (",format=yuva420p,hwupload" if still else ",format=yuv420p,hwupload")
+            (
+                ",format=yuva420p,hwupload"
+                if still or (template and item.get("kind") == "card")
+                else ",format=yuv420p,hwupload"
+            )
             if cuda
             else ""
         )

@@ -13,13 +13,15 @@ export interface LayoutItem {
     width: number;
     height: number;
     z: number;
-    fit: 'cover' | 'contain';
+    fit: 'cover' | 'contain' | 'fill';
     visible: boolean;
     locked: boolean;
     props: { text?: string; image?: string; color?: string };
 }
 export const cardFields = ['team', 'school', 'logo', 'problem', 'verdict', 'time', 'rank'] as const;
 export interface ReactionLayout {
+    template?: 'icpc-portrait' | 'icpc-landscape';
+    artwork?: string | null;
     id: string;
     name: string;
     canvas: { width: number; height: number };
@@ -38,21 +40,13 @@ export class ReactionError extends Error {
     }
 }
 const object = (input: unknown) => (input && typeof input === 'object' && !Array.isArray(input) ? (input as Record<string, unknown>) : {});
-function integer(raw: unknown, min: number, max: number, field: string) {
-    if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < min || raw > max)
-        throw new ReactionError(`${field}须为 ${min} 至 ${max} 的整数`);
-    return raw;
-}
-function color(value: unknown) {
-    if (typeof value !== 'string' || !/^#[\da-f]{6}$/i.test(value)) throw new ReactionError('请选择六位十六进制颜色');
-    return value;
-}
 function asset(value: unknown) {
     if (value == null || value === '') return null;
     if (typeof value !== 'string' || !/^[a-f\d]{24}$/.test(value)) throw new ReactionError('图片必须来自本场比赛的上传素材');
     return value;
 }
-export function defaultLayouts(): ReactionLayout[] {
+// Original snapshots are still used to decide which existing MP4s may be shown.
+function legacyDefaults(): ReactionLayout[] {
     const item = (kind: ElementKind, y: number, w: number, h: number): LayoutItem => ({
         id: kind,
         kind,
@@ -91,94 +85,53 @@ export function defaultLayouts(): ReactionLayout[] {
         revision: 1,
     }));
 }
-export function normalizeLayout(input: unknown, id: string, revision: number): ReactionLayout {
-    const value = object(input),
-        canvas = object(value.canvas),
-        background = object(value.background),
-        card = object(value.card);
-    const width = integer(canvas.width, 16, 3840, '画布宽度'),
-        height = integer(canvas.height, 16, 3840, '画布高度');
-    if (!['1080x1920', '1920x1080', '1080x1080'].includes(`${width}x${height}`) && (width % 16 || height % 16))
-        throw new ReactionError('自定义画布宽、高必须是 16 的倍数');
-    if (typeof value.name !== 'string' || !value.name.trim() || value.name.trim().length > 80)
-        throw new ReactionError('版式名称需要 1 至 80 个字符');
-    if (!Array.isArray(value.items) || !value.items.length || value.items.length > 33) throw new ReactionError('请添加 1 至 33 个元素');
-    const seen = new Set<string>(),
-        counts = new Map<ElementKind, number>();
-    const items = value.items.map((raw): LayoutItem => {
-        const it = object(raw),
-            props = object(it.props),
-            kind = it.kind as ElementKind;
-        if (!elementKinds.includes(kind) || typeof it.id !== 'string' || !/^[\w-]{1,48}$/.test(it.id) || seen.has(it.id))
-            throw new ReactionError('元素类型或编号无效');
-        seen.add(it.id);
-        counts.set(kind, (counts.get(kind) || 0) + 1);
-        if (counts.get(kind)! > (['webcam', 'screen', 'card'].includes(kind) ? 1 : 10)) throw new ReactionError('同类元素过多');
-        const image = asset(props.image);
-        return {
-            id: it.id,
-            kind,
-            x: integer(it.x, -3840, 3840, '横坐标'),
-            y: integer(it.y, -3840, 3840, '纵坐标'),
-            width: integer(it.width, 1, 7680, '元素宽度'),
-            height: integer(it.height, 1, 7680, '元素高度'),
-            z: integer(it.z, -9999, 9999, '层次'),
-            fit: it.fit === 'cover' ? 'cover' : 'contain',
-            visible: it.visible !== false,
-            locked: it.locked === true,
-            props: {
-                ...(kind === 'text' ? { text: String(props.text || '').slice(0, 500), color: color(props.color || '#ffffff') } : {}),
-                ...(kind === 'image' && image ? { image } : {}),
-            },
-        };
-    });
-    if (!Array.isArray(value.applies)) throw new ReactionError('请选择适用的提交');
-    const applies = [...new Set(value.applies as Match[])];
-    if (!applies.length || !applies.every((m) => ['first', 'accepted', 'other'].includes(m))) throw new ReactionError('请选择适用的提交');
-    if (!Array.isArray(card.fields) || !card.fields.every((f) => cardFields.includes(f))) throw new ReactionError('卡片字段无效');
+// Rectangles match icpc/reactions-generator Defaults after its 4:2:0 chroma alignment.
+function officialLayout(legacy: ReactionLayout): ReactionLayout {
+    const portrait = legacy.canvas.height >= legacy.canvas.width;
+    const layer = (kind: 'webcam' | 'screen' | 'card', x: number, y: number, width: number, height: number, z: number): LayoutItem =>
+        ({ id: kind, kind, x, y, width, height, z, fit: 'fill', visible: true, locked: true, props: {} });
     return {
-        id,
-        revision,
-        name: value.name.trim(),
-        canvas: { width, height },
-        items,
-        background: { color: color(background.color), image: asset(background.image) },
-        card: { fields: [...new Set(card.fields)], primary: color(card.primary), text: color(card.text) },
-        applies,
+        ...legacy,
+        template: portrait ? 'icpc-portrait' : 'icpc-landscape',
+        name: legacy.id === 'portrait' ? '竖屏 · ICPC Live' : legacy.id === 'landscape' ? '横屏 · ICPC Live' : legacy.name,
+        canvas: portrait ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 },
+        items: portrait
+            ? [layer('webcam', 40, 194, 1000, 562, 0), layer('screen', 40, 1162, 1000, 562, 1), layer('card', 40, 806, 1000, 306, 2)]
+            : [layer('webcam', 0, 0, 1920, 1080, 0), layer('screen', 1264, 16, 640, 360, 1), layer('card', 16, 16, 1000, 306, 2)],
+        background: { color: '#ffffff', image: null },
+        artwork: null,
+        card: { fields: [...cardFields], primary: '#1b8041', text: '#ffffff' },
+        revision: legacy.revision + 1,
     };
 }
-export function layoutWarnings(layout: ReactionLayout, nvidia = false) {
-    const { width, height } = layout.canvas;
-    const visible = [...layout.items].filter((i) => i.visible).sort((a, b) => a.z - b.z);
-    const warnings: string[] = [];
-    visible.forEach((i, idx) => {
-        if (i.x < 0 || i.y < 0 || i.x + i.width > width || i.y + i.height > height) {
-            if (nvidia) throw new ReactionError('nvidia_full 要求所有元素都在画布内');
-            warnings.push(`${i.id} 超出画布`);
-        }
-        if (i.width % 2 || i.height % 2) warnings.push(`${i.id} 的宽或高是奇数`);
-        if (i.kind !== 'webcam' && i.kind !== 'screen') return;
-        // Check the union of opaque layers. Text, logos and contain-fit images may be transparent.
-        const above = visible
-            .slice(idx + 1)
-            .filter((e) => e.kind === 'card' || ((e.kind === 'webcam' || e.kind === 'screen') && e.fit === 'cover'));
-        const xs = [
-            ...new Set([i.x, i.x + i.width, ...above.flatMap((e) => [e.x, e.x + e.width]).filter((x) => x > i.x && x < i.x + i.width)]),
-        ].sort((a, b) => a - b);
-        const ys = [
-            ...new Set([i.y, i.y + i.height, ...above.flatMap((e) => [e.y, e.y + e.height]).filter((y) => y > i.y && y < i.y + i.height)]),
-        ].sort((a, b) => a - b);
-        if (
-            xs
-                .slice(0, -1)
-                .every((x) =>
-                    ys.slice(0, -1).every((y) => above.some((e) => e.x <= x && e.y <= y && e.x + e.width > x && e.y + e.height > y)),
-                )
-        )
-            warnings.push(`${i.id} 完全被遮挡`);
-    });
-    return warnings;
+
+type LayoutVersion = { layout: ReactionLayout; effectiveAt: number; migrated?: boolean };
+export function layoutHistory(saved: LayoutVersion[]) {
+    const rows: LayoutVersion[] = [...legacyDefaults().map(layout => ({ layout, effectiveAt: 0 })), ...saved];
+    const legacy = new Map<string, { layout: ReactionLayout; effectiveAt: number }>();
+    for (const row of rows) {
+        if (row.layout.template) continue;
+        const old = legacy.get(row.layout.id);
+        legacy.set(row.layout.id, {
+            layout: !old || old.layout.revision < row.layout.revision ? row.layout : old.layout,
+            effectiveAt: Math.min(old?.effectiveAt ?? row.effectiveAt, row.effectiveAt),
+        });
+    }
+    for (const { layout, effectiveAt } of legacy.values()) rows.push({ layout: officialLayout(layout), effectiveAt, migrated: true });
+    return rows.sort((a, b) => a.layout.revision - b.layout.revision);
 }
+
+export const defaultLayouts = () => legacyDefaults().map(officialLayout);
+
+export function updateArtwork(current: ReactionLayout | undefined, input: unknown): ReactionLayout {
+    const patch = object(input);
+    if (!current?.template || patch.id !== current.id || Object.keys(patch).some(k => !['id', 'revision', 'artwork'].includes(k)))
+        throw new ReactionError('版式已固定，仅可替换竖屏底部图样');
+    if (patch.revision !== current.revision) throw new ReactionError('版式已经更新，请刷新后再保存', 409);
+    if (current.template !== 'icpc-portrait' || !Object.hasOwn(patch, 'artwork')) throw new ReactionError('此版式没有可替换的图样');
+    return { ...current, artwork: asset(patch.artwork), revision: current.revision + 1 };
+}
+
 export function matchesLayout(layout: ReactionLayout, accepted: boolean, first: boolean) {
     return (first && layout.applies.includes('first')) || layout.applies.includes(accepted ? 'accepted' : 'other');
 }

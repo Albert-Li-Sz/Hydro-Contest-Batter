@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
@@ -76,6 +76,15 @@ jobs:
           printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           docker push "$IMAGE:$VERSION-$ARCH"
 
+      - name: Attach the tested image for offline installation
+        run: |
+          set -euo pipefail
+          archive="reactions-generator-hydro-$VERSION-linux-$ARCH.tar.gz"
+          local_tag="reactions-generator-hydro:$VERSION-$ARCH"
+          docker tag "$IMAGE:$VERSION-$ARCH" "$local_tag"
+          docker save "$local_tag" | gzip -1 > "$archive"
+          gh release upload "$TAG" "$archive" -R "$GITHUB_REPOSITORY" --clobber
+
   publish:
     needs: build
     runs-on: ubuntu-24.04
@@ -96,3 +105,17 @@ jobs:
           docker buildx imagetools create "${tags[@]}" "$image:$version-amd64" "$image:$version-arm64"
           docker buildx imagetools inspect "$image:$version" --raw |
             jq -e '[.manifests[].platform | select(.os == "linux") | .architecture] | sort == ["amd64", "arm64"]'
+
+      - name: Attach offline image checksums
+        run: |
+          set -euo pipefail
+          version=${TAG#v}
+          sums="reactions-generator-hydro-$version-images.SHA256SUMS"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > release.json
+          for arch in amd64 arm64; do
+            file="reactions-generator-hydro-$version-linux-$arch.tar.gz"
+            digest=$(jq -er --arg file "$file" '.assets[] | select(.name == $file) | .digest | sub("^sha256:";"")' release.json)
+            [[ "$digest" =~ ^[0-9a-f]{64}$ ]]
+            printf '%s  %s\n' "$digest" "$file" >> "$sums"
+          done
+          gh release upload "$TAG" "$sums" -R "$GITHUB_REPOSITORY" --clobber

@@ -9,7 +9,7 @@ import type { RunInfo } from './live/types';
 import type { BoardSettings } from './settings';
 import {
     canPublish,
-    defaultLayouts,
+    layoutHistory,
     defaultReactionPublic,
     matchesLayout,
     layoutsAt,
@@ -89,6 +89,7 @@ interface ConnectionDoc {
 interface ConfigDoc {
     _id: string;
     syncThrough?: number;
+    fixedLayouts?: boolean;
     token?: string;
     tokenAt?: Date;
     public?: ReactionPublic;
@@ -126,9 +127,9 @@ export function createReactionStore(ctx: Context, deps: ReactionDependencies) {
     const policy = (doc: ConfigDoc) => ({ ...defaultReactionPublic, ...doc.public });
     async function versions(key: string) {
         const docs = await layouts.find({ contestKey: key }).sort({ 'layout.revision': 1 }).toArray();
-        return [...defaultLayouts().map((layout) => ({ _id: '', contestKey: key, layout, effectiveAt: 0 })), ...docs];
+        return layoutHistory(docs);
     }
-    const latest = (docs: LayoutDoc[]) => [...new Map(docs.map((d) => [d.layout.id, d.layout])).values()];
+    const latest = (docs: { layout: ReactionLayout }[]) => [...new Map(docs.filter(d => d.layout.template).map(d => [d.layout.id, d.layout])).values()];
     async function loadContest(tdoc: Tdoc) {
         const [data, settings] = await Promise.all([deps.loadData(tdoc, true, true, 'live'), deps.loadSettings(tdoc)]);
         const source = { data, settings, contest: tdoc, identity: true, boards: [], logoNames, now: Date.now() };
@@ -176,11 +177,12 @@ export function createReactionStore(ctx: Context, deps: ReactionDependencies) {
             teams = new Map(info.teams.map((t) => [t.id, t]));
         const schools = new Map(info.organizations.map((o) => [o.id, o.displayName])),
             prior = new Map(previous.map((v) => [v._id, v]));
+        const migrated = new Set(history.filter(row => row.migrated).map(row => row.layout));
         const updates: Array<Parameters<typeof videos.bulkWrite>[0][number]> = [];
         for (const clip of source) {
             const run = runMap.get(clip.rid),
                 team = teams.get(String(clip.teamUid));
-            const eligible = layoutsAt(history, clip.judgedAt);
+            const eligible = layoutsAt(history, clip.judgedAt).filter(l => l.template);
             for (const layout of eligible) {
                 const _id = videoKey(key, clip.rid, layout.id),
                     old = prior.get(_id);
@@ -236,6 +238,8 @@ export function createReactionStore(ctx: Context, deps: ReactionDependencies) {
                         },
                     });
                 else if (needsRender(old, verdict, first, layout.revision)) {
+                    // Keep a previously finished file until a rejudge or an explicit backfill.
+                    if (migrated.has(layout) && old.state === 'ready' && !old.layout.template && old.verdict === verdict && old.firstSolve === first) continue;
                     updates.push({
                         updateOne: {
                             filter: { _id, generation: old.generation },
@@ -262,9 +266,9 @@ export function createReactionStore(ctx: Context, deps: ReactionDependencies) {
         if (old && !force) return old.run;
         const run = (old?.run || Promise.resolve()).then(async () => {
             const doc = await cfg(key);
-            const previous = force ? 0 : doc.syncThrough || 0;
+            const previous = force || !doc.fixedLayouts ? 0 : doc.syncThrough || 0;
             await reconcile(tdoc, previous, force);
-            await configs.updateOne({ _id: key }, { $max: { syncThrough: now } }, { upsert: true });
+            await configs.updateOne({ _id: key }, { $max: { syncThrough: now }, $set: { fixedLayouts: true } }, { upsert: true });
         });
         synced.set(key, { until: now + 5000, run });
         run.catch(() => {

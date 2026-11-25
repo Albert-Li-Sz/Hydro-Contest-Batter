@@ -4,10 +4,10 @@ import {
     defaultLayouts,
     defaultReactionPublic,
     layoutsAt,
-    layoutWarnings,
+    layoutHistory,
     matchesLayout,
     needsRender,
-    normalizeLayout,
+    updateArtwork,
     publicSettings,
 } from '../lib/reactions';
 import { defaultSettings } from '../lib/settings';
@@ -17,39 +17,35 @@ import type { Handler } from 'hydrooj';
 const [portrait, landscape] = defaultLayouts();
 const base = { state: 'ready', hidden: null, accepted: true, firstSolve: true, submittedAt: 3000, layout: portrait };
 const contest = { title: 'ACM', beginAt: new Date(1000), endAt: new Date(8000), lockAt: new Date(6000), unlocked: false };
-const live = { ...defaultReactionPublic, enabled: true, timing: 'live' as const };
+const live = { ...defaultReactionPublic, enabled: true, timing: 'live' as const, screen: 'capture' as const, school: 'show' as const };
 describe('renderer layouts and task generations', () => {
-    it('validates all three predefined geometries and bounds custom canvases, element count and local assets', () => {
-        for (const layout of [portrait, landscape, { ...portrait, canvas: { width: 1080, height: 1080 } }])
-            expect(normalizeLayout(layout, layout.id, 1)).toEqual(layout);
-        for (const change of [
-            { canvas: { width: 1000, height: 1000 } },
-            { canvas: { width: 3841, height: 16 } },
-            { applies: {} },
-            { items: [...portrait.items, ...portrait.items] },
-            { items: [{ ...portrait.items[0], props: { image: 'http://external/image' } }] },
-            { background: { ...portrait.background, image: '../a.png' } },
-        ]) {
-            expect(() => normalizeLayout({ ...portrait, ...change }, 'custom', 1)).toThrow();
-        }
+    it('pins the three ICPC regions in each orientation', () => {
+        const coordinates = (l: typeof portrait) => l.items.map(i => [i.kind, i.x, i.y, i.width, i.height]);
+        expect(coordinates(portrait)).toEqual([['webcam', 40, 194, 1000, 562], ['screen', 40, 1162, 1000, 562], ['card', 40, 806, 1000, 306]]);
+        expect(coordinates(landscape)).toEqual([['webcam', 0, 0, 1920, 1080], ['screen', 1264, 16, 640, 360], ['card', 16, 16, 1000, 306]]);
     });
-    it('detects composite occlusion and only rejects out-of-bounds nvidia_full geometry', () => {
-        const item = { ...portrait.items[0], x: 0, y: 0, width: 100, height: 100, z: 0 };
-        const a = { ...item, id: 'card', kind: 'card' as const, width: 50, z: 1 };
-        const b = { ...item, id: 'screen', kind: 'screen' as const, fit: 'cover' as const, x: 50, width: 50, z: 2 };
-        expect(layoutWarnings({ ...portrait, items: [item, a, b] })).toContain('webcam 完全被遮挡');
-        expect(layoutWarnings({ ...portrait, items: [item, a, { ...b, x: 51 }] })).toEqual([]);
-        expect(() => layoutWarnings({ ...portrait, items: [{ ...item, x: -1 }] }, true)).toThrow('nvidia_full');
+    it('only accepts a contest artwork reference for the current portrait revision', () => {
+        const patch = { id: portrait.id, revision: portrait.revision, artwork: 'a'.repeat(24) };
+        const next = updateArtwork(portrait, patch);
+        expect(next).toEqual({ ...portrait, artwork: patch.artwork, revision: portrait.revision + 1 });
+        for (const change of [{ canvas: {} }, { items: [] }, { card: {} }, { template: 'invalid' }, { artwork: '../x' }])
+            expect(() => updateArtwork(portrait, { ...patch, ...change })).toThrow();
+        expect(() => updateArtwork(next, patch)).toThrow('刷新');
+        expect(() => updateArtwork(landscape, { ...patch, id: landscape.id })).toThrow();
+        expect(() => updateArtwork(undefined, patch)).toThrow();
+        expect(updateArtwork(next, { ...patch, revision: next.revision, artwork: null }).artwork).toBeNull();
     });
-    it('keeps existing and future-only snapshots distinct and deliberately backfills the chosen revision', () => {
-        const history = [
-            { effectiveAt: 0, layout: portrait },
-            { effectiveAt: 10, layout: { ...portrait, revision: 2 } },
-            { effectiveAt: 0, layout: landscape },
-        ];
-        expect(layoutsAt(history, 9).map((l) => l.revision)).toEqual([1, 1]);
-        expect(layoutsAt(history, 10).map((l) => l.revision)).toEqual([2, 1]);
-        expect(layoutsAt([...history, { effectiveAt: 0, layout: { ...portrait, revision: 3 } }], 9)[0].revision).toBe(3);
+    it('keeps historical privacy snapshots and schedules new artwork only from its effective time', () => {
+        const old = layoutHistory([]).find(r => r.layout.id === 'portrait' && !r.layout.template)!;
+        const custom = { ...old.layout, id: 'custom', revision: 7 };
+        const history = layoutHistory([{ effectiveAt: 8, layout: custom }, { effectiveAt: 10, layout: { ...portrait, revision: 3, artwork: 'b'.repeat(24) } }]);
+        const chosen = (at: number, id: string) => layoutsAt(history, at).find(l => l.id === id);
+        expect(history.find(r => r.layout.id === 'custom' && r.layout.revision === 7)?.layout).toEqual(custom);
+        expect(chosen(7, 'custom')).toBeUndefined();
+        expect(chosen(8, 'custom')).toMatchObject({ revision: 8, template: 'icpc-portrait' });
+        expect(chosen(9, 'portrait')).toEqual(portrait);
+        expect(chosen(10, 'portrait')?.revision).toBe(3);
+        expect(layoutsAt([...history, { effectiveAt: 0, layout: { ...portrait, revision: 4 } }], 1).find(l => l.id === 'portrait')?.revision).toBe(4);
     });
     it('rejudges and first-to-solve changes invalidate an old product while unchanged and deleted generations stay settled', () => {
         const old = { state: 'ready', layoutRevision: 1, verdict: 'AC', firstSolve: true };
@@ -68,7 +64,7 @@ describe('renderer layouts and task generations', () => {
 describe('identical audience policy for listings and direct media', () => {
     it('requires explicit publication, and independently gates freeze, end and unfreeze', () => {
         expect(canPublish(base, defaultReactionPublic, contest, defaultSettings, true, 20000)).toBe(false);
-        const unlock = { ...defaultReactionPublic, enabled: true },
+        const unlock = { ...defaultReactionPublic, enabled: true, school: 'show' as const },
             end = { ...unlock, timing: 'end' as const };
         expect(canPublish(base, unlock, contest, defaultSettings, true, 8000)).toBe(false);
         expect(canPublish(base, unlock, { ...contest, unlocked: true }, defaultSettings, true, 8000)).toBe(true);
@@ -93,6 +89,7 @@ describe('identical audience policy for listings and direct media', () => {
         const policy = { ...live, layoutId: landscape.id, screen: 'capture' as const };
         expect(canPublish({ ...base, layout: landscape }, policy, contest, defaultSettings, false, 4500)).toBe(false);
         expect(canPublish({ ...base, layout: landscape }, policy, contest, defaultSettings, true, 4500)).toBe(true);
+        expect(canPublish(base, { ...live, screen: 'none' }, contest, defaultSettings, true, 4500)).toBe(false);
         for (const f of ['school', 'logo'])
             expect(
                 canPublish(

@@ -38,7 +38,12 @@ def build(output, checkout):
             ".env\n.env.*\nout/\n.git/\n.venv/\n__pycache__/\n"
         )
         pkg = source / "reactions_generator"
-        for name in ["hydro_connection.py", "hydro_render.py", "hydro_worker.py"]:
+        for name in [
+            "hydro_connection.py",
+            "hydro_render.py",
+            "hydro_template.py",
+            "hydro_worker.py",
+        ]:
             shutil.copy2(HERE / name, pkg)
         shutil.copy2(HERE / "test_hydro_worker.py", source / "tests")
         shutil.copy2(HERE / "docker-compose.yml", source / "docker-compose.yml")
@@ -48,6 +53,31 @@ def build(output, checkout):
             HERE.parent / "resolver/public/assets/font/NotoSansSC-VF.ttf", pkg / "fonts"
         )
         shutil.copy2(HERE.parent / "licenses/Noto-Sans-SC-OFL.txt", pkg / "fonts")
+        (pkg / "templates").mkdir()
+        shutil.copy2(
+            HERE.parent / "resolver/public/assets/reaction-template/portrait.png",
+            pkg / "templates",
+        )
+        card = pkg / "card.py"
+        card_source = card.read_text()
+        headline = "                load_bold(10),"
+        caption = "                load_regular(10),"
+        assert card_source.count(headline) == 2 and card_source.count(caption) == 1
+        card.write_text(
+            card_source.replace(
+                "from reactions_generator.colors import Colors",
+                "from reactions_generator.colors import Colors\nfrom reactions_generator.hydro_template import label_font",
+            )
+            .replace(
+                headline,
+                "                label_font(self.title, load_bold(10), 700),",
+                1,
+            )
+            .replace(
+                caption,
+                '                label_font(f"{self.subtitle} {self.hashtag}", load_regular(10), 400),',
+            )
+        )
         worker = pkg / "worker.py"
         original = worker.read_text()
         signature = "    poll_interval: float = 2.0,\n) -> None:"
