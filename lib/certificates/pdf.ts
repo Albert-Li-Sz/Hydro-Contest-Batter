@@ -6,10 +6,12 @@
  * and Helvetica fonts. Nothing is embedded, so a page of text is a few kilobytes and the text stays selectable.
  */
 import { deflateSync, inflateSync } from 'node:zlib';
+import { certificateFrame } from '../../resolver/public/js/certificate-frame.js';
 
 export type FontStyle = 'serif' | 'sans';
 export type Align = 'left' | 'center' | 'right';
-export interface PdfImage { width: number; height: number; colors: 1 | 3; filter: 'DCTDecode' | 'FlateDecode'; data: Buffer }
+export interface PdfImage { width: number; height: number; colors: 1 | 3; filter: 'DCTDecode' | 'FlateDecode'; data: Buffer; alpha?: Buffer }
+export interface PlacedImage { image: PdfImage; x: number; y: number; width: number; height: number }
 export interface PdfText {
     text: string;
     /** Millimetres from the left edge to the anchor given by `align`. */
@@ -30,6 +32,8 @@ export interface PdfPage {
     height: number;
     background?: PdfImage | null;
     border?: boolean;
+    engraved?: boolean;
+    logos?: PlacedImage[];
     texts: PdfText[];
     qr?: PdfQr | null;
 }
@@ -80,7 +84,7 @@ function utf16Hex(text: string) {
 const num = (value: number) => (Math.round(value * 100) / 100).toString();
 
 /** A JPEG (baseline or progressive, grey or RGB) or a non-interlaced 8-bit PNG, ready to embed. */
-export function parseImage(buffer: Buffer): PdfImage {
+export function parseImage(buffer: Buffer, preserveAlpha = false): PdfImage {
     if (buffer[0] === 0xff && buffer[1] === 0xd8) {
         let offset = 2;
         while (offset + 9 < buffer.length) {
@@ -90,17 +94,19 @@ export function parseImage(buffer: Buffer): PdfImage {
             if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
                 const components = buffer[offset + 9];
                 if (components !== 1 && components !== 3) throw new Error('请使用 RGB 或灰度 JPEG（不支持 CMYK）');
-                return { height: buffer.readUInt16BE(offset + 5), width: buffer.readUInt16BE(offset + 7), colors: components, filter: 'DCTDecode', data: buffer };
+                const height = buffer.readUInt16BE(offset + 5); const width = buffer.readUInt16BE(offset + 7);
+                if (!height || !width || width * height > 40_000_000) throw new Error('JPEG 图片尺寸无效');
+                return { height, width, colors: components, filter: 'DCTDecode', data: buffer };
             }
             offset += 2 + length;
         }
         throw new Error('JPEG 图片已损坏');
     }
-    if (buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return parsePng(buffer);
+    if (buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return parsePng(buffer, preserveAlpha);
     throw new Error('请上传 JPEG 或 PNG 图片');
 }
 
-function parsePng(buffer: Buffer): PdfImage {
+function parsePng(buffer: Buffer, preserveAlpha: boolean): PdfImage {
     let offset = 8;
     let width = 0; let height = 0; let depth = 0; let type = 0; let interlace = 0;
     let palette: Buffer | null = null;
@@ -120,11 +126,14 @@ function parsePng(buffer: Buffer): PdfImage {
     if (depth !== 8 || interlace !== 0 || ![0, 2, 3, 4, 6].includes(type)) throw new Error('请使用 8 位、非隔行扫描的 PNG');
     if (!width || !height || width * height > 40_000_000) throw new Error('PNG 图片尺寸无效');
     const channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[type]!;
-    const raw = inflateSync(Buffer.concat(data));
     const stride = width * channels;
+    const expected = (stride + 1) * height;
+    const raw = inflateSync(Buffer.concat(data), { maxOutputLength: expected });
+    if (raw.length !== expected) throw new Error('PNG 像素数据无效');
     const pixels = Buffer.alloc(stride * height);
     for (let y = 0; y < height; y++) {
         const filter = raw[y * (stride + 1)];
+        if (filter > 4) throw new Error('PNG 滤波类型无效');
         const line = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1));
         const out = pixels.subarray(y * stride, (y + 1) * stride);
         const up = y ? pixels.subarray((y - 1) * stride, y * stride) : null;
@@ -143,10 +152,11 @@ function parsePng(buffer: Buffer): PdfImage {
             out[i] = value & 0xff;
         }
     }
-    // Composited over white: certificates are printed on paper.
+    // Backgrounds print over white. Logo masks must retain the paper or uploaded artwork behind them.
     const gray = type === 0 || type === 4;
     const colors = gray ? 1 : 3;
     const result = Buffer.alloc(width * height * colors);
+    const mask = preserveAlpha && (type === 4 || type === 6 || transparency) ? Buffer.alloc(width * height) : null;
     for (let i = 0; i < width * height; i++) {
         let rgb: number[];
         let alpha = 255;
@@ -160,10 +170,14 @@ function parsePng(buffer: Buffer): PdfImage {
             rgb = gray ? [pixels[base]] : [pixels[base], pixels[base + 1], pixels[base + 2]];
             if (type === 4) alpha = pixels[base + 1];
             if (type === 6) alpha = pixels[base + 3];
+            if ((type === 0 || type === 2) && transparency?.length === colors * 2
+                && rgb.every((value, k) => value === transparency!.readUInt16BE(k * 2))) alpha = 0;
         }
-        rgb.forEach((value, k) => { result[i * colors + k] = Math.round((value * alpha + 255 * (255 - alpha)) / 255); });
+        if (mask) mask[i] = alpha;
+        rgb.forEach((value, k) => { result[i * colors + k] = mask ? value : Math.round((value * alpha + 255 * (255 - alpha)) / 255); });
     }
-    return { width, height, colors, filter: 'FlateDecode', data: deflateSync(result) };
+    return { width, height, colors, filter: 'FlateDecode', data: deflateSync(result),
+        ...(mask?.some((alpha) => alpha !== 255) ? { alpha: deflateSync(mask) } : {}) };
 }
 
 /** Each page's text lines, one per field, with the size reduced until the line fits its width. */
@@ -177,11 +191,29 @@ function fitted(text: PdfText) {
     return size;
 }
 
-function pageContent(page: PdfPage, imageName: string | null) {
+// A ZIP prints each recipient to a separate PDF using the same A4 engraving.
+const a4Frames = new Map<string, Buffer>();
+function frameContent(width: number, height: number) {
+    const key = `${width}/${height}`;
+    const cached = a4Frames.get(key);
+    if (cached) return cached;
+    const ops = [`q ${PT} 0 0 ${-PT} 0 ${num(height * PT)} cm 1 J 1 j`];
+    const color = (hex: string) => [1, 3, 5].map((i) => num(parseInt(hex.slice(i, i + 2), 16) / 255)).join(' ');
+    for (const path of certificateFrame(width, height)) {
+        if (path.fill) ops.push(`${color(path.fill)} rg`);
+        if (path.stroke) ops.push(`${color(path.stroke)} RG ${path.weight} w`);
+        for (const [op, ...coords] of path.commands) ops.push(op === 'Z' ? 'h' : `${coords.join(' ')} ${op.toLowerCase()}`);
+        ops.push(path.fill ? 'f' : 'S');
+    }
+    const compressed = deflateSync(ops.concat('Q').join('\n'));
+    if (key === '297/210' || key === '210/297') a4Frames.set(key, compressed);
+    return compressed;
+}
+
+function pageContent(page: PdfPage, paint: string[]) {
     const height = page.height * PT;
     const width = page.width * PT;
-    const ops: string[] = [];
-    if (imageName) ops.push(`q ${num(width)} 0 0 ${num(height)} 0 0 cm /${imageName} Do Q`);
+    const ops = [...paint];
     if (page.border) {
         ops.push('q 0.55 0.42 0.18 RG 2 w', `${num(10 * PT)} ${num(10 * PT)} ${num(width - 20 * PT)} ${num(height - 20 * PT)} re S`,
             '0.6 w', `${num(13 * PT)} ${num(13 * PT)} ${num(width - 26 * PT)} ${num(height - 26 * PT)} re S Q`);
@@ -221,7 +253,7 @@ function pageContent(page: PdfPage, imageName: string | null) {
     return ops.join('\n');
 }
 
-/** One PDF with a page per entry; equal background images are stored once. */
+/** Shared imagery and each engraved master are embedded once in a multi-page export. */
 export function buildPdf(pages: PdfPage[], title = '证书'): Buffer {
     const objects: (Buffer | string)[] = [];
     const add = (body: Buffer | string) => { objects.push(body); return objects.length; };
@@ -241,22 +273,41 @@ export function buildPdf(pages: PdfPage[], title = '证书'): Buffer {
     };
     const fontDict = Object.entries(fonts).map(([name, id]) => `/${name} ${id} 0 R`).join(' ');
     const images = new Map<PdfImage, number>();
+    const imageId = (image: PdfImage) => {
+        const known = images.get(image);
+        if (known) return known;
+        const common = `/Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} /BitsPerComponent 8`;
+        const mask = image.alpha ? add(stream(`${common} /ColorSpace /DeviceGray /Filter /FlateDecode`, image.alpha)) : null;
+        const id = add(stream(`${common} /ColorSpace /${image.colors === 1 ? 'DeviceGray' : 'DeviceRGB'} /Filter /${image.filter}${mask ? ` /SMask ${mask} 0 R` : ''}`, image.data));
+        images.set(image, id);
+        return id;
+    };
+    const frames = new Map<string, number>();
     const kids: number[] = [];
     for (const page of pages) {
-        let imageName: string | null = null;
-        let resources = `/Font << ${fontDict} >>`;
-        if (page.background) {
-            let id = images.get(page.background);
-            if (!id) {
-                const image = page.background;
-                id = add(stream(`/Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} /ColorSpace /${image.colors === 1 ? 'DeviceGray' : 'DeviceRGB'} /BitsPerComponent 8 /Filter /${image.filter}`, image.data));
-                images.set(image, id);
+        const resources = [`/Font << ${fontDict} >>`];
+        const objects = new Map<string, number>();
+        const paint: string[] = [];
+        if (page.engraved && !page.background) {
+            const key = `${page.width}/${page.height}`;
+            if (!frames.has(key)) {
+                const bounds = `0 0 ${num(page.width * PT)} ${num(page.height * PT)}`;
+                const drawing = stream(`/Type /XObject /Subtype /Form /BBox [${bounds}] /Resources << >> /Filter /FlateDecode`, frameContent(page.width, page.height));
+                frames.set(key, add(drawing));
             }
-            imageName = `Im${id}`;
-            resources += ` /XObject << /${imageName} ${id} 0 R >>`;
+            objects.set('Frame', frames.get(key)!);
+            paint.push('q /Frame Do Q');
         }
-        const content = add(stream('/Filter /FlateDecode', deflateSync(Buffer.from(pageContent(page, imageName), 'latin1'))));
-        kids.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${num(page.width * PT)} ${num(page.height * PT)}] /Resources << ${resources} >> /Contents ${content} 0 R >>`));
+        const draw = ({ image, x, y, width, height }: PlacedImage) => {
+            const id = imageId(image);
+            objects.set(`Im${id}`, id);
+            paint.push(`q ${num(width * PT)} 0 0 ${num(height * PT)} ${num(x * PT)} ${num((page.height - y - height) * PT)} cm /Im${id} Do Q`);
+        };
+        if (page.background) draw({ image: page.background, x: 0, y: 0, width: page.width, height: page.height });
+        for (const logo of page.logos || []) draw(logo);
+        if (objects.size) resources.push(`/XObject << ${[...objects].map(([key, id]) => `/${key} ${id} 0 R`).join(' ')} >>`);
+        const content = add(stream('/Filter /FlateDecode', deflateSync(Buffer.from(pageContent(page, paint), 'latin1'))));
+        kids.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${num(page.width * PT)} ${num(page.height * PT)}] /Resources << ${resources.join(' ')} >> /Contents ${content} 0 R >>`));
     }
     objects[catalog - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
     objects[pagesId - 1] = `<< /Type /Pages /Kids [${kids.map((id) => `${id} 0 R`).join(' ')}] /Count ${kids.length} >>`;

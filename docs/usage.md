@@ -108,11 +108,12 @@ Schema 测试固定使用官方 2026-01 分支文件；上游 schema 对 runs �
 
 需要 Node.js 22 或以上版本及 Hydro 5.x。使用运行 Hydro 的系统用户操作；命令中的 `$HOME` 对应这个用户。自 0.8.1 起，安装包包含供 Hydro 直接加载的源码和完整预构建资源。
 
-下载 `hydro-scoreboard-xcpcio-plus-1.24.0.tgz` 并放入当前目录。首次安装按以下步骤解压、注册 addon 并重启服务。
+从发布页下载 `hydro-scoreboard-xcpcio-plus-1.24.1.tgz` 和同名 `.sha256` 文件，放入同一个目录。首次安装按以下步骤校验、解压、注册 addon 并重启服务。[v1.24.1 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.24.1)
 
 ```bash
+sha256sum -c hydro-scoreboard-xcpcio-plus-1.24.1.tgz.sha256
 mkdir -p "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
-tar -xzf hydro-scoreboard-xcpcio-plus-1.24.0.tgz \
+tar -xzf hydro-scoreboard-xcpcio-plus-1.24.1.tgz \
   -C "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus" --strip-components=1
 hydrooj addon add "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 pm2 restart hydrooj
@@ -122,15 +123,15 @@ pm2 restart hydrooj
 
 ### 脚本安装与升级
 
-在新的临时目录中解压安装包，然后运行包内脚本。升级时运行新安装包中的脚本。
+在新的临时目录中校验并解压安装包。
 
 ```bash
+sha256sum -c hydro-scoreboard-xcpcio-plus-1.24.1.tgz.sha256
 mkdir -p xcpcio-update
-tar -xzf hydro-scoreboard-xcpcio-plus-1.24.0.tgz -C xcpcio-update
-bash xcpcio-update/package/install.sh install
-# 已有安装时
-bash xcpcio-update/package/install.sh upgrade
+tar -xzf hydro-scoreboard-xcpcio-plus-1.24.1.tgz -C xcpcio-update
 ```
+
+首次安装运行 `bash xcpcio-update/package/install.sh install`。升级已有安装运行 `bash xcpcio-update/package/install.sh upgrade`。
 
 脚本先检查完整资源并准备新目录，再备份旧目录和 addon 列表、注册新路径，最后重启 Hydro。旧版通过 `yarn global add` 安装时，脚本会将包名注册迁移到目录注册；也会解除同名插件旧目录的注册。原来由包管理器安装的文件仍由该包管理器管理。
 
@@ -347,9 +348,14 @@ Honors 使用单独的获奖位次（place）。Highest Honors 分界以内使�
 
 1. **选择出证依据。** 选择已有成绩快照或新拍一份，选定分榜、出证奖项和种类。可生成团队、个人、教练获奖证书，以及正式队员的参赛证明。打星队能获得哪些奖项，由所选成绩快照的奖项规则决定。
 2. **核对制证信息表。** 在页面按队编辑，或下载带队伍 ID、角色和序号的 CSV，补全中英文姓名、队伍、学校后上传。也可填写颁发单位和日期。页面会列出模板引用的缺失字段，缺值会留空。核对后点「核对完毕，锁定信息表」。更换快照或分榜后须重新锁定。
-3. **查看样张。** 分别编辑获奖证书和参赛证明模板。可选择 A4 横向或纵向、拖动字段和二维码、上传 JPEG 或 PNG 背景。先保存模板，再查看「样张 PDF」。PDF 的中文使用阅读器提供的宋体或黑体，打印前可在实际用来印制的阅读器上核对样张。
-4. **出证与发放。** 快照须取自已结束、已解除封榜或未设封榜、且已无待评测提交的比赛。点击「出证」核对新增、更正和撤销数量。管理员可下载合并 PDF 或按学校分目录的 ZIP。获发证书的账号可在比赛详情点「我的证书」下载分配给本队的证书。
-5. **更正与核验。** 更正姓名时先解锁信息表，修改、重新锁定并出证。奖项变化时选择反映新结果的快照。再次出证后，内容相同的证书沿用编号，受影响的证书换号，失去资格的证书标记为已撤销。扫描二维码即可查看有效、更正或撤销状态；已更正的旧编号会链接到新编号。核验页按比赛当前的学校公开设置显示学校。
+3. **选择版式。** 团队、个人和教练共用「获奖证书」模板，默认横向 A4。「参赛证明」单独设置，默认纵向 A4。已有比赛保留已保存的模板。要换成新版，先选方向，再点「套用竞赛版式」，核对或拖动文字、二维码后点「保存模板」。
+4. **设置学校校徽。** 在「模板 → 学校校徽」的左侧或右侧点「选学校」，输入中文或英文校名并确认。也可点「上传图片」，选择每张不超过 6 MB 的 PNG 或 JPEG。校徽按原比例显示，透明 PNG 可透出纸色或自定义底图。两个位置可分别替换或移除，也可全部留空。校徽操作立即保存，对本场的获奖证书和参赛证明同时生效。
+5. **核对样张并发放。** 用「样张 PDF」核对所选方向、校徽和长姓名在实际打印用阅读器中的效果。PDF 中文采用阅读器提供的宋体或黑体。比赛已结束、已解除封榜或未设封榜且已无待评测提交时，点击「出证」核对新增、更正和撤销数量。管理员可下载合并 PDF 或按学校分目录的 ZIP。获发证书的账号可在比赛详情点「我的证书」领取。
+6. **更正与核验。** 仅调整校徽、背景或版式时，重新下载即可取得新 PDF，编号沿用原号。更正姓名要先解锁信息表，修改后重新锁定并出证。奖项变化时选择反映新结果的快照再出证。受影响的证书取得新编号，失去资格的证书标记为已撤销。扫描旧证书二维码可查看状态和更正后的编号。核验页按比赛当前的学校公开设置显示学校。
+
+![双校徽队伍金奖样张，左栏列出队伍、学校、队员和教练，右栏显示奖项](images/manual/certificate-team.png)
+
+三页样张依次展示横向双校徽队伍金奖、纵向单校徽个人金奖和纵向无校徽参赛证明。样张使用演示赛事和演示核验地址。[下载三页 A4 样张（PDF）](examples/certificates.pdf)
 
 ## 响应式界面
 
@@ -369,7 +375,7 @@ Honors 使用单独的获奖位次（place）。Highest Honors 分界以内使�
 
 Logo 来自 Hydro 的学校 Logo 注册表 <https://avatar.hydrooj.com/>，保留源图分辨率，随包发布在 `logos/` 目录。已有 WebP 保留原始文件，其他格式无损转换为 WebP，并保留透明通道。Resolver 使用这套原图，适用于高清屏幕和奖项大图；增强榜只把校徽显示为行内图标，使用 `logos/thumb/` 中 128px 高的缩略图，每张约 7 KB，避免观众为小图标下载原图。源图地址及文件哈希记录在 `logos/index.json`。
 
-安装包包含榜单缩略图、`public/hydro-resolver/logos/` 下供滚榜、大屏及直播使用的校徽，以及 CCS API 使用的 PNG（`logos/png/`），解压后即可使用。自 1.12.0 起，安装包不再重复附带 `logos/` 原图、`live/dist/` 和滚榜字体图片的源副本，体积约为此前的一半；这些源文件在仓库中，`pnpm build` 或 `pnpm pack` 会由它们重新生成 `public/`。
+安装包包含榜单缩略图、`public/hydro-resolver/logos/` 下供滚榜、大屏、直播和证书编辑器使用的校徽，以及 CCS API 使用的 PNG（`logos/png/`），解压后即可使用。自 1.12.0 起，安装包不再重复附带 `logos/` 原图、`live/dist/` 和滚榜字体图片的源副本，体积约为此前的一半；这些源文件在仓库中，`pnpm build` 或 `pnpm pack` 会由它们重新生成 `public/`。
 
 校徽按学校名称（含注册表中的别名和英文名，忽略全半角、大小写和多余空格）匹配。增强榜中名称不在注册表的学校不显示 Logo，未填写学校显示 XCPCIO 自带的 ICPC 标志。Resolver 缺失校徽时使用本地 ICPC 图标。未开启“向所有观众显示学校”时增强榜的学校列和 Logo 均隐藏。
 

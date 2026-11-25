@@ -1,9 +1,11 @@
 /* 证书: the staff page, the participants' list and the verification page. */
 .xcpcio-certificates .certificate-columns { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
 .xcpcio-certificates .certificate-stage { position: relative; width: 100%; background: #fff; box-shadow: 0 0 0 1px rgba(127, 127, 127, .35); overflow: hidden; user-select: none; touch-action: none; }
-.xcpcio-certificates .certificate-stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
+.xcpcio-certificates .certificate-stage .certificate-background { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
 .xcpcio-certificates .certificate-stage .certificate-border { position: absolute; inset: 4.76% 3.37%; border: 2px solid #8c6b2e; outline: 1px solid #8c6b2e; outline-offset: -6px; pointer-events: none; }
-.xcpcio-certificates .certificate-field { position: absolute; white-space: nowrap; line-height: 1; cursor: move; padding: 1px 2px; border: 1px dashed transparent; color: #2b2118; }
+.xcpcio-certificates .certificate-frame { position: absolute; inset: 0; width: 100%; height: 100%; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.xcpcio-certificates .certificate-school-logo { position: absolute; object-fit: contain; pointer-events: none; }
+.xcpcio-certificates .certificate-field { width: max-content; max-width: none; position: absolute; white-space: nowrap; line-height: 1; cursor: move; padding: 1px 2px; border: 1px dashed transparent; color: #2b2118; }
 .xcpcio-certificates .certificate-field:hover, .xcpcio-certificates .certificate-field.is-selected { border-color: #5f9fd6; background: rgba(95, 159, 214, .08); }
 .xcpcio-certificates .certificate-field.is-qr { display: grid; place-items: center; background: repeating-conic-gradient(#222 0 25%, #fff 0 50%) 0 0 / 16% 16%; border: 1px solid #222; }
 .xcpcio-certificates .certificate-field.is-hidden { opacity: .25; }
@@ -27,6 +29,12 @@
 .xcpcio-certificates .certificate-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 18px; margin: 0; }
 .xcpcio-certificates .certificate-facts dt { opacity: .65; }
 .xcpcio-certificates .certificate-facts dd { margin: 0; overflow-wrap: anywhere; }
+.xcpcio-certificates .certificate-logos { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 16px; margin: 0 0 18px; padding: 8px 0 14px; border: 0; border-bottom: 1px solid rgba(127,127,127,.25); }
+.xcpcio-certificates .certificate-logos legend { padding: 0; font-weight: 600; }
+.xcpcio-certificates .certificate-logo-slot { min-width: 0; margin: 0; padding: 0; border: 0; }
+.xcpcio-certificates .certificate-logo-name, .xcpcio-certificates .certificate-logo-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.xcpcio-certificates .certificate-logo-name { min-height: 34px; margin-bottom: 6px; overflow-wrap: anywhere; }
+.xcpcio-certificates .certificate-logo-name img { width: 32px; height: 32px; object-fit: contain; }
 @media (max-width: 900px) {
   .xcpcio-certificates .certificate-columns { grid-template-columns: minmax(0, 1fr); }
 }

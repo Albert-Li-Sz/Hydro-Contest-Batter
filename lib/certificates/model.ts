@@ -8,6 +8,7 @@
  * the results: unofficial teams receive what their awards allow them (最快解题奖, 顽强拼搏奖…), never a medal.
  */
 import { createHash, randomBytes } from 'node:crypto';
+import { awardEnglish } from '../../resolver/public/js/certificate-frame.js';
 import type { ResultBoard } from '../results';
 
 export type CertificateKind = 'team' | 'member' | 'coach' | 'participation';
@@ -29,9 +30,9 @@ export type SheetOverride = Partial<Omit<SheetTeam, 'teamId' | 'members' | 'coac
 
 export type Placeholder = 'name' | 'nameEn' | 'team' | 'teamEn' | 'school' | 'schoolEn' | 'members' | 'membersEn' | 'coach' | 'coachEn'
     | 'award' | 'rank' | 'contest' | 'contestEn' | 'date' | 'issuer' | 'number';
-export const placeholders: Record<Placeholder, string> = {
+export const placeholders: Record<Placeholder | 'awardEn', string> = {
     name: '姓名', nameEn: '英文姓名', team: '队伍', teamEn: '队伍英文名', school: '学校', schoolEn: '学校英文名', members: '队员',
-    membersEn: '队员英文名', coach: '教练', coachEn: '教练英文名', award: '奖项', rank: '名次', contest: '比赛名称', contestEn: '比赛英文名',
+    membersEn: '队员英文名', coach: '教练', coachEn: '教练英文名', award: '奖项', awardEn: '标准奖项英文', rank: '名次', contest: '比赛名称', contestEn: '比赛英文名',
     date: '颁发日期', issuer: '颁发单位', number: '证书编号',
 };
 
@@ -46,12 +47,15 @@ export interface TemplateField {
     align: 'left' | 'center' | 'right';
     width: number;
     color: string;
+    medalColor?: boolean;
     /** Kinds that print this field; empty: all. */
     kinds: CertificateKind[];
 }
 export interface CertificateTemplate {
     orientation: 'landscape' | 'portrait';
     font: 'serif' | 'sans';
+    /** Older saved layouts use the original double rule. */
+    frame?: 'engraved' | 'classic';
     /** Asset id of the background image; without one a border is drawn. */
     background: string | null;
     fields: TemplateField[];
@@ -82,42 +86,52 @@ export interface CertificateEntry {
     values: Record<Placeholder, string>;
 }
 
-const field = (input: Partial<TemplateField> & Pick<TemplateField, 'id' | 'text' | 'y' | 'size'>): TemplateField => ({
-    type: 'text', x: 148.5, align: 'center', width: 250, color: '#2b2118', kinds: [], ...input,
-});
+/** A team award reads as a recipient block next to the distinction. On portrait paper the distinction follows the roster. */
+export function competitionTemplate(kind: 'award' | 'participation', orientation: CertificateTemplate['orientation']): CertificateTemplate {
+    const landscape = orientation === 'landscape';
+    const award = kind === 'award';
+    const w = landscape ? 297 : 210;
+    const mid = w / 2;
+    const ink = '#233e53';
+    const gold = '#895d2d';
+    const muted = '#4b6268';
+    const field = (id: string, text: string, x: number, y: number, size: number, width: number, other: Partial<TemplateField> = {}): TemplateField =>
+        ({ id, text, x, y, size, width, type: 'text', align: 'center', color: ink, kinds: [], ...other });
+    const left = (id: string, text: string, y: number, size: number, options: Partial<TemplateField> = {}) =>
+        field(id, text, 28, y, size, landscape ? 133 : 154, { align: 'left', ...options });
+    const team: CertificateKind[] = ['team'];
+    const honor = landscape ? 219 : mid;
+    const footer = landscape ? 181 : 264;
+    return { orientation, font: 'serif', frame: 'engraved', background: null, fields: [
+        field('title', award ? '获奖证书' : '参赛证明', mid, landscape ? 29 : 33, landscape ? 38 : 32, landscape ? 145 : 94),
+        field('title-en', award ? 'Certificate of Achievement' : 'Certificate of Participation', mid, landscape ? 43 : 47, 15, landscape ? 145 : 98, { color: gold }),
+        left('recipient-label', award ? '颁予  /  AWARDED TO' : '参赛者  /  PARTICIPANT', landscape ? 69 : 78, 10, { color: muted }),
+        left('name', '{name}', landscape ? 83 : 93, 28),
+        left('name-en', '{nameEn}', landscape ? 94 : 105, 14, { color: muted }),
+        left('school', '{school}', landscape ? 104 : 119, 16),
+        left('school-en', '{schoolEn}', landscape ? 111 : 127, 11, { color: muted }),
+        ...(award ? [
+            left('members', '队员　{members}', landscape ? 119 : 137, 13, { kinds: team }),
+            left('members-en', '{membersEn}', landscape ? 125 : 144, 10, { kinds: team, color: muted }),
+            left('coach', '教练　{coach}', landscape ? 131 : 151, 12, { kinds: team }),
+            left('coach-en', '{coachEn}', landscape ? 137 : 158, 10, { kinds: team, color: muted }),
+            left('team', '所属队伍　{team}', landscape ? 123 : 142, 12, { kinds: ['member', 'coach'] }),
+        ] : []),
+        field('distinction-label', award ? '奖项  /  DISTINCTION' : '参赛队伍  /  TEAM', honor, landscape ? 77 : 169, 10, landscape ? 82 : 156, { color: muted }),
+        field(award ? 'award' : 'team', award ? '{award}' : '{team}', honor, landscape ? 99 : 189, award ? 38 : 27, landscape ? 84 : 154, { color: gold, medalColor: award }),
+        field('distinction-en', award ? '{awardEn}' : '{teamEn}', honor, landscape ? 119 : 210, 16, landscape ? 85 : 156, { color: gold, medalColor: award }),
+        field('contest', '{contest}', mid, landscape ? 149 : 221, 17, w - 56),
+        field('contest-en', '{contestEn}', mid, landscape ? 158 : 232, 11, w - 56, { color: muted }),
+        field('qr', '', 37, footer + 2, 21, 21, { type: 'qr' }),
+        field('serial-label', '证书编号  /  CERTIFICATE NO.', 52, footer - 2, 8, 68, { align: 'left', color: muted }),
+        field('number', '{number}', 52, footer + 5, 12, 64, { align: 'left' }),
+        field('issuer', '{issuer}', w - 27, footer - 1, 14, landscape ? 111 : 73, { align: 'right' }),
+        field('date', '{date}', w - 27, footer + 8, 11, landscape ? 111 : 73, { align: 'right', color: muted }),
+    ] };
+}
 
 export function defaultTemplates(): CertificateConfig['templates'] {
-    return {
-        award: { orientation: 'landscape', font: 'serif', background: null, fields: [
-            field({ id: 'title', text: '获奖证书', y: 40, size: 40 }),
-            field({ id: 'title-en', text: 'Certificate of Achievement', y: 55, size: 18 }),
-            field({ id: 'name', text: '{name}', y: 82, size: 30 }),
-            field({ id: 'name-en', text: '{nameEn}', y: 94, size: 13 }),
-            field({ id: 'school', text: '{school}', y: 106, size: 16, kinds: ['member', 'coach'] }),
-            field({ id: 'team', text: '{school} · {team}', y: 106, size: 16, kinds: ['team'] }),
-            field({ id: 'members', text: '队员：{members}', y: 116, size: 13, kinds: ['team'] }),
-            field({ id: 'coach', text: '教练：{coach}', y: 124, size: 13, kinds: ['team'] }),
-            field({ id: 'body', text: '在 {contest} 中荣获', y: 134, size: 16 }),
-            field({ id: 'award', text: '{award}', y: 152, size: 32 }),
-            field({ id: 'issuer', text: '{issuer}', x: 232, y: 176, size: 14, width: 110 }),
-            field({ id: 'date', text: '{date}', x: 232, y: 186, size: 12, width: 110 }),
-            field({ id: 'qr', type: 'qr', text: '', x: 34, y: 172, size: 26, width: 26 }),
-            field({ id: 'number', text: '证书编号 {number}', x: 21, y: 192, size: 9, align: 'left', width: 80 }),
-        ] },
-        participation: { orientation: 'landscape', font: 'serif', background: null, fields: [
-            field({ id: 'title', text: '参赛证明', y: 42, size: 40 }),
-            field({ id: 'title-en', text: 'Certificate of Participation', y: 57, size: 18 }),
-            field({ id: 'name', text: '{name}', y: 88, size: 30 }),
-            field({ id: 'name-en', text: '{nameEn}', y: 100, size: 13 }),
-            field({ id: 'school', text: '{school} · {team}', y: 113, size: 16 }),
-            field({ id: 'body', text: '参加了 {contest}', y: 132, size: 16 }),
-            field({ id: 'body-en', text: '{contestEn}', y: 142, size: 12 }),
-            field({ id: 'issuer', text: '{issuer}', x: 232, y: 176, size: 14, width: 110 }),
-            field({ id: 'date', text: '{date}', x: 232, y: 186, size: 12, width: 110 }),
-            field({ id: 'qr', type: 'qr', text: '', x: 34, y: 172, size: 26, width: 26 }),
-            field({ id: 'number', text: '证书编号 {number}', x: 21, y: 192, size: 9, align: 'left', width: 80 }),
-        ] },
-    };
+    return { award: competitionTemplate('award', 'landscape'), participation: competitionTemplate('participation', 'portrait') };
 }
 
 export function defaultConfig(contest: string): CertificateConfig {
@@ -161,12 +175,12 @@ export function normalizeTemplate(value: unknown, fallback: CertificateTemplate)
             x: number(item.x, '字段横向位置', 0, width), y: number(item.y, '字段纵向位置', 0, height),
             size: number(item.size, item.type === 'qr' ? '二维码边长' : '字号', 4, item.type === 'qr' ? 80 : 120),
             align: item.align === 'left' || item.align === 'right' ? item.align : 'center',
-            width: number(item.width ?? 0, '最大宽度', 0, width), color, kinds,
+            width: number(item.width ?? 0, '最大宽度', 0, width), color, kinds, ...(item.medalColor === true ? { medalColor: true } : {}),
         };
     });
     const background = input.background === null || input.background === undefined ? null
         : typeof input.background === 'string' && /^[a-f0-9]{24}$/.test(input.background) ? input.background : null;
-    return { orientation, font: input.font === 'sans' ? 'sans' : 'serif', background, fields };
+    return { orientation, font: input.font === 'sans' ? 'sans' : 'serif', frame: input.frame === 'engraved' ? 'engraved' : 'classic', background, fields };
 }
 
 function people(value: unknown, label: string): Partial<Person>[] | undefined {
@@ -287,7 +301,7 @@ export function fillText(template: string, values: Partial<Record<Placeholder, s
     const result = template.replace(FIELD, (match, name: string) => {
         if (!Object.hasOwn(placeholders, name)) return match;
         used++;
-        const value = values[name as Placeholder] || '';
+        const value = name === 'awardEn' ? awardEnglish(values.award || '') : values[name as Placeholder] || '';
         if (value) filled++;
         return value;
     });
@@ -300,7 +314,7 @@ export function missingFields(template: CertificateTemplate, entry: Pick<Certifi
     for (const item of template.fields) {
         if (item.type !== 'text' || (item.kinds.length && !item.kinds.includes(entry.kind))) continue;
         for (const [, name] of item.text.matchAll(FIELD)) {
-            if (Object.hasOwn(placeholders, name) && name !== 'number' && !entry.values[name as Placeholder]) missing.add(name as Placeholder);
+            if (Object.hasOwn(placeholders, name) && name !== 'number' && name !== 'awardEn' && !entry.values[name as Placeholder]) missing.add(name as Placeholder);
         }
     }
     return [...missing];

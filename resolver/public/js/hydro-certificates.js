@@ -1,6 +1,7 @@
 // 证书: the results snapshot certificates are issued from, the sheet of names they print, their layout, and
 // issuing and handing them out. Certificates keep the values they were issued with; issuing again replaces only
 // those whose values changed.
+import { awardEnglish, certificateFrame, fieldInk, logoBox } from './certificate-frame.js';
 import { $, el, formatTime, get, notify, openDialog, post, runtime } from './hydro-manage-common.js';
 
 const root = $('manage-root');
@@ -156,7 +157,7 @@ function fillText(text, values) {
     const result = text.replace(/\{([a-zA-Z]+)\}/g, (match, name) => {
         if (!Object.hasOwn(runtime.placeholders, name)) return match;
         used++;
-        const value = values[name] || '';
+        const value = name === 'awardEn' ? awardEnglish(values.award) : values[name] || '';
         if (value) filled++;
         return value;
     });
@@ -170,11 +171,128 @@ function sampleValues(kind) {
     return values;
 }
 
+const frames = new Map();
+function frameSvg(page) {
+    if (!frames.has(page.width)) {
+        const ns = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(ns, 'svg');
+        svg.setAttribute('viewBox', `0 0 ${page.width} ${page.height}`);
+        svg.setAttribute('class', 'certificate-frame');
+        svg.setAttribute('aria-hidden', 'true');
+        for (const shape of certificateFrame(page.width, page.height)) {
+            const path = document.createElementNS(ns, 'path');
+            path.setAttribute('d', shape.commands.map((command) => command.join(' ')).join(' '));
+            path.setAttribute('fill', shape.fill || 'none');
+            path.setAttribute('stroke', shape.stroke || 'none');
+            path.setAttribute('stroke-width', shape.weight);
+            svg.append(path);
+        }
+        frames.set(page.width, svg);
+    }
+    return frames.get(page.width).cloneNode(true);
+}
+const logoSrc = (logo) => `${runtime.assetUrl}/${logo.id}?v=${logo.revision}`;
+let schoolNames;
+async function logoCatalog() {
+    if (!schoolNames) {
+        const response = await fetch('/hydro-resolver/logos/index.json');
+        if (!response.ok) throw new Error('校徽库暂时无法读取');
+        schoolNames = (await response.json()).names;
+    }
+    return schoolNames;
+}
+
+async function imageData(blob) {
+    if (blob.size > 6 * 1024 * 1024) throw new Error('图片最大 6 MB');
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(binary);
+}
+
+async function logoPng(blob) {
+    const bitmap = await createImageBitmap(blob);
+    try {
+        if (bitmap.width * bitmap.height > 40_000_000) throw new Error('校徽图片尺寸过大');
+        const scale = Math.min(1, 1400 / Math.max(bitmap.width, bitmap.height));
+        const canvas = el('canvas', { width: Math.max(1, Math.round(bitmap.width * scale)), height: Math.max(1, Math.round(bitmap.height * scale)) });
+        canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        return await new Promise((resolve, reject) => canvas.toBlob((png) => png ? resolve(png) : reject(new Error('无法读取校徽图片')), 'image/png'));
+    } finally { bitmap.close(); }
+}
+
+const savingLogos = new Set();
+function logoSlot(slot) {
+    const side = slot === 0 ? '左侧校徽' : '右侧校徽';
+    const logo = data.logos.find((item) => item.slot === slot);
+    const id = `certificate-logo-slot-${slot}`;
+    const container = el('fieldset', { id, class: 'certificate-logo-slot', disabled: savingLogos.has(slot), 'aria-label': side });
+    async function save(blob, label) {
+        if (savingLogos.has(slot)) throw new Error(`${side}正在保存`);
+        if (blob && blob.size > 6 * 1024 * 1024) throw new Error('校徽图片最大 6 MB');
+        savingLogos.add(slot);
+        container.disabled = true;
+        try {
+            const encoded = blob ? await imageData(await logoPng(blob)) : null;
+            const result = await post('logo', { slot, label, data: encoded });
+            data.logos = data.logos.filter((item) => item.slot !== slot);
+            if (result.id) data.logos.push(result);
+            renderStage();
+            notify(status, `${side}已${result.id ? '保存' : '移除'}`);
+        } finally {
+            savingLogos.delete(slot);
+            $(id)?.replaceWith(logoSlot(slot));
+        }
+    }
+    const upload = el('input', { type: 'file', accept: 'image/png,image/jpeg', hidden: true, 'aria-label': `${side}文件`, onchange: async () => {
+        const file = upload.files[0];
+        if (!file) return;
+        try { await save(file, file.name); } catch (error) { notify(status, error.message, true); }
+        upload.value = '';
+    } });
+    const choose = el('button', { type: 'button', class: 'button', text: '选学校', 'aria-label': `${side}选择学校`, onclick: async () => {
+        try {
+            const names = await logoCatalog();
+            const listId = `certificate-schools-${slot}`;
+            const list = el('datalist', { id: listId });
+            const input = el('input', { class: 'textbox', type: 'text', list: listId, autocomplete: 'off', 'aria-label': '学校名称' });
+            const update = () => {
+                const query = input.value.trim().toLowerCase();
+                list.replaceChildren(...Object.keys(names).filter((name) => query && name.includes(query)).slice(0, 35).map((value) => el('option', { value })));
+            };
+            input.addEventListener('input', update);
+            openDialog({ title: `${side} · 选择学校`, confirm: '使用校徽', body: [field('输入学校中文或英文名', input), list], submit: async () => {
+                const label = input.value.trim();
+                const id = names[label.toLowerCase()];
+                if (typeof id !== 'string' || !/^[a-f0-9]{12}$/.test(id)) throw new Error('请从校徽库选择学校，或上传学校的校徽图片');
+                const res = await fetch(`/hydro-resolver/logos/${id}.webp`);
+                if (!res.ok) throw new Error('无法读取这所学校的校徽');
+                await save(await res.blob(), label);
+            } });
+            input.focus();
+        } catch (error) { notify(status, error.message, true); }
+    } });
+    container.append(el('div', { class: 'certificate-logo-name' }, logo ? el('img', { src: logoSrc(logo), alt: '' }) : null,
+        el('strong', { text: side }), logo ? el('span', { text: logo.label }) : null),
+        el('div', { class: 'certificate-logo-actions' }, choose, el('button', { type: 'button', class: 'button', text: '上传图片', 'aria-label': `${side}上传图片`, onclick: () => upload.click() }),
+            upload, logo ? el('button', { type: 'button', class: 'button', text: '移除', 'aria-label': `移除${side}`, onclick: async () => {
+                try { await save(null, ''); } catch (error) { notify(status, error.message, true); }
+            } }) : null));
+    return container;
+}
+
+let stageObserver;
 function stage(template, kind) {
     const page = pageOf(template);
     const box = el('div', { class: `certificate-stage is-${template.font}`, style: `aspect-ratio: ${page.width} / ${page.height}` });
-    if (template.background) box.append(el('img', { src: `${runtime.assetUrl}/${template.background}`, alt: '' }));
+    if (template.background) box.append(el('img', { class: 'certificate-background', src: `${runtime.assetUrl}/${template.background}`, alt: '' }));
+    else if (template.frame === 'engraved') box.append(frameSvg(page));
     else box.append(el('div', { class: 'certificate-border' }));
+    for (const logo of data.logos) {
+        const area = logoBox(page.width, logo.slot);
+        const position = `left:${100 * area.x / page.width}%;top:${100 * area.y / page.height}%;width:${100 * area.width / page.width}%;height:${100 * area.height / page.height}%`;
+        box.append(el('img', { class: 'certificate-school-logo', src: logoSrc(logo), alt: logo.label, style: position, draggable: 'false' }));
+    }
     const values = sampleValues(kind);
     const nodes = new Map();
     const place = () => {
@@ -190,14 +308,18 @@ function stage(template, kind) {
                 node.style.transform = 'translate(-50%, -50%)';
             } else {
                 node.style.fontSize = `${item.size * PT_MM * scale}px`;
-                node.style.color = item.color;
+                const limit = item.width * scale;
+                if (limit && node.scrollWidth > limit) node.style.fontSize = `${Math.max(4, item.size * limit / node.scrollWidth) * PT_MM * scale}px`;
+                node.style.color = fieldInk(item, values.award);
                 node.style.transform = `translate(${item.align === 'center' ? '-50%' : item.align === 'right' ? '-100%' : '0'}, -50%)`;
             }
         }
     };
     for (const item of template.fields) {
         const shown = !item.kinds.length || item.kinds.includes(kind);
-        const content = item.type === 'qr' ? '' : fillText(item.text, values) || item.text;
+        if (!shown) continue;
+        const content = item.type === 'qr' ? '' : fillText(item.text, values);
+        if (!content && item.type === 'text' && selectedField !== item.id) continue;
         const node = el('div', { class: `certificate-field${item.type === 'qr' ? ' is-qr' : ''}${shown ? '' : ' is-hidden'}${selectedField === item.id ? ' is-selected' : ''}`,
             text: content, title: item.text || '二维码', 'data-id': item.id });
         node.addEventListener('pointerdown', (event) => {
@@ -221,7 +343,9 @@ function stage(template, kind) {
         nodes.set(item.id, node);
         box.append(node);
     }
-    new ResizeObserver(place).observe(box);
+    stageObserver?.disconnect();
+    stageObserver = new ResizeObserver(place);
+    stageObserver.observe(box);
     requestAnimationFrame(place);
     return box;
 }
@@ -256,7 +380,10 @@ function renderProps() {
     } })));
     const align = el('select', { class: 'select', 'aria-label': '对齐', onchange: (event) => update({ align: event.target.value }) },
         option('left', '左对齐', item.align === 'left'), option('center', '居中', item.align === 'center'), option('right', '右对齐', item.align === 'right'));
-    const color = el('input', { type: 'color', value: item.color, 'aria-label': '颜色', oninput: (event) => update({ color: event.target.value }) });
+    const autoColor = el('input', { type: 'checkbox', checked: item.medalColor, onchange: (event) => update({ medalColor: event.target.checked }) });
+    const color = el('input', { type: 'color', value: item.color, 'aria-label': '颜色', oninput: (event) => {
+        autoColor.checked = false; update({ color: event.target.value, medalColor: false });
+    } });
     const kinds = el('div', { class: 'certificate-kinds' }, ...kindOrder.filter((kind) => (editing === 'participation') === (kind === 'participation')).map((kind) => {
         const box = el('input', { type: 'checkbox', checked: !item.kinds.length || item.kinds.includes(kind), onchange: () => {
             const chosen = [...kinds.querySelectorAll('input')].filter((input) => input.checked).map((input) => input.dataset.kind);
@@ -275,6 +402,7 @@ function renderProps() {
         el('div', { class: 'certificate-row' }, item.type === 'qr' ? num('边长（mm）', 'size', 4, 80) : num('字号（pt）', 'size', 4, 120, 1),
             item.type === 'qr' ? null : num('最大宽度（mm）', 'width', 0, pageOf(template).width)),
         item.type === 'qr' ? null : el('div', { class: 'certificate-row' }, field('对齐', align), field('颜色', color)),
+        item.type === 'text' && /\{award(?:En)?\}/.test(item.text) ? el('label', { class: 'checkbox' }, autoColor, '按金银铜奖着色') : null,
         editing === 'participation' ? null : field('印在', kinds), remove));
 }
 
@@ -286,10 +414,21 @@ function templateGroup() {
     })));
     const orientation = el('select', { class: 'select', 'aria-label': '方向', onchange: (event) => {
         const before = pageOf(template);
+        const prev = data.recommended[template.orientation][editing];
         template.orientation = event.target.value;
         const after = pageOf(template);
-        // Keep each field at the same place relative to the page.
-        for (const item of template.fields) { item.x = Math.round(item.x / before.width * after.width * 2) / 2; item.y = Math.round(item.y / before.height * after.height * 2) / 2; }
+        const next = data.recommended[template.orientation][editing];
+        for (const item of template.fields) {
+            const oldField = template.frame === 'engraved' && prev.fields.find((f) => f.id === item.id);
+            const newField = oldField && next.fields.find((f) => f.id === item.id);
+            for (const key of ['x', 'y', 'width', 'size']) {
+                if (newField && item[key] === oldField[key]) item[key] = newField[key];
+                else if (key !== 'size') {
+                    const dim = key === 'y' ? 'height' : 'width';
+                    item[key] = Math.min(after[dim], Math.round(item[key] / before[dim] * after[dim] * 2) / 2);
+                }
+            }
+        }
         renderStage(); renderProps();
     } }, option('landscape', '横向 A4', template.orientation === 'landscape'), option('portrait', '纵向 A4', template.orientation === 'portrait'));
     const font = el('select', { class: 'select', 'aria-label': '字体', onchange: (event) => { template.font = event.target.value; renderStage(); } },
@@ -299,12 +438,12 @@ function templateGroup() {
     const upload = el('input', { type: 'file', accept: 'image/png,image/jpeg', hidden: true, onchange: async () => {
         const file = upload.files[0];
         if (!file) return;
-        const buffer = new Uint8Array(await file.arrayBuffer());
-        let binary = '';
-        for (let i = 0; i < buffer.length; i += 0x8000) binary += String.fromCharCode(...buffer.subarray(i, i + 0x8000));
-        const saved = structuredClone(draft);
-        const result = await run('background', { template: editing, data: btoa(binary) }, '已换上背景图片');
-        if (result) { draft = saved; draft[editing].background = result.id; render(); }
+        const which = editing;
+        try {
+            const result = await post('background', { template: which, data: await imageData(file) });
+            draft[which].background = result.id;
+            render(); notify(status, '已换上背景图片');
+        } catch (error) { notify(status, error.message, true); }
         upload.value = '';
     } });
     const add = (type) => {
@@ -323,12 +462,17 @@ function templateGroup() {
     propsHost = el('div');
     const view = el('div', { class: 'certificate-columns' }, stageHost, propsHost);
     renderStage(); renderProps();
-    return group('模板', tabs,
-        el('div', { class: 'manage-toolbar' }, orientation, font, sample,
+    const useDesign = el('button', { type: 'button', class: 'button', text: '套用竞赛版式', onclick: () => {
+        draft[editing] = structuredClone(data.recommended[template.orientation][editing]);
+        selectedField = null; render(); notify(status, '已套用竞赛版式，保存模板后生效');
+    } });
+    return group('模板', el('fieldset', { class: 'certificate-logos' }, el('legend', { text: '学校校徽（全场共用，最多两个）' }), logoSlot(0), logoSlot(1)), tabs,
+        el('div', { class: 'manage-toolbar' }, orientation, font, sample, useDesign,
             el('button', { class: 'button', type: 'button', text: template.background ? '更换背景' : '上传背景', onclick: () => upload.click() }), upload,
             template.background ? el('button', { class: 'button', type: 'button', text: '去掉背景', onclick: async () => {
-                const saved = structuredClone(draft);
-                if (await run('background', { template: editing, data: null }, '已去掉背景图片')) { draft = saved; draft[editing].background = null; render(); }
+                const which = editing;
+                try { await post('background', { template: which, data: null }); draft[which].background = null; render(); notify(status, '已去掉背景图片'); }
+                catch (error) { notify(status, error.message, true); }
             } }) : null,
             el('button', { class: 'button', type: 'button', text: '＋ 文字', onclick: () => add('text') }),
             template.fields.some((item) => item.type === 'qr') ? null : el('button', { class: 'button', type: 'button', text: '＋ 二维码', onclick: () => add('qr') }),

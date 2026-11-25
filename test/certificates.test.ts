@@ -2,12 +2,13 @@ import { deflateSync, inflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { previewDatabase } from '../preview/resolver-memory-db';
 import {
-    certificateEntries, defaultConfig, fillText, missingFields, normalizeConfig, overridesFromCsv, parseCsv, planIssue, fingerprint, sheetOf, sheetRows,
+    certificateEntries, competitionTemplate, defaultConfig, fillText, missingFields, normalizeConfig, overridesFromCsv, parseCsv, planIssue, fingerprint, sheetOf, sheetRows,
 } from '../lib/certificates/model';
 import { buildPdf, parseImage, textWidth } from '../lib/certificates/pdf';
 import { qrMatrix } from '../lib/certificates/qr';
 import { certificatePage } from '../lib/certificates/render';
 import { certificateService } from '../lib/certificates/service';
+import { readZip } from '../lib/ccs/zip';
 import { ResultsStore } from '../lib/results-store';
 import { resultBoard, resultsCsv, type ResultsData } from '../lib/results';
 import { defaultSettings, normalizeSettings } from '../lib/settings';
@@ -98,7 +99,9 @@ describe('PDF 与二维码', () => {
         const offsets = [...text.slice(start).matchAll(/^(\d{10}) 00000 n $/gm)].map((match) => Number(match[1]));
         offsets.forEach((offset, index) => expect(text.slice(offset, offset + 12)).toMatch(new RegExp(`^${index + 1} 0 obj`)));
         // The name is set in the CJK font as UTF-16; the content stream is compressed.
-        const stream = /stream\n([\s\S]*?)\nendstream/.exec(text.slice(text.indexOf('/FlateDecode')))![1];
+        const contentId = Number(/\/Contents (\d+) 0 R/.exec(text)![1]);
+        const stream = /stream\n([\s\S]*?)\nendstream/.exec(text.slice(offsets[contentId - 1]))![1];
+        expect(text.match(/\/Subtype \/Form\b/g)).toHaveLength(1);
         expect(inflateSync(Buffer.from(stream, 'latin1')).toString('latin1')).toContain('<67976f88>');
     });
 
@@ -126,6 +129,27 @@ describe('PDF 与二维码', () => {
         const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 4, 0, 0, 0xff, 0xc0, 0, 11, 8, 0, 20, 0, 30, 3, 0, 0, 0, 0]);
         expect(parseImage(jpeg)).toMatchObject({ width: 30, height: 20, colors: 3, filter: 'DCTDecode' });
         expect(() => parseImage(Buffer.from('GIF89a'))).toThrow('JPEG 或 PNG');
+    });
+
+    it('fits transparent rectangular logos inside both masthead slots and preserves previously saved artwork', () => {
+        const image = parseImage(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGPoEDP4zzDzDAMADmEDM8+OsIAAAAAASUVORK5CYII=', 'base64'), true);
+        expect([...inflateSync(image.alpha!)]).toEqual([255, 0]);
+        const config = defaultConfig('校际赛');
+        const values = { award: '银奖' };
+        for (const orientation of ['portrait', 'landscape'] as const) {
+            const template = competitionTemplate('award', orientation);
+            const page = certificatePage(template, 'team', values, '', null, [{ slot: 0, image }, { slot: 1, image }]);
+            const [left, right] = page.logos!;
+            expect(left.width / left.height).toBe(2);
+            expect(right.x + right.width).toBeCloseTo(page.width - left.x);
+            expect(page.engraved).toBe(true);
+            expect(page.texts.find((item) => item.text === 'Silver Medal')?.color).toEqual([82, 106, 120]);
+        }
+        const { frame: _frame, ...legacy } = config.templates.award;
+        const old = normalizeConfig({ templates: { award: legacy } }, config).templates.award;
+        expect(certificatePage(old, 'team', {}, '', null)).toMatchObject({ border: true, engraved: false });
+        expect(certificatePage(config.templates.award, 'team', {}, '', image)).toMatchObject({ background: image, border: false, engraved: false });
+        expect(fillText('{awardEn}', { award: '最佳女队' })).toBe('');
     });
 
     it('draws QR symbols of the right version with their finder patterns', () => {
@@ -158,6 +182,39 @@ describe('证书出具与核验', () => {
         await service.operate(request, 'config', { source: 'snap', issuer: '组委会', date: '2026 年 11 月 8 日' });
         return { db, service, request, store, scope, data, show: () => { identity = true; } };
     }
+
+    it('keeps two independent school logos per contest across previews, issued PDFs, ZIP and contestant downloads', async () => {
+        const { service, request } = await setup();
+        const png = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGPoEDP4zzDzDAMADmEDM8+OsIAAAAAASUVORK5CYII=';
+        const select = (slot: number, data: string | null) => service.operate(request, 'logo', { slot, data, label: `学校 ${slot}` });
+        const marks = (pdf: Buffer) => pdf.toString('latin1').match(/\/SMask /g)?.length || 0;
+        const sample = async () => marks((await service.file(request, 'sample', {})).data);
+        expect(await sample()).toBe(0);
+        await Promise.all([select(0, png), select(1, png)]);
+        await expect(select(2, png)).rejects.toThrow('最多两个');
+        await expect(select(0, 'R0lGODlh')).rejects.toThrow('PNG');
+        await select(1, png);
+        expect(await sample()).toBe(2);
+        const state = await service.data(request);
+        expect(state.logos.map((logo) => logo.slot)).toEqual([0, 1]);
+        const other = { ...request, scope: { ...request.scope, contestId: 'other' } };
+        expect(marks((await service.file(other, 'sample', {})).data)).toBe(0);
+        await expect(service.asset(other.scope, state.logos[0].id)).rejects.toThrow();
+        await service.operate(request, 'config', { locked: true });
+        await service.operate(request, 'issue', {});
+        expect(marks((await service.file(request, 'pdf', {})).data)).toBe(2);
+        const zip = readZip((await service.file(request, 'zip', {})).data, { maxFiles: 100, maxBytes: 2_000_000 });
+        expect(zip.length).toBeGreaterThan(1);
+        expect(zip.every((file) => marks(file.data) === 2)).toBe(true);
+        const recipient = { ...request, uid: 1 };
+        const own = (await service.mine(recipient)).list![0];
+        expect(marks((await service.mine(recipient, own.code)).file!.data)).toBe(2);
+        await select(0, null);
+        expect(await sample()).toBe(1);
+        await select(1, null);
+        expect(await sample()).toBe(0);
+        expect((await service.operate(request, 'issue', {}))).toMatchObject({ created: 0, corrected: 0 });
+    });
 
     it('issues from a locked sheet only, then corrects and revokes what changed', async () => {
         const { service, request, store, scope, data } = await setup();

@@ -3,14 +3,14 @@
  * Certificates are issued from one results snapshot; each keeps the values it was issued with, so a later
  * change of the results or the sheet reaches a certificate only through a new issue, which replaces it.
  */
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import type { Context } from 'hydrooj';
 import { writeZip } from '../ccs/zip';
 import { boardOptions, resultBoard, resultsCsv, settled, type ResultsData } from '../results';
 import { snapshotOption } from '../results-page';
 import { ResultsStore, type SnapshotScope } from '../results-store';
 import {
-    certificateCode, certificateEntries, defaultConfig, fingerprint, kindNames, missingFields, normalizeConfig, normalizeOverride,
+    certificateCode, certificateEntries, competitionTemplate, defaultConfig, fingerprint, kindNames, missingFields, normalizeConfig, normalizeOverride,
     overridesFromCsv, placeholders, planIssue, safeName, sheetOf, sheetRows, templateFor, type CertificateConfig, type CertificateKind, type Placeholder,
 } from './model';
 import { buildPdf, parseImage, type PdfImage } from './pdf';
@@ -40,7 +40,7 @@ export interface IssuedDoc {
     issuedBy: number;
     changedAt?: Date;
 }
-interface AssetDoc { _id: string; domainId: string; contestId: string; data: Buffer; type: string; createdAt: Date }
+interface AssetDoc { _id: string; domainId: string; contestId: string; data: Buffer; type: string; createdAt: Date; slot?: 0 | 1; label?: string }
 declare module 'hydrooj' {
     interface Collections {
         'xcpcio.certificates': ConfigDoc;
@@ -67,8 +67,10 @@ const MAX_IMAGE = 6 * 1024 * 1024;
 const configId = (scope: SnapshotScope) => `${scope.domainId}/${scope.contestId}`;
 const bytes = (data: unknown): Buffer => {
     if (Buffer.isBuffer(data)) return data;
-    const inner = (data as { buffer?: unknown }).buffer;
-    return Buffer.from(inner instanceof Uint8Array ? inner : new Uint8Array(inner as ArrayBuffer));
+    if (ArrayBuffer.isView(data)) return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+    const { buffer, position } = data as { buffer: Uint8Array | ArrayBuffer; position?: number };
+    const raw = ArrayBuffer.isView(buffer) ? Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength) : Buffer.from(buffer);
+    return raw.subarray(0, position ?? raw.length);
 };
 export const verifyUrl = (site: string, domainId: string, code: string) => `${site}d/${encodeURIComponent(domainId)}/certificate/${code}`;
 const fileName = (doc: Pick<IssuedDoc, '_id' | 'kind' | 'values'>) => `${[doc.values.team, doc.values.name, doc.values.award || kindNames[doc.kind]].map(safeName).join('-')}-${doc._id}.pdf`;
@@ -122,13 +124,27 @@ export function certificateService(db: Context['db'], dependencies: {
         }
         return cache.get(id)!;
     }
+    const logoFilter = (scope: SnapshotScope) => ({ ...scope, slot: { $in: [0, 1] as (0 | 1)[] } });
+    const recommended = {
+        landscape: { award: competitionTemplate('award', 'landscape'), participation: competitionTemplate('participation', 'landscape') },
+        portrait: { award: competitionTemplate('award', 'portrait'), participation: competitionTemplate('participation', 'portrait') },
+    };
+    function uploadedImage(data: unknown) {
+        if (typeof data !== 'string' || !data || data.length > Math.ceil(MAX_IMAGE / 3) * 4) throw new CertificateError('请上传 6 MB 以内的 PNG 或 JPEG 图片');
+        const raw = Buffer.from(data, 'base64');
+        if (raw.length > MAX_IMAGE) throw new CertificateError('图片最大 6 MB');
+        const parsed = parseImage(raw);
+        return { data: raw, type: parsed.filter === 'DCTDecode' ? 'image/jpeg' : 'image/png' };
+    }
     async function pages(request: CertificateRequest, config: CertificateConfig, docs: Pick<IssuedDoc, '_id' | 'kind' | 'values'>[]) {
         const cache = new Map<string, PdfImage | null>();
+        const logoDocs = await assets.find(logoFilter(request.scope)).toArray();
+        const logos = logoDocs.map((doc) => ({ slot: doc.slot!, image: parseImage(bytes(doc.data), true) }));
         const result = [];
         for (const doc of docs) {
             const template = templateFor(config, doc.kind);
             result.push(certificatePage(template, doc.kind, doc.values, verifyUrl(request.site, request.scope.domainId, doc._id),
-                await background(request.scope, template.background, cache)));
+                await background(request.scope, template.background, cache), logos));
         }
         return result;
     }
@@ -154,8 +170,9 @@ export function certificateService(db: Context['db'], dependencies: {
     async function data(request: CertificateRequest) {
         const { scope } = request;
         await finishPending(scope);
-        const [config, snapshots, docs, showIdentity] = await Promise.all([
+        const [config, snapshots, docs, showIdentity, logoDocs] = await Promise.all([
             readConfig(request), store.list(scope), issued.find(scope).sort({ issuedAt: 1 }).toArray(), dependencies.showIdentity(scope),
+            assets.find(logoFilter(scope), { projection: { data: 0 } }).sort({ slot: 1 }).toArray(),
         ]);
         let preview: unknown = null;
         let error = '';
@@ -189,7 +206,8 @@ export function certificateService(db: Context['db'], dependencies: {
             }
         }
         return {
-            config, error, preview, showIdentity,
+            config, error, preview, showIdentity, recommended,
+            logos: logoDocs.map((doc) => ({ id: doc._id, slot: doc.slot!, label: doc.label || '学校校徽', revision: doc.createdAt.getTime() })),
             snapshots: snapshots.map((snapshot) => ({ ...snapshotOption(snapshot), final: snapshot.final })),
             issued: docs.map((doc) => ({
                 code: doc._id, kind: doc.kind, teamId: doc.teamId, name: doc.values.name, team: doc.values.team, school: doc.values.school, award: doc.values.award,
@@ -280,21 +298,35 @@ export function certificateService(db: Context['db'], dependencies: {
             await writeConfig(request, config);
             return { updated, unknown };
         }
+        if (operation === 'logo') {
+            const slot = payload.slot;
+            if (slot !== 0 && slot !== 1) throw new CertificateError('每张证书最多两个校徽，请选择左侧或右侧');
+            // Each slot has a stable, contest-scoped identity, so simultaneous uploads cannot create a third.
+            const id = createHash('sha256').update(JSON.stringify(['certificate-logo', request.scope.domainId, request.scope.contestId, slot])).digest('hex').slice(0, 24);
+            const filter = { _id: id, ...request.scope, slot: slot as 0 | 1 };
+            if (payload.data === null) {
+                await assets.deleteOne(filter);
+                return { id: null };
+            }
+            const image = uploadedImage(payload.data);
+            const label = typeof payload.label === 'string' ? payload.label.trim().slice(0, 100) : '';
+            const createdAt = new Date();
+            await assets.updateOne(filter, { $set: { ...image, label, createdAt } }, { upsert: true });
+            return { id, slot, label: label || '学校校徽', revision: createdAt.getTime() };
+        }
         if (operation === 'background') {
             const which = payload.template === 'participation' ? 'participation' : 'award';
             let id: string | null = null;
             if (payload.data !== null) {
-                if (typeof payload.data !== 'string' || payload.data.length > MAX_IMAGE * 1.4) throw new CertificateError('背景图片最大 6 MB');
-                const image = Buffer.from(payload.data, 'base64');
-                const parsed = parseImage(image);
+                const image = uploadedImage(payload.data);
                 id = randomBytes(12).toString('hex');
-                await assets.insertOne({ _id: id, ...request.scope, data: image, type: parsed.filter === 'DCTDecode' ? 'image/jpeg' : 'image/png', createdAt: new Date() });
+                await assets.insertOne({ _id: id, ...request.scope, ...image, createdAt: new Date() });
             }
             const previous = config.templates[which].background;
             config.templates = { ...config.templates, [which]: { ...config.templates[which], background: id } };
             await writeConfig(request, config);
             const other = which === 'award' ? config.templates.participation.background : config.templates.award.background;
-            if (previous && previous !== other) await assets.deleteOne({ _id: previous, ...request.scope });
+            if (previous && previous !== other) await assets.deleteOne({ _id: previous, ...request.scope, slot: { $exists: false } });
             return { id };
         }
         if (operation === 'snapshot') {
@@ -350,7 +382,7 @@ export function certificateService(db: Context['db'], dependencies: {
 
     async function asset(scope: SnapshotScope, id: string) {
         const doc = /^[a-f0-9]{24}$/.test(id) ? await assets.findOne({ _id: id, ...scope }) : null;
-        if (!doc) throw new CertificateError('背景图片不存在', 404);
+        if (!doc) throw new CertificateError('证书图片不存在', 404);
         return { data: bytes(doc.data), type: doc.type };
     }
 
