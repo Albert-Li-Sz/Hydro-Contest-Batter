@@ -24,7 +24,7 @@ docker compose up -d
 
 ## 从源码构建或本机运行
 
-从 [v1.23.0 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.23.0) 下载 `reactions-generator-hydro-1.23.0.tar.gz`，解压后进入含 Dockerfile 的目录。在本目录保存上述 `.env`，运行 `docker compose up -d --build`。
+从 [v1.23.1 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.23.1) 下载 `reactions-generator-hydro-1.23.1.tar.gz`，解压后进入含 Dockerfile 的目录。在本目录保存上述 `.env`，运行 `docker compose up -d --build`。
 
 本机运行需要 Python 3.12、Poetry 及系统 FFmpeg/FFprobe。运行 `poetry install` 后在同一目录执行 `poetry run main all --hydro-upload`。Apple 芯片可使用 `poetry run main all --hydro-upload --hardware apple`。已有 Pillow、requests 和 FFmpeg 的环境可以运行 `python3 reactions_generator/hydro_worker.py all --hydro-upload`。NVIDIA 编码为 `--hardware nvidia`，Intel QSV 为 `--hardware qsv`。Linux VAAPI 可用 `--hardware vaapi` 并为容器映射 /dev/dri。NVIDIA Container Toolkit 可用 `--gpus all`；`--hardware nvidia_full` 使用 CUDA 叠加画面。
 
@@ -38,4 +38,4 @@ docker compose up -d
 
 ## 成片版式
 
-竖屏为 1080 × 1920，横屏为 1920 × 1080，均使用 ICPC reactions-generator 的位置、图层顺序与成绩卡动画。管理员可替换竖屏底部的 1080 × 192 像素图样。赛中录制的帧率和留档编码独立于成片编码。
+竖屏为 1080 × 1920，横屏为 1920 × 1080，均使用 ICPC reactions-generator 的位置、图层顺序与成绩卡动画。成绩卡在队名前显示学校校徽，未匹配校徽时留空。管理员可替换竖屏底部的 1080 × 192 像素图样。赛中录制的帧率和留档编码独立于成片编码。

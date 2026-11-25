@@ -2,7 +2,8 @@ import { action, api, button, el, field, notify, runtime, select } from './hydro
 import { helpTip } from './hydro-ui.js';
 
 let selectedId = 'portrait';
-const assetBase = '/hydro-resolver/assets/reaction-template/';
+const release = new URL('../', import.meta.url).pathname.split('/').filter(Boolean).pop();
+const demoAsset = (name) => '/hydro-resolver/assets/reaction-template/' + name + '?v=' + encodeURIComponent(release);
 
 export function editLayout(root, data, reload) {
     const layouts = data.layouts;
@@ -13,7 +14,7 @@ export function editLayout(root, data, reload) {
     let artwork = model.artwork || null;
     const strip = el('img', { class: 'rx-artwork', alt: '' });
     const figure = el('div', { class: 'rx-frame rx-' + shape },
-        el('video', { src: assetBase + shape + '-demo.mp4', poster: assetBase + shape + '-demo.jpg',
+        el('video', { src: demoAsset(shape + '-demo.mp4'), poster: demoAsset(shape + '-demo.jpg'),
             preload: 'none', playsinline: true, muted: true, 'aria-label': 'ICPC 版式示例' }), strip);
     const video = figure.firstElementChild;
     const play = button('播放示例', () => video.paused ? video.play() : video.pause());

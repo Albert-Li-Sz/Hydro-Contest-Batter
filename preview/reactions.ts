@@ -20,7 +20,7 @@ export function createReactionsPreview(env: Environment, version: string) {
     const url = base + '/sample.mp4';
     const sampleVideo = readFileSync(path.join(__dirname, '../resolver/public/assets/reaction-template/portrait-demo.mp4'));
     const videos = [
-        { rid: 's-2', teamUid: 102, team: '星河队', school: '示例大学', problem: 'A', firstSolve: true, offset: 0 },
+        { rid: 's-2', teamUid: 102, team: '星河队', school: '南京晓庄学院', problem: 'A', firstSolve: true, offset: 0 },
         { rid: 's-5', teamUid: 105, team: '飞鸟队', school: '工程学院', problem: 'C', firstSolve: false, offset: 5000 },
     ].map((v) => ({
         ...v,

@@ -133,7 +133,7 @@ export function createReactionStore(ctx: Context, deps: ReactionDependencies) {
     async function loadContest(tdoc: Tdoc) {
         const [data, settings] = await Promise.all([deps.loadData(tdoc, true, true, 'live'), deps.loadSettings(tdoc)]);
         const source = { data, settings, contest: tdoc, identity: true, boards: [], logoNames, now: Date.now() };
-        const info = buildContestInfo(source);
+        const info = buildContestInfo(source, { fallbackOrganizationLogo: false });
         return { info, runs: buildRuns(source, info) };
     }
     const contexts = new Map<string, { until: number; run: ReturnType<typeof loadContest> }>();

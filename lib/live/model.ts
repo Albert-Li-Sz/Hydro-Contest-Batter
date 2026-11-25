@@ -107,7 +107,7 @@ function medalChain(settings: BoardSettings, eligible: number, group?: string): 
 
 const logoKey = (name: string) => name.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
 
-export function buildContestInfo(source: LiveSource): ContestInfo {
+export function buildContestInfo(source: LiveSource, { fallbackOrganizationLogo = true } = {}): ContestInfo {
     const { data, contest, identity } = source;
     const durationMs = contest.endAt.getTime() - contest.beginAt.getTime();
     const problems: ProblemInfo[] = Array.from({ length: data.contest.problem_quantity }, (_, index) => {
@@ -141,10 +141,11 @@ export function buildContestInfo(source: LiveSource): ContestInfo {
             if (!organizations.has(organizationId)) {
                 const logoId = team.organization ? source.logoNames[logoKey(team.organization)] : undefined;
                 const url = logoId && /^[a-f\d]{12}$/.test(logoId)
-                    ? `${resolverAssetBase}/logos/${logoId}.webp` : `${resolverAssetBase}/assets/img/icpc-logo.png`;
+                    ? `${resolverAssetBase}/logos/${logoId}.webp`
+                    : fallbackOrganizationLogo ? `${resolverAssetBase}/assets/img/icpc-logo.png` : null;
                 organizations.set(organizationId, {
                     id: organizationId, displayName: school, fullName: school,
-                    logo: [{ type: 'Image', url }], customFields: {},
+                    logo: url ? [{ type: 'Image', url }] : [], customFields: {},
                 });
             }
         }

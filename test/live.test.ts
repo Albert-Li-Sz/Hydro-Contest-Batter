@@ -30,6 +30,16 @@ function withSubmissions(submissions: BoardData['submissions']): BoardData {
 }
 
 describe('live contest model', () => {
+    it('puts the registered school emblem in the reaction card and leaves unknown schools unbranded', () => {
+        const live = source({ logoNames: { '南京晓庄学院': '20e7f5017521' } });
+        live.data = { ...live.data, teams: live.data.teams.slice(0, 3).map((team, i) => ({
+            ...team, organization: ['南京晓庄学院', '未收录学校', ''][i],
+        })) };
+        const card = buildContestInfo(live, { fallbackOrganizationLogo: false });
+        expect(card.organizations.find(o => o.displayName === '南京晓庄学院')?.logo[0]?.url).toBe('/hydro-resolver/logos/20e7f5017521.webp');
+        expect(card.organizations.filter(o => o.displayName !== '南京晓庄学院').every(o => !o.logo.length)).toBe(true);
+        expect(buildContestInfo(live).organizations.find(o => o.displayName === '未收录学校')?.logo[0]?.url).toContain('icpc-logo.png');
+    });
     it('attaches public reactions only to judged, visible runs and clears withdrawn videos', () => {
         const media = [{ type: 'Video', url: '/contest/example/reactions/video/ref' }];
         const live = source({ reactionVideos: { accepted: media, frozen: media } }, withSubmissions([
