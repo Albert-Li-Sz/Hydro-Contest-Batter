@@ -12,9 +12,9 @@ Hydro OJ 的 ACM 办赛插件。工作人员可以在 Hydro 内配置赛制与�
 需要 Hydro 5.x 和 Node.js 22 或更高版本。以运行 Hydro 的系统用户执行以下 Linux 命令。使用自定义 profile、容器或其他进程管理器时，请按部署方式选择安装步骤。[安装与升级图解](https://albert-li-sz.github.io/Hydro-Contest-Better/#install)
 
 ```sh
-release=https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/download/v1.23.1
-package=hydro-scoreboard-xcpcio-plus-1.23.1.tgz
-mkdir -p hydro-contest-1.23.1 && cd hydro-contest-1.23.1
+release=https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/download/v1.23.2
+package=hydro-scoreboard-xcpcio-plus-1.23.2.tgz
+mkdir -p hydro-contest-1.23.2 && cd hydro-contest-1.23.2
 curl -fLO "$release/$package" && curl -fLO "$release/$package.sha256"
 sha256sum -c "$package.sha256" && tar -xzf "$package"
 ```
@@ -35,7 +35,7 @@ sha256sum -c "$package.sha256" && tar -xzf "$package"
 | 连接媒体机并制作反应视频 | [Docker Compose 安装](https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.html#install) · [首条成品](https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.html#render) |
 | 滚榜、复核重测结果、导出获奖名单或对接 CCS | [赛后滚榜](https://albert-li-sz.github.io/Hydro-Contest-Better/#resolver) · [成绩与导出](https://albert-li-sz.github.io/Hydro-Contest-Better/#results) · [CCS API](https://albert-li-sz.github.io/Hydro-Contest-Better/#integration) |
 
-媒体机是可选组件。在 **采集与播出 → 媒体机连接** 创建连接，将复制的 `HYDRO_MEDIA_CONNECTION` 写入媒体机的 `.env`，再用 Docker Compose 启动。插件 v1.23.1 搭配公共镜像 `ghcr.io/albert-li-sz/reactions-generator-hydro:1.23.1`，支持 Linux amd64 和 arm64。[Compose 配置](https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.compose.yaml)
+媒体机是可选组件。在 **采集与播出 → 媒体机连接** 创建连接，将复制的 `HYDRO_MEDIA_CONNECTION` 写入媒体机的 `.env`，再用 Docker Compose 启动。插件 v1.23.2 搭配公共镜像 `ghcr.io/albert-li-sz/reactions-generator-hydro:1.23.1`，支持 Linux amd64 和 arm64。[Compose 配置](https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.compose.yaml)
 
 ## 开发与许可
 
