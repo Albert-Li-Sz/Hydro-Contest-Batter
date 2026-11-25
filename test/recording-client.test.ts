@@ -2,11 +2,51 @@ import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi } from 'vitest';
 // Browser-native ES modules. The same functions choose actual IndexedDB jobs in a capture tab.
 // @ts-ignore JavaScript browser module
-import { evictedSegments, nextUpload, segmentsFor } from '../resolver/public/js/hydro-recording-buffer.js';
+import { archiveLimit, evictedSegments, nextUpload, segmentsFor } from '../resolver/public/js/hydro-recording-buffer.js';
 // @ts-ignore JavaScript browser module
 import { ArchiveEncoderUnavailable, mp4VideoInfo, outputSize, recordSegment, selectMime, webmVideoInfo } from '../resolver/public/js/hydro-recording-media.js';
 // @ts-ignore JavaScript browser module
-import { CaptureRecorder } from '../resolver/public/js/hydro-capture-recorder.js';
+import { CaptureRecorder, postSegment } from '../resolver/public/js/hydro-capture-recorder.js';
+
+type Listener = (() => void) | undefined;
+class FakeUpload {
+    static last: FakeUpload;
+    static sent: unknown[] = [];
+    static reply: ((xhr: FakeUpload) => void) | null = null;
+    upload: { onprogress?: Listener; onload?: Listener } = {};
+    onload?: Listener;
+    onerror?: Listener;
+    status = 0;
+    responseText = '';
+    aborted = false;
+    constructor() { FakeUpload.last = this; }
+    open() {}
+    setRequestHeader() {}
+    send(body: unknown) { FakeUpload.sent.push(body); FakeUpload.reply?.(this); }
+    abort() { this.aborted = true; }
+    respond(status: number, body: unknown) {
+        this.status = status;
+        this.responseText = typeof body === 'string' ? body : JSON.stringify(body);
+        this.upload.onload?.();
+        this.onload?.();
+    }
+}
+
+function memoryBuffer() {
+    const stores: Record<string, Map<string, any>> = Object.fromEntries(['segments', 'blobs', 'jobs', 'requests', 'gaps'].map((s) => [s, new Map()]));
+    const copy = (store: string, value: any) => store === 'blobs' || value === undefined ? value : structuredClone(value);
+    return {
+        stores,
+        read: async (store: string, key?: string) => key === undefined ? [...stores[store].values()].map((v) => copy(store, v)) : copy(store, stores[store].get(key)),
+        write: async (entries: [string, string, unknown?][]) => {
+            for (const [store, key, value] of entries) {
+                if (value === undefined) stores[store].delete(key);
+                else stores[store].set(key, copy(store, value));
+            }
+        },
+        close() {},
+    };
+}
 
 describe('采集页的录制缓存和上传顺序', () => {
     it('保留已请求的旧片段，同时将留档限制在 30 分钟或 300 MiB', () => {
@@ -18,6 +58,17 @@ describe('采集页的录制缓存和上传顺序', () => {
             ...Array.from({ length: 4 }, (_, n) => ({ id: String(n), kind: 'archive', bytes: 100 * 1024 ** 2, endMs: now - n * 1000 })),
         ];
         expect(evictedSegments(rows, now, new Set(['protected'])).map((r: {id: string}) => r.id).sort()).toEqual(['3', 'old', 'oldClip']);
+        // At the HD preset 400 MiB is less than 30 minutes of footage, so all four stay.
+        expect(evictedSegments(rows, now, new Set(['protected']), 675_000_000).map((r: {id: string}) => r.id).sort()).toEqual(['old', 'oldClip']);
+    });
+    it('离线留档按所设码率保留 30 分钟，至少 300 MiB，至多站点配额的一半', () => {
+        const hd = { preset: 'archiveHd', height: 720, fps: 24, kbps: 1200 };
+        expect(archiveLimit({ screen: hd, webcam: hd })).toBe(675_000_000);
+        expect(archiveLimit({ screen: hd, webcam: null })).toBe(337_500_000);
+        expect(archiveLimit({ screen: { kbps: 100 }, webcam: { kbps: 60 } })).toBe(300 * 1024 ** 2);
+        expect(archiveLimit({ screen: hd, webcam: hd }, 1e9)).toBe(5e8);
+        expect(archiveLimit({ screen: hd, webcam: hd }, 2e8)).toBe(300 * 1024 ** 2);
+        expect(archiveLimit(undefined)).toBe(300 * 1024 ** 2);
     });
     it('先上传一血，退避中的请求不阻塞可上传文件，同优先级按入队顺序', () => {
         const rows = [{ id: 'archive', priority: 3, created: 0 }, { id: 'first', priority: 0, created: 90, retryAt: 50 },
@@ -162,5 +213,85 @@ describe('归档双路的画布与编码策略', () => {
             recorder.sync();
             expect(recorder.recordLoop).toHaveBeenCalledTimes(4);
         } finally { vi.useRealTimers(); }
+    });
+});
+
+describe('录像上传的停滞判断与片段去重', () => {
+    it('上传仍有进度时不中断大段，停滞 30 秒或低于 512 kbps 时才放弃', async () => {
+        vi.useFakeTimers();
+        vi.stubGlobal('XMLHttpRequest', FakeUpload);
+        try {
+            // A 9 MiB HD archive segment still moving after 180 s. A fixed 60 s deadline restarted it from zero.
+            const moving = postSegment('/u', null, 9 * 1024 ** 2, new AbortController().signal);
+            const xhr = FakeUpload.last;
+            for (let i = 0; i < 9; i++) { await vi.advanceTimersByTimeAsync(20_000); xhr.upload.onprogress!(); }
+            xhr.respond(200, { id: 'seg' });
+            await expect(moving).resolves.toEqual({ status: 200, ok: true, body: { id: 'seg' } });
+            expect(xhr.aborted).toBe(false);
+
+            const stalled = postSegment('/u', null, 9 * 1024 ** 2, new AbortController().signal);
+            const stalledXhr = FakeUpload.last;
+            const stalledResult = expect(stalled).rejects.toThrow('录像上传停滞');
+            await vi.advanceTimersByTimeAsync(20_000);
+            stalledXhr.upload.onprogress!();
+            await vi.advanceTimersByTimeAsync(30_000);
+            await stalledResult;
+            expect(stalledXhr.aborted).toBe(true);
+
+            // 64 KB gets 60 s plus one second at the floor rate, however steadily bytes trickle.
+            const slow = postSegment('/u', null, 64_000, new AbortController().signal);
+            const slowXhr = FakeUpload.last;
+            const slowResult = expect(slow).rejects.toThrow('录像上传过慢');
+            for (let i = 0; i < 7; i++) { await vi.advanceTimersByTimeAsync(10_000); slowXhr.upload.onprogress!(); }
+            await slowResult;
+
+            // Once the body is sent the server has 60 s. A proxy error page keeps its status.
+            const answered = postSegment('/u', null, 1000, new AbortController().signal);
+            FakeUpload.last.upload.onload!();
+            await vi.advanceTimersByTimeAsync(59_000);
+            FakeUpload.last.respond(413, '<html>Too large</html>');
+            await expect(answered).resolves.toEqual({ status: 413, ok: false, body: null });
+
+            const cancel = new AbortController();
+            const stopped = postSegment('/u', null, 1000, cancel.signal);
+            cancel.abort();
+            await expect(stopped).rejects.toThrow('录像上传已取消');
+        } finally { vi.unstubAllGlobals(); vi.useRealTimers(); }
+    });
+    it('相邻提交的窗口共用同一段时只上传一次，两个请求都记为已送达', async () => {
+        vi.useFakeTimers();
+        vi.stubGlobal('XMLHttpRequest', FakeUpload);
+        vi.stubGlobal('navigator', { onLine: true });
+        FakeUpload.sent = [];
+        FakeUpload.reply = (xhr) => queueMicrotask(() => xhr.respond(200, { id: 'stored' }));
+        const messages: { rid?: string; done?: boolean; reason?: string }[] = [];
+        const recorder = new CaptureRecorder({ uploadUrl: '/u', sources: () => ({}), send: (m: typeof messages[number]) => { messages.push(m); return true; }, show() {} });
+        try {
+            const db = memoryBuffer();
+            const t = Date.now() - 120_000;
+            const window = { streams: ['screen'], sent: [] };
+            await db.write([
+                ['segments', 'seg', { id: 'seg', kind: 'clip', stream: 'screen', startMs: t, endMs: t + 10_000, bytes: 4, mime: 'video/webm', quality: {} }],
+                ['blobs', 'seg', new Blob(['data'])],
+                // A wrong answer, then the accepted resubmission seconds later: both windows cover the segment.
+                ['requests', 'wa', { ...window, rid: 'wa', windowStartMs: t + 1000, windowEndMs: t + 6000, priority: 2 }],
+                ['requests', 'ac', { ...window, rid: 'ac', windowStartMs: t + 4000, windowEndMs: t + 9000, priority: 1 }],
+            ]);
+            Object.assign(recorder, { db, settings: { clips: { enabled: true } }, teamUid: 1, binding: 'd:1', deviceId: 'd', begin: 0, end: Infinity });
+            await recorder.tick();
+            await recorder.tick();
+            expect(FakeUpload.sent).toHaveLength(1);
+            expect((FakeUpload.sent[0] as FormData).get('rid')).toBe('ac');
+            expect(db.stores.segments.get('seg').uploaded).toBe(true);
+            expect(db.stores.jobs.size).toBe(0);
+            expect(db.stores.requests.size).toBe(0);
+            expect(messages.filter((m) => m.done).map((m) => [m.rid, m.reason]).sort()).toEqual([['ac', undefined], ['wa', undefined]]);
+        } finally {
+            clearInterval(recorder.timer);
+            clearInterval(recorder.clockTimer);
+            FakeUpload.reply = null;
+            vi.unstubAllGlobals();
+            vi.useRealTimers();
+        }
     });
 });

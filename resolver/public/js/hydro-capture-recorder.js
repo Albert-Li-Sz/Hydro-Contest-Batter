@@ -1,5 +1,55 @@
-import { evictedSegments, nextUpload, openBuffer, segmentsFor } from './hydro-recording-buffer.js';
+import { archiveLimit, evictedSegments, nextUpload, openBuffer, segmentsFor } from './hydro-recording-buffer.js';
 import { ArchiveEncoderUnavailable, recordingSource, recordSegment } from './hydro-recording-media.js';
+
+const UPLOAD_STALL_MS = 30_000;
+const RESPONSE_MS = 60_000;
+// 512 kbps. A slower transfer would hold the single upload lane for minutes while clips wait.
+const FLOOR_BYTES_PER_MS = 64;
+
+// fetch() cannot report upload progress. A fixed deadline aborts large segments that are
+// still moving and restarts them from zero, spending the same bandwidth again. Abort only
+// a transfer that has stopped, or one too slow to finish in reasonable time.
+export function postSegment(url, form, bytes, signal) {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        let settled = false, idle, cap;
+        const finish = () => {
+            settled = true;
+            clearTimeout(idle);
+            clearTimeout(cap);
+            signal.removeEventListener('abort', cancel);
+        };
+        const fail = (message) => {
+            if (settled) return;
+            finish();
+            xhr.abort();
+            reject(new Error(message));
+        };
+        const cancel = () => fail('录像上传已取消');
+        const wait = (ms, message) => {
+            if (settled) return;
+            clearTimeout(idle);
+            idle = setTimeout(() => fail(message), ms);
+        };
+        xhr.open('POST', url);
+        xhr.setRequestHeader('Accept', 'application/json');
+        xhr.upload.onprogress = () => wait(UPLOAD_STALL_MS, '录像上传停滞');
+        xhr.upload.onload = () => wait(RESPONSE_MS, '服务器未及时确认录像');
+        xhr.onerror = () => fail('网络中断，录像上传失败');
+        xhr.onload = () => {
+            if (settled) return;
+            finish();
+            let body = null;
+            try { body = JSON.parse(xhr.responseText); } catch { /* A proxy error page is not JSON. */ }
+            resolve({ status: xhr.status, ok: xhr.status >= 200 && xhr.status < 300, body });
+        };
+        if (signal.aborted) { cancel(); return; }
+        signal.addEventListener('abort', cancel, { once: true });
+        wait(UPLOAD_STALL_MS, '录像上传停滞');
+        cap = setTimeout(() => fail('录像上传过慢'), RESPONSE_MS + bytes / FLOOR_BYTES_PER_MS);
+        xhr.send(form);
+    });
+}
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const keyOf = (kind, stream) => kind + (stream === 'screen' ? 'Screen' : 'Webcam');
@@ -42,6 +92,7 @@ export class CaptureRecorder {
         this.begin = Number.isFinite(profile.beginAt) ? profile.beginAt : 0;
         this.end = Number.isFinite(profile.endAt) ? profile.endAt : Infinity;
         this.supported = typeof MediaRecorder === 'function' && !!globalThis.indexedDB;
+        navigator.storage?.estimate?.().then((estimate) => { this.quota = estimate.quota; }, () => {});
         if (Number.isFinite(profile.serverTime)) this.offset = profile.serverTime - Date.now();
         const uid = profile.teamUid;
         const assigned = Number.isSafeInteger(uid);
@@ -229,8 +280,17 @@ export class CaptureRecorder {
                 return;
             }
             for (const request of requests) {
-                const matching = segmentsFor(request, rows);
-                const missingJobs = matching.filter((s) => !request.sent.includes(s.id) && !jobs.some((j) => j.rid === request.rid && j.segment === s.id));
+                const matching = segmentsFor(request, rows).filter((s) => !request.sent.includes(s.id));
+                // Windows of nearby submissions share segments. The server keeps one copy for
+                // every request whose window covers it, so an uploaded segment is not sent again.
+                const shared = new Set(matching.filter((s) => s.uploaded).map((s) => s.id));
+                if (shared.size) {
+                    const queued = jobs.filter((j) => j.rid === request.rid && shared.has(j.segment));
+                    request.sent = [...request.sent, ...shared];
+                    await db.write([['requests', request.rid, request], ...queued.map((j) => ['jobs', j.id])]);
+                    jobs = jobs.filter((j) => !queued.includes(j));
+                }
+                const missingJobs = matching.filter((s) => !s.uploaded && !jobs.some((j) => j.rid === request.rid && j.segment === s.id));
                 for (const segment of missingJobs) {
                     const id = request.rid + '/' + segment.id;
                     const job = { id, segment: segment.id, rid: request.rid, created: Date.now(), priority: request.priority };
@@ -246,7 +306,7 @@ export class CaptureRecorder {
                     }
                 }
             }
-            const expired = evictedSegments(rows, this.now(), new Set(jobs.filter((j) => j.rid).map((j) => j.segment)));
+            const expired = evictedSegments(rows, this.now(), new Set(jobs.filter((j) => j.rid).map((j) => j.segment)), archiveLimit(this.settings?.archive, this.quota));
             for (const row of expired) {
                 const entries = [['segments', row.id], ['blobs', row.id], ...jobs.filter((j) => j.segment === row.id).map((j) => ['jobs', j.id])];
                 if (row.kind === 'archive') entries.push(this.gap(row, 'evicted'));
@@ -274,8 +334,17 @@ export class CaptureRecorder {
         finally { this.busy = false; this.display(); }
     }
 
+    // A request's segment has reached the server, whichever request's job carried it.
+    async delivered(db, job, row, fields = {}) {
+        const request = await db.read('requests', job.rid);
+        if (!request) return [['jobs', job.id]];
+        const sent = request.sent.includes(row.id) ? request.sent : [...request.sent, row.id];
+        return [['jobs', job.id], ['requests', job.rid, { ...request, ...fields, sent }]];
+    }
+
     async upload(db, job, row) {
         if (!row) { await db.write([['jobs', job.id]]); return; }
+        if (job.rid && row.uploaded) { await db.write(await this.delivered(db, job, row)); return; }
         const blob = await db.read('blobs', row.id);
         const currentTest = row.kind === 'test' && this.test?.id === row.testId ? this.test : null;
         if (!blob || (row.kind === 'test' && !currentTest)) {
@@ -291,19 +360,15 @@ export class CaptureRecorder {
         const began = performance.now();
         const abort = new AbortController();
         this.httpAbort = abort;
-        const timeout = setTimeout(() => abort.abort(), 60_000);
         let permanent = false;
         try {
-            const response = await fetch(this.uploadUrl, { method: 'POST', credentials: 'same-origin', headers: { Accept: 'application/json' }, body: form, signal: abort.signal });
+            const response = await postSegment(this.uploadUrl, form, blob.size, abort.signal);
             permanent = [400, 401, 403, 404, 410, 413, 415, 422].includes(response.status);
-            const result = await response.json();
-            if (!response.ok || !result.id) throw new Error(result.error?.message || '录像上传失败（' + response.status + '）');
-            const entries = [['jobs', job.id]];
-            if (job.rid) {
-                const request = await db.read('requests', job.rid);
-                if (request) entries.push(['requests', job.rid, { ...request, sent: [...request.sent, row.id] }]);
-            } else entries.push(['segments', row.id], ['blobs', row.id]);
-            await db.write(entries);
+            const result = response.body;
+            if (!response.ok || !result?.id) throw new Error(result?.error?.message || '录像上传失败（' + response.status + '）');
+            // Clip segments stay cached for later windows; mark them so no other request resends them.
+            await db.write(job.rid ? [...await this.delivered(db, job, row), ['segments', row.id, { ...row, uploaded: true }]]
+                : [['jobs', job.id], ['segments', row.id], ['blobs', row.id]]);
             if (currentTest) {
                 currentTest.bytes += row.bytes;
                 currentTest.uploadMs += performance.now() - began;
@@ -320,21 +385,15 @@ export class CaptureRecorder {
             this.failures++;
             if (currentTest) currentTest.failures++;
             if (permanent) {
-                const entries = [['jobs', job.id]];
-                if (job.rid) {
-                    const request = await db.read('requests', job.rid);
-                    if (request) entries.push(['requests', job.rid, { ...request, reason: 'failed', sent: [...request.sent, row.id] }]);
-                } else {
-                    entries.push(['segments', row.id], ['blobs', row.id]);
-                    if (row.kind === 'archive') entries.push(this.gap(row, 'failed'));
-                }
+                const entries = job.rid ? await this.delivered(db, job, row, { reason: 'failed' }) : [['jobs', job.id], ['segments', row.id], ['blobs', row.id]];
+                if (!job.rid && row.kind === 'archive') entries.push(this.gap(row, 'failed'));
                 await db.write(entries);
             } else {
                 const attempts = (job.attempts || 0) + 1;
                 await db.write([['jobs', job.id, { ...job, attempts, retryAt: Date.now() + 1000 * 2 ** Math.min(attempts, 7) }]]);
             }
             this.warn(error);
-        } finally { clearTimeout(timeout); }
+        }
     }
 
     async runTest(message) {

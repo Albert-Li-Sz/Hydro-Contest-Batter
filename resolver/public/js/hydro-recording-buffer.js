@@ -5,12 +5,22 @@ export const CLIP_AGE = 600_000;
 const ARCHIVE_AGE = 1_800_000;
 const ARCHIVE_BYTES = 300 * 1024 * 1024;
 
-export function evictedSegments(rows, now, protectedIds) {
+// Offline archive retention is meant to cover 30 minutes. At the HD preset 300 MiB lasts only
+// about 17, so size the cap from the configured bitrate with headroom for encoder overshoot.
+// It never drops below 300 MiB and never claims more than half of the site's storage quota.
+export function archiveLimit(archive, quota) {
+    const kbps = (archive?.screen?.kbps || 0) + (archive?.webcam?.kbps || 0);
+    const wanted = Math.ceil(ARCHIVE_AGE * kbps / 8 * 1.25);
+    const ceiling = Number.isFinite(quota) && quota > 0 ? Math.floor(quota / 2) : Infinity;
+    return Math.max(ARCHIVE_BYTES, Math.min(wanted, ceiling));
+}
+
+export function evictedSegments(rows, now, protectedIds, archiveCap = ARCHIVE_BYTES) {
     let archiveBytes = 0;
     return rows.slice().sort((a, b) => b.endMs - a.endMs).filter((row) => {
         if (row.kind === 'archive') {
             archiveBytes += row.bytes;
-            return row.endMs < now - ARCHIVE_AGE || archiveBytes > ARCHIVE_BYTES;
+            return row.endMs < now - ARCHIVE_AGE || archiveBytes > archiveCap;
         }
         return row.endMs < now - CLIP_AGE && !protectedIds.has(row.id);
     });
