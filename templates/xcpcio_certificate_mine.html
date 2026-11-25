@@ -1,0 +1,24 @@
+{% set page_name = 'contest_xcpcio_certificates_mine' %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<link rel="stylesheet" href="{{ codeBase }}/hydro-config.css">
+<link rel="stylesheet" href="{{ codeBase }}/hydro-certificates.css">
+<div class="row resolver-config xcpcio-certificates" id="hydro-resolver-config"><div class="medium-12 columns">
+  <section class="section visible">
+    <div class="section__header resolver-heading">
+      <div><h1 class="section__title">我的证书</h1><p class="resolver-muted">{{ tdoc.title }}</p></div>
+    </div>
+    <div class="section__body">
+      {% if certificates.length %}
+      <ul class="certificate-list">
+        {% for item in certificates %}
+        <li><a href="{{ base }}?code={{ item.code }}" target="_blank" rel="noopener"><strong>{{ item.award }}</strong><span>{{ item.name }}{% if item.team and item.team != item.name %} · {{ item.team }}{% endif %}</span><span class="resolver-muted">{{ item.kind }} · {{ item.code }}</span></a></li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="resolver-muted">本场比赛还没有颁发给你的证书。</p>
+      {% endif %}
+    </div>
+  </section>
+</div></div>
+{% endblock %}

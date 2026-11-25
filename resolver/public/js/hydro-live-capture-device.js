@@ -92,6 +92,8 @@ function reportStatus() {
         type: 'status',
         streams: [...state.screen ? ['screen'] : [], ...state.webcam ? ['webcam'] : []],
         screen: settings?.width ? `${settings.width}×${settings.height}` : '',
+        // Chromium tells whether the machine has more than one screen (诚信复核); other browsers send nothing.
+        ...typeof globalThis.screen?.isExtended === 'boolean' ? { extended: globalThis.screen.isExtended } : {},
     });
 }
 

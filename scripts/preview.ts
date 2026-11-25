@@ -15,6 +15,10 @@ import { createMonitorPreview } from '../preview/monitor';
 import { createPresencePreview } from '../preview/presence';
 import { createOverviewPreview } from '../preview/overview';
 import { createResultsPreview } from '../preview/results';
+import { createCertificatesPreview } from '../preview/certificates';
+import { createJuryPreview } from '../preview/jury';
+import { createIntegrityPreview } from '../preview/integrity';
+import { applyJury } from '../lib/jury';
 import { createCcsPreview, previewCcsId } from '../preview/ccs';
 import { createManagePreview } from '../preview/manage';
 import { createPrintersPreview } from '../preview/printers';
@@ -46,7 +50,7 @@ const screensPreview = createScreensPreview(env, logoNames, pluginVersion, previ
 const monitorPreview = createMonitorPreview(env, pluginVersion, demoData);
 const presencePreview = createPresencePreview(env, pluginVersion, demoData);
 const overviewPreview = createOverviewPreview(env, pluginVersion);
-const resultsPreview = createResultsPreview(env, pluginVersion);
+const resultsPreview = createResultsPreview(env, pluginVersion, previewDb);
 const managePreview = createManagePreview(env, pluginVersion);
 // 气球配送 tickets print on the receipt printers of the print servers preview, which takes them from it.
 const balloonsPreview = createBalloonsPreview(env, pluginVersion, demoData, () => printersPreview.receiptPrinters());
@@ -55,7 +59,6 @@ const livePreview = createLivePreview(env, logoNames, pluginVersion, demoData, (
 const clarificationPreview = createClarificationPreview(env, pluginVersion, (text) => {
     livePreview.hub.tickerMessage.createTemporaryFromInput({ type: 'text', part: 'long', periodMs: 30_000, text }, 5 * 60_000);
 });
-const ccsPreview = createCcsPreview(demoData(), () => settings);
 const saveState = async (next: typeof settings) => {
     await fs.writeFile(`${statePath}.tmp`, JSON.stringify(next, null, 2));
     await fs.rename(`${statePath}.tmp`, statePath);
@@ -65,11 +68,17 @@ const controlPreview = createControlPreview(env, pluginVersion, demoData, { get:
     { balloons: balloonsPreview.settings, capture: livePreview.captureSettings }, reactionsPreview);
 const base = '/contest/demo';
 let unlocked = false;
+const certificatesPreview = createCertificatesPreview(env, pluginVersion, previewDb, {
+    snapshot: (label) => resultsPreview.snapshot(demoData(), settings, label), showIdentity: () => settings.showIdentity, title: () => demoData().contest.contest_name,
+});
 const boardUrl = `${base}/scoreboard/xcpcio-plus`;
 const settingsUrl = `${base}/xcpcio-settings`;
 const publicUrl = `${base}/xcpcio-public`;
 const data = demoData();
 const teams = demoRoster();
+const juryPreview = createJuryPreview(env, pluginVersion, data);
+const ccsPreview = createCcsPreview(data, () => settings, juryPreview.state);
+const integrityPreview = createIntegrityPreview(env, pluginVersion, () => data);
 const manifest = JSON.parse(await fs.readFile(path.join(root, 'public/hydro-xcpcio/manifest.json'), 'utf8'));
 const defaults = { process: { env: {} }, UiContext: { cdn_prefix: '/' }, assetBase: manifest.base, tdoc: { title: data.contest.contest_name } };
 const contentTypes: Record<string, string> = { '.webp': 'image/webp', '.ttf': 'font/ttf', '.woff2': 'font/woff2', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.gif': 'image/gif', '.html': 'text/html', '.json': 'application/json', '.txt': 'text/plain' };
@@ -81,7 +90,9 @@ const server = http.createServer(async (request, response) => {
         const displayDefaults = { ...defaults, hideSubmissions: url.searchParams.get('running') === '1',  tdoc: { title: displayData.contest.contest_name } };
         const boardResponse = () => {
             // As index.ts applyBoardRules: ?running=1 is before the freeze, where the CCPC board hides labels.
-            let shown = settings.ignoreAfterAccept ? dropAfterAccept(displayData) : displayData;
+            // 裁判操作 apply to the demo contest's board as in Hydro (realtime is the staff view).
+            const judged = displayData === data ? applyJury(displayData, juryPreview.state(), juryPreview.pids, url.searchParams.get('realtime') !== 'true') : displayData;
+            let shown = settings.ignoreAfterAccept ? dropAfterAccept(judged) : judged;
             if (settings.ccpcBoard.enabled && url.searchParams.get('running') === '1' && url.searchParams.get('frozen') !== '1') shown = hideProblemLabels(shown, settings.ccpcBoard);
             const board = enhanceBoard(shown, settings, { identity: settings.showIdentity });
             return displaySpecialAwards(board, settings, url.searchParams.get('running') !== '1', url.searchParams.get('frozen') === '1');
@@ -97,6 +108,9 @@ const server = http.createServer(async (request, response) => {
         if (await presencePreview(request, response, url)) return;
         if (await overviewPreview(request, response, url)) return;
         if (await resultsPreview.handle(request, response, url, displayData, settings)) return;
+        if (await certificatesPreview.handle(request, response, url)) return;
+        if (await juryPreview.handle(request, response, url)) return;
+        if (await integrityPreview.handle(request, response, url)) return;
         if (await printersPreview(request, response, url)) return;
         if (await balloonsPreview.handle(request, response, url)) return;
         if (await clarificationPreview.handle(request, response, url)) return;

@@ -104,7 +104,7 @@
       "source": "public/js/medals.js",
       "destination": "resolver/public/js/medals.js",
       "sha256": "f26b721870dc3b4704b17d695c057bf4c26362c5a621111d5149d33adc29cd65",
-      "modifiedSha256": "ebe1ac1273adfe0f6fbf6b0dcbf9fc47110e5c62a968b91748e7137fb847d243"
+      "modifiedSha256": "cb12c82174af0f79d8c210f16bb2ea8708bc231c8e34dac9e70d7fba70799943"
     },
     {
       "source": "public/js/play.js",
@@ -170,7 +170,7 @@
       "source": "public/play.html",
       "destination": "templates/xcpcio_resolver_play.html",
       "sha256": "b99524cc2d9c548b978de1bb6d6efd39b12f5debf907bf5e693cd3a8683b30b7",
-      "modifiedSha256": "c829ef91e78518d53d6a9b8d15d47ff89a756787da02fbdecb60a634d2fc7c97"
+      "modifiedSha256": "2b6def8c800deec198acc762be0ba29c566cae7c3d1dc29967f989631440bfdf"
     },
     {
       "source": "server/lib/engine.js",

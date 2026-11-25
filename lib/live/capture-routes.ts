@@ -45,6 +45,8 @@ const MAX_DEVICES = 1000;
 export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
     const raw = (name: string): any => ctx.db.collection(name as never);
     const devices = raw('xcpcio.live.capture');
+    // 诚信复核 (lib/integrity.ts): when a capture machine starts or stops having more than one screen.
+    const signals = raw('xcpcio.integrity.signals');
     const configs = raw('xcpcio.live.capture.config');
     const on = ctx.on.bind(ctx) as unknown as (name: string, listener: (...args: any[]) => unknown) => () => void;
     on('app/started', async () => {
@@ -393,7 +395,14 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
                 const streams = (Array.isArray(message.streams) ? message.streams : []).filter((stream): stream is CaptureStream => captureStreams.includes(stream as CaptureStream));
                 const screen = typeof message.screen === 'string' ? message.screen.slice(0, 40) : '';
                 const current = [...new Set(streams)].sort();
-                await devices.updateOne({ _id: this.deviceId, connection: this.endpoint?.connection }, { $set: { lastSeen: new Date(), streams: current, 'client.screen': screen } });
+                const extended = typeof message.extended === 'boolean' ? message.extended : undefined;
+                const before = extended === undefined ? null : await devices.findOne({ _id: this.deviceId }, { projection: { 'client.extended': 1, name: 1 } }) as { client?: { extended?: boolean }; name?: string } | null;
+                await devices.updateOne({ _id: this.deviceId, connection: this.endpoint?.connection },
+                    { $set: { lastSeen: new Date(), streams: current, 'client.screen': screen, ...extended === undefined ? {} : { 'client.extended': extended } } });
+                if (extended !== undefined && before && before.client?.extended !== extended && this.endpoint) {
+                    await signals.insertOne({ _id: String(new ObjectId()), contestKey: this.endpoint.contestKey, teamUid: this.recordingTeam, device: this.deviceId,
+                        deviceName: before.name || '', kind: 'extended', value: extended, at: Date.now() });
+                }
                 // Reports come every few seconds; staff hear only about a change.
                 const key = `${current.join(',')}|${screen}`;
                 if (key !== this.reported && this.endpoint) relay.devicesChanged(this.endpoint.contestKey);

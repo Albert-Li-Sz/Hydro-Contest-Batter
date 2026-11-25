@@ -36,6 +36,32 @@ export const presets: Record<PresetId, { name: string; board: BoardPatch; balloo
 };
 export const presetIds = Object.keys(presets) as PresetId[];
 
+/**
+ * 奖牌模板: how a kind of contest counts its medals, applied on top of the 赛制 (which leaves medals alone).
+ * CCPC 全国赛: 基本规则附 1; CCPC 总决赛: 学校名次 1–10/11–30/31–60; ICPC 区域赛: 至少过一题的队伍分档取整;
+ * 金牌倍数: ICPC 西安邀请赛 (金牌为队伍数的 10%，银牌 2 倍，铜牌 3 倍); WF: 4-6-10 and Honors (2026 ICPC World Finals Rules).
+ */
+export const medalTemplates: { id: string; name: string; board: BoardPatch }[] = [
+    { id: 'ccpc-national', name: 'CCPC 全国赛', board: { medalBasis: 'ratio', medals: { gold: 10, silver: 20, bronze: 30 }, medalBase: 'submitted', medalRounding: 'cumulative',
+        medalRanking: 'team', honors: { enabled: false, highest: 25, high: 50, standard: 100 } } },
+    { id: 'ccpc-final', name: 'CCPC 总决赛', board: { medalBasis: 'count', medals: { gold: 10, silver: 20, bronze: 30 }, medalRanking: 'school',
+        honors: { enabled: false, highest: 25, high: 50, standard: 100 } } },
+    { id: 'icpc-regional', name: 'ICPC 区域赛', board: { medalBasis: 'ratio', medals: { gold: 10, silver: 20, bronze: 30 }, medalBase: 'solved', medalRounding: 'tier',
+        medalRanking: 'team', honors: { enabled: false, highest: 25, high: 50, standard: 100 } } },
+    { id: 'icpc-multiple', name: '金牌倍数', board: { medalBasis: 'multiple', medals: { gold: 10, silver: 2, bronze: 3 }, medalBase: 'registered',
+        medalRanking: 'team', honors: { enabled: false, highest: 25, high: 50, standard: 100 } } },
+    { id: 'wf', name: 'ICPC World Finals', board: { medalBasis: 'count', medals: { gold: 4, silver: 6, bronze: 10 }, medalRanking: 'team',
+        honors: { enabled: true, highest: 25, high: 50, standard: 100 } } },
+];
+
+/** The 奖牌模板 the medals follow now, or null when they were set by hand. */
+export function medalTemplateOf(board: BoardSettings): string | null {
+    const fields = ['medalBasis', 'medals', 'medalRanking', 'honors'] as const;
+    return medalTemplates.find((template) => fields.every((key) => JSON.stringify(board[key]) === JSON.stringify(template.board[key]))
+        && (board.medalBasis === 'count' || (template.board.medalBase === board.medalBase
+            && (board.medalBasis !== 'ratio' || template.board.medalRounding === board.medalRounding))))?.id ?? null;
+}
+
 const matches = (actual: Record<string, unknown>, wanted: Record<string, unknown>): boolean => Object.entries(wanted).every(([key, value]) => (
     value && typeof value === 'object' && !Array.isArray(value)
         ? matches((actual[key] || {}) as Record<string, unknown>, value as Record<string, unknown>)

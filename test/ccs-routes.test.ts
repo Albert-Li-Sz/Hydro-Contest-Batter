@@ -85,7 +85,7 @@ function setup() {
     const listeners = new Map<string, ((...args: any[]) => void)[]>();
     const ctx: any = { db: memory.db, Route: vi.fn(), on: (name: string, fn: any) => { listeners.set(name, [...(listeners.get(name) || []), fn]); },
         effect: (fn: any) => dispose.push(fn()), broadcast: (name: string, ...args: any[]) => listeners.get(name)?.forEach(fn => fn(...args)) };
-    const app = applyCcs(ctx, { loadData: async () => state.source.full, loadSettings: async () => state.source.settings });
+    const app = applyCcs(ctx, { loadData: async () => state.source.full, loadSettings: async () => state.source.settings, loadJury: async () => ({ holds: [], credits: [] }) });
     const key = `system/${state.source.contest.id}`;
     memory.tables.get('xcpcio.enhanced.settings')!.set(key, { _id: key, settings: { ccsApi: true } });
     // ccsStore cached the collection object at construction, so populate that same table.

@@ -8,11 +8,11 @@ import { awardsCsv, boardOptions, resultBoard, standingsCsv, type ResultsData } 
 import type { BoardSettings } from '../lib/settings';
 import { previewDatabase } from './resolver-memory-db';
 
-export function createResultsPreview(env: Environment, version: string) {
+export function createResultsPreview(env: Environment, version: string, db = previewDatabase().db) {
     const scope = { domainId: 'preview', contestId: 'demo' };
     const contestUrl = '/contest/demo';
     const base = `${contestUrl}/results`;
-    const store = new ResultsStore(previewDatabase().db);
+    const store = new ResultsStore(db);
     let id = 0;
 
     function current(data: BoardData, settings: BoardSettings): ResultsData {
@@ -81,5 +81,13 @@ export function createResultsPreview(env: Environment, version: string) {
         return true;
     }
 
-    return { handle, unlock: (data: BoardData, settings: BoardSettings) => capture(current(data, settings), 'unlock', 'demo-unlock') };
+    return {
+        handle, unlock: (data: BoardData, settings: BoardSettings) => capture(current(data, settings), 'unlock', 'demo-unlock'),
+        /** A manual snapshot of the current results (证书 are issued from one). */
+        snapshot: async (data: BoardData, settings: BoardSettings, label: string) => {
+            const key = `manual-${++id}`;
+            await capture(current(data, settings), 'manual', key, label);
+            return key;
+        },
+    };
 }

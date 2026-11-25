@@ -54,7 +54,7 @@ export function createBalloonsPreview(env: Environment, version: string, demo: (
         if (!doc.settings.enabled) return;
         const due = dueBalloons(contestKey, tdoc, [...journals].map(([uid, journal]) => ({ uid, journal })));
         const { inserts, updates } = reconcile(balloons, due, {
-            now: Date.now(), lockAt: lockAt.getTime(), locked: Date.now() > lockAt.getTime(), hold: doc.settings.afterFreeze === 'hold',
+            now: Date.now(), lockAt: lockAt.getTime(), locked: Date.now() > lockAt.getTime(), hold: doc.settings.afterFreeze !== 'continue', encourage: doc.settings.afterFreeze === 'encourage' ? doc.settings.encourageCount : undefined,
             tickets: doc.settings.tickets.enabled, hydroSent: new Set(),
         });
         for (const balloon of inserts) balloons.push({ ...balloon, id: `6750a${hex(++objectSerial, 19)}`, seq: ++doc.seq });
@@ -81,7 +81,7 @@ export function createBalloonsPreview(env: Environment, version: string, demo: (
         return {
             revision: doc.revision,
             contest: { title: data.contest.contest_name, beginAt, endAt, lockAt, locked: Date.now() > lockAt.getTime(), ended: false },
-            enabled: doc.settings.enabled, tickets: doc.settings.tickets.enabled, afterFreeze: doc.settings.afterFreeze,
+            enabled: doc.settings.enabled, tickets: doc.settings.tickets.enabled, afterFreeze: doc.settings.afterFreeze, encourageCount: doc.settings.encourageCount,
             problems: pids.map((pid, index) => ({ pid, label: labels[index], title: titles[pid], color: colors()[index] })),
             teams: [...teams].map(([uid, team]) => ({ uid, name: team.name, school: team.school, seat: team.seat, zone: zoneOf(team.seat), unofficial: team.unofficial })),
             balloons: balloons.map((balloon) => ({

@@ -3,7 +3,7 @@
 {% block content %}
 <link rel="stylesheet" href="{{ codeBase }}/hydro-play.css">
 <div class="row"><div class="medium-12 columns">
-  <section class="section visible"><div class="section__header resolver-page-heading"><h1 class="section__title">{{ tdoc.title }} · 滚榜</h1><div><button id="btn-cast" type="button" class="button">投到观众屏</button> <a id="audience-link" class="button" hidden target="_blank" rel="noopener">打开观众屏</a> <a class="button" href="{{ configUrl }}">返回滚榜配置</a></div></div></section>
+  <section class="section visible"><div class="section__header resolver-page-heading"><h1 class="section__title">{{ tdoc.title }} · 滚榜</h1><div><button id="btn-cast" type="button" class="button">投到观众屏</button> <a id="audience-link" class="button" hidden target="_blank" rel="noopener">打开观众屏</a> {% if scriptUrl %}<a class="button" href="{{ scriptUrl }}" target="_blank" rel="noopener">颁奖台本</a> {% endif %} <a class="button" href="{{ configUrl }}">返回滚榜配置</a></div></div></section>
   <section class="section visible is-loading" id="hydro-resolver-player" tabindex="-1">
     <div id="resolver-rehearsal" class="resolver-rehearsal" hidden>仅供彩排</div>
     <script id="resolver-runtime" type="application/json">{{ runtimeJson | safe }}</script>

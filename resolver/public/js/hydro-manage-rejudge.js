@@ -10,6 +10,8 @@ const status = el('p', { class: 'resolver-muted', role: 'status', hidden: true }
 const domain = input({ value: runtime.domainId, 'aria-label': '域 ID', required: true });
 const contest = el('select', { class: 'select', 'aria-label': '比赛' });
 const skipAccepted = el('input', { type: 'checkbox', checked: true });
+// 暂缓公布: the contest's problems show as judging to the public until the jury releases them (裁判操作).
+const holdResults = el('input', { type: 'checkbox' });
 const statuses = el('div', { class: 'manage-statuses' }, ...runtime.statuses.map(([code, short, label]) => el('label', {},
     el('input', { type: 'checkbox', value: code }), el('span', { text: `${short} ${label}` }))));
 const result = el('div');
@@ -58,7 +60,8 @@ $('manage-root').replaceChildren(
         el('span', { class: 'manage-quick' },
             quick('常见错误', [2, 3, 4, 5, 6]), quick('TLE / MLE', [3, 4]), quick('系统错误', [8, 10]), quick('清空（全部结果）', []))),
         statuses,
-        el('label', { class: 'checkbox', style: 'margin-top:12px' }, skipAccepted, 'AC 不参与重测')),
+        el('label', { class: 'checkbox', style: 'margin-top:12px' }, skipAccepted, 'AC 不参与重测'),
+        el('label', { class: 'checkbox', hidden: state.scope !== 'contest' }, holdResults, '复核前对外暂缓公布这些题（在比赛的裁判操作页公布）')),
     status,
     el('div', { class: 'resolver-actions' },
         el('button', { class: 'button', type: 'button', text: '预览数量', onclick: () => preview() }),
@@ -76,6 +79,7 @@ function setScope(scope) {
     contestPanel.hidden = scope !== 'contest';
     problemPanel.hidden = scope !== 'problems';
     domainPanel.hidden = scope !== 'domain';
+    holdResults.closest('label').hidden = scope !== 'contest';
     result.replaceChildren();
     notify(status, '');
 }
@@ -183,6 +187,7 @@ function selection() {
         domain: state.domain, scope: state.scope,
         statuses: [...statuses.querySelectorAll('input:checked')].map((box) => Number(box.value)),
         skipAccepted: skipAccepted.checked,
+        holdResults: state.scope === 'contest' && holdResults.checked,
     };
     if (state.scope === 'contest') {
         body.contest = contest.value || null;

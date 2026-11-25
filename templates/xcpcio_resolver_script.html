@@ -1,0 +1,41 @@
+{% set page_name = 'contest_resolver_script' %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<link rel="stylesheet" href="{{ codeBase }}/hydro-config.css">
+<link rel="stylesheet" href="{{ codeBase }}/hydro-ceremony.css">
+<div class="row resolver-config ceremony-script"><div class="medium-12 columns">
+  <section class="section visible">
+    <div class="section__header resolver-heading">
+      <div><h1 class="section__title">颁奖台本</h1><p class="resolver-muted">{{ script.title }}{% if script.rehearsal %} · 仅供彩排{% endif %}</p></div>
+      <div class="ceremony-actions"><button class="button" type="button" onclick="window.print()">打印</button> <a class="button" href="{{ playUrl }}">返回滚榜</a></div>
+    </div>
+    <div class="section__body">
+      {% if not script.segments.length %}<p class="resolver-muted">这场滚榜没有颁发奖项。</p>{% endif %}
+      <ol class="ceremony-steps">
+      {% for segment in script.segments %}
+        <li class="ceremony-step ceremony-step--{{ segment.kind }}">
+          {% if segment.kind == 'stage' %}
+          <h2>{{ segment.citation }} · {{ segment.teams.length }} 队</h2>
+          <p class="ceremony-cue">揭晓过程中，请以下队伍依次到候场区；本段揭晓完毕后上台领奖。</p>
+          {% elif segment.kind == 'announce' %}
+          <h2>{{ segment.citation }} · {{ segment.teams.length }} 队</h2>
+          <p class="ceremony-cue">揭晓到这里时宣读，不上台。</p>
+          {% else %}
+          <h2>{{ segment.citation }}</h2>
+          <p class="ceremony-cue">揭晓这支队伍时宣布。</p>
+          {% endif %}
+          <table class="data-table">
+            <thead><tr><th>名次</th><th>队伍</th><th>学校</th><th>同时获得</th></tr></thead>
+            <tbody>
+            {% for team in segment.teams %}
+              <tr><td>{{ team.rank or '*' }}</td><td>{{ team.name }}</td><td>{{ team.school }}</td><td>{{ team.extras | join('、') }}</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </li>
+      {% endfor %}
+      </ol>
+    </div>
+  </section>
+</div></div>
+{% endblock %}

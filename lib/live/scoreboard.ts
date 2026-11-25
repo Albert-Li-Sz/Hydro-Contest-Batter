@@ -8,6 +8,7 @@ import type {
 } from './types';
 import { publicRunVerdict } from './model';
 import { schoolRanks, trophyWinners } from '../../resolver/public/js/trophies.js';
+import { honorsWinners } from '../../resolver/public/js/honors.js';
 
 const isJudged = (run: RunInfo) => run.result.type === 'ICPC';
 const isAccepted = (run: RunInfo) => run.result.type === 'ICPC' && run.result.verdict.isAccepted;
@@ -150,6 +151,11 @@ function rankEntries(info: ContestInfo, entries: Entry[], chain: ContestInfo['aw
         for (const trophy of trophyWinners(eligible, chain.hydroPodium, sameRow)) {
             awards.push({ id: `podium-${trophy.place + 1}`, citation: trophy.name, teams: trophy.teamIds });
         }
+    }
+    if (chain?.hydroHonors) {
+        const ranked = entries.filter((entry) => !entry.out && !entry.groups.some((group) => excluded.has(group)))
+            .map((entry) => ({ teamId: entry.id, rank: ranks.get(entry.id)!, solved: entry.row.totalScore }));
+        for (const award of honorsWinners(ranked, chain.hydroHonors)) awards.push({ id: award.id, citation: award.citation, teams: award.teamIds });
     }
     return { ranks, schools, awards };
 }

@@ -49,8 +49,13 @@ export type FirstStyle = 'problem' | 'uniform' | 'sequence';
 
 export interface BalloonSettings {
     enabled: boolean;
-    /** continue: balloons for accepts after the freeze go out at once; hold: they wait until the board is unlocked. */
-    afterFreeze: 'continue' | 'hold';
+    /**
+     * continue: balloons for accepts after the freeze go out at once; hold: they wait until the board is unlocked;
+     * encourage: a team with fewer than `encourageCount` balloons still gets them (DOMjudge's minimum number of
+     * balloons), the rest wait.
+     */
+    afterFreeze: 'continue' | 'hold' | 'encourage';
+    encourageCount: number;
     first: { style: FirstStyle; color: BalloonColor; labels: 'number' | 'letter' };
     /** Each team has its own problem-to-colour assignment (the contest's colours, shuffled per team), unknown to teams. */
     teamColors: boolean;
@@ -67,7 +72,7 @@ export interface BalloonSettings {
 
 // Accepts after the freeze would show on the balloons: they wait for the board by default (CCPC 基本规则 3.6).
 export const defaultBalloonSettings = (): BalloonSettings => ({
-    enabled: false, afterFreeze: 'hold', colors: {},
+    enabled: false, afterFreeze: 'hold', encourageCount: 3, colors: {},
     first: { style: 'problem', color: { name: '金', hex: '#d4af37' }, labels: 'number' }, teamColors: false,
     tickets: { enabled: false, rules: [], solvedList: true, members: false },
 });
@@ -130,9 +135,15 @@ export function normalizeBalloonSettings(input: unknown, pids: number[], base = 
     const settings: BalloonSettings = structuredClone(base);
     if (typeof raw.enabled === 'boolean') settings.enabled = raw.enabled;
     if (raw.afterFreeze !== undefined) {
-        if (raw.afterFreeze !== 'continue' && raw.afterFreeze !== 'hold') throw new BalloonError('封榜后的发放方式无效');
+        if (raw.afterFreeze !== 'continue' && raw.afterFreeze !== 'hold' && raw.afterFreeze !== 'encourage') throw new BalloonError('封榜后的发放方式无效');
         settings.afterFreeze = raw.afterFreeze;
     }
+    if (raw.encourageCount !== undefined) {
+        const count = Number(raw.encourageCount);
+        if (!Number.isSafeInteger(count) || count < 1 || count > 20) throw new BalloonError('鼓励气球的个数应为 1 至 20');
+        settings.encourageCount = count;
+    }
+    settings.encourageCount ??= 3;
     if (raw.first !== undefined) {
         const first = raw.first && typeof raw.first === 'object' ? raw.first : {};
         if (first.style !== undefined) {
@@ -294,6 +305,10 @@ export interface ReconcileContext {
     /** The board is frozen now (Hydro ContestModel.isLocked). */
     locked: boolean;
     hold: boolean;
+    /** While held, a team's first this many balloons still go out (封榜后的鼓励气球). */
+    encourage?: number;
+    /** 暂缓公布 (lib/jury.ts): problem id to the moment from which its balloons wait. */
+    heldProblems?: Map<number, number>;
     tickets: boolean;
     /** Keys Hydro's own balloon page marked as sent. */
     hydroSent: Set<string>;
@@ -303,7 +318,20 @@ export type NewBalloon = Omit<StoredBalloon, 'id' | 'seq'>;
 
 /** What must change so the stored balloons match the contest: new ones, revoked and restored ones. */
 export function reconcile(existing: StoredBalloon[], due: DueBalloon[], context: ReconcileContext) {
-    const held = (submittedAt: number) => context.hold && context.lockAt !== null && submittedAt > context.lockAt && context.locked;
+    // Each team's balloons in order, for 封榜后的鼓励气球.
+    const order = new Map<string, number>();
+    const counts = new Map<number, number>();
+    for (const balloon of due) {
+        const count = counts.get(balloon.uid) ?? 0;
+        order.set(balloon.key, count);
+        counts.set(balloon.uid, count + 1);
+    }
+    const held = (balloon: DueBalloon) => {
+        const since = context.heldProblems?.get(balloon.pid);
+        if (since !== undefined && balloon.submittedAt >= since) return true;
+        if (!(context.hold && context.lockAt !== null && balloon.submittedAt > context.lockAt && context.locked)) return false;
+        return !(context.encourage && (order.get(balloon.key) ?? 0) < context.encourage);
+    };
     const byKey = new Map(existing.map((balloon) => [balloon.key, balloon]));
     const dueKeys = new Set(due.map((balloon) => balloon.key));
     const inserts: NewBalloon[] = [];
@@ -314,7 +342,7 @@ export function reconcile(existing: StoredBalloon[], due: DueBalloon[], context:
         if (!stored) {
             inserts.push({
                 key: balloon.key, uid: balloon.uid, pid: balloon.pid, rid: balloon.rid, submittedAt: balloon.submittedAt,
-                state: 'active', held: held(balloon.submittedAt),
+                state: 'active', held: held(balloon),
                 delivered: sent ? { at: context.now, by: 'Hydro 气球页' } : null,
                 ticket: { status: context.tickets && !sent ? 'pending' : 'none', attempts: 0, prints: 0 },
             });
@@ -326,7 +354,7 @@ export function reconcile(existing: StoredBalloon[], due: DueBalloon[], context:
             set.state = 'active';
             if (stored.ticket.status === 'none' && context.tickets && !stored.delivered) set.ticket = { ...stored.ticket, status: 'pending', attempts: 0 };
         }
-        const isHeld = held(balloon.submittedAt);
+        const isHeld = held(balloon);
         if (stored.held !== isHeld) set.held = isHeld;
         if (sent && !stored.delivered) {
             set.delivered = { at: context.now, by: 'Hydro 气球页' };

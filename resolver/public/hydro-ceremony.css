@@ -1,0 +1,11 @@
+/* 颁奖台本: one step per award in reveal order, printable. */
+.ceremony-script .ceremony-steps { margin: 0; padding-left: 26px; }
+.ceremony-script .ceremony-step { margin: 0 0 22px; page-break-inside: avoid; }
+.ceremony-script .ceremony-step h2 { font-size: 18px; margin: 0 0 4px; }
+.ceremony-script .ceremony-cue { margin: 0 0 8px; opacity: .7; }
+.ceremony-script .ceremony-step--stage h2 { color: #b7791f; }
+.ceremony-script .ceremony-step--special h2 { font-size: 15px; }
+.ceremony-script .data-table { width: 100%; }
+@media print {
+  .ceremony-script .ceremony-actions, .nav, .footer, header, footer { display: none !important; }
+}

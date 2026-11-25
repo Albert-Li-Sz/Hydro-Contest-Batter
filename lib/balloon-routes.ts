@@ -17,6 +17,7 @@ import {
 import { gbkAvailable, receiptJob, type ReceiptJob } from './escpos';
 import { ONLINE_MS, preferenceOf, seatOf, type PrinterPreference } from './print';
 import type { ContestLinks } from './links';
+import { heldProblems, type JuryState } from './jury';
 import { resolverCodeBase } from './resolver-data';
 import { awardsFor, toScriptJson, type BoardSettings } from './settings';
 import { describeTeam, isTeamEntry, loadSeats, memberIds, type TeamEntry } from './teams';
@@ -120,6 +121,8 @@ export function applyBalloons(ctx: Context, dependencies: {
     loadSettings: (tdoc: Tdoc) => Promise<BoardSettings>;
     /** The contest's no-login links, revoked together after the contest (lib/links.ts). */
     links?: ContestLinks<Tdoc>;
+    /** 裁判操作: balloons of problems held from the public wait too (lib/jury.ts). */
+    jury?: (tdoc: Tdoc) => Promise<JuryState>;
 }) {
     const root = path.join(__dirname, '..');
     const codeBase = resolverCodeBase(JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version);
@@ -217,15 +220,17 @@ export function applyBalloons(ctx: Context, dependencies: {
         const tdoc = await ContestModel.get(domainId, new ObjectId(tid));
         if (!tdoc) return false;
         const settings = settingsOf(lease, tdoc);
-        const [entries, stored, sent] = await Promise.all([
+        const [entries, stored, sent, jury] = await Promise.all([
             ContestModel.getMultiStatus(domainId, { docId: tdoc.docId }).project({ uid: 1, journal: 1 }).toArray(),
             balloons.find({ contest: key }).toArray() as Promise<BalloonDoc[]>,
             hydroBalloons.find({ domainId, tid: tdoc.docId, sent: { $exists: true } }).project({ uid: 1, pid: 1 }).toArray() as Promise<{ uid: number; pid: number }[]>,
+            dependencies.jury?.(tdoc) ?? null,
         ]);
         const due = dueBalloons(key, tdoc, entries as never);
         const { inserts, updates } = reconcile(stored.map(toStored), due, {
             now, lockAt: tdoc.lockAt ? tdoc.lockAt.getTime() : null, locked: ContestModel.isLocked(tdoc),
-            hold: settings.afterFreeze === 'hold', tickets: settings.tickets.enabled,
+            hold: settings.afterFreeze !== 'continue', encourage: settings.afterFreeze === 'encourage' ? settings.encourageCount : undefined,
+            heldProblems: heldProblems(jury, tdoc.beginAt.getTime()), tickets: settings.tickets.enabled,
             hydroSent: new Set(sent.map((row) => balloonKey(key, row.uid, row.pid))),
         });
         if (inserts.length) {
@@ -439,7 +444,7 @@ export function applyBalloons(ctx: Context, dependencies: {
                 title: tdoc.title, beginAt: tdoc.beginAt, endAt: tdoc.endAt, lockAt: tdoc.lockAt || null,
                 locked: ContestModel.isLocked(tdoc), ended: ContestModel.isDone(tdoc),
             },
-            enabled: settings.enabled, tickets: settings.tickets.enabled, afterFreeze: settings.afterFreeze,
+            enabled: settings.enabled, tickets: settings.tickets.enabled, afterFreeze: settings.afterFreeze, encourageCount: settings.encourageCount,
             firstStyle: settings.first.style, teamColors: settings.teamColors,
             problems: tdoc.pids.map((pid, index) => ({
                 pid, label: getAlphabeticId(index), title: pdict[pid]?.title || '', color: colors[index],

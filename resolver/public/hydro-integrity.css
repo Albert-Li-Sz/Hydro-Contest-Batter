@@ -1,0 +1,17 @@
+/* 诚信复核: similar programs side by side and a team's timeline. */
+.xcpcio-integrity .integrity-code { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.xcpcio-integrity .integrity-code > div { min-width: 0; }
+.xcpcio-integrity .integrity-code pre { margin: 0; max-height: 60vh; overflow: auto; font-size: 12px; line-height: 1.45; padding: 8px; border: 1px solid rgba(127, 127, 127, .3); white-space: pre; }
+.xcpcio-integrity dialog.integrity-wide { width: min(1100px, 96vw); }
+.xcpcio-integrity .integrity-track { position: relative; height: 18px; margin: 4px 0 10px; background: rgba(127, 127, 127, .12); border-radius: 3px; overflow: hidden; }
+.xcpcio-integrity .integrity-track span { position: absolute; top: 0; bottom: 0; }
+.xcpcio-integrity .integrity-track .is-covered { background: rgba(47, 158, 68, .55); }
+.xcpcio-integrity .integrity-track .is-gap { background: rgba(215, 71, 71, .75); }
+.xcpcio-integrity .integrity-track .is-credit { background: rgba(230, 162, 60, .6); }
+.xcpcio-integrity .integrity-track .is-mark { width: 3px; margin-left: -1px; }
+.xcpcio-integrity .integrity-track .is-ac { background: #2f9e44; }
+.xcpcio-integrity .integrity-track .is-rejected { background: #d74747; }
+.xcpcio-integrity .integrity-track .is-signal { background: #7c4dff; }
+.xcpcio-integrity .integrity-row { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 10px; align-items: center; }
+.xcpcio-integrity .integrity-scale { display: flex; justify-content: space-between; font-size: 12px; opacity: .6; margin-left: 98px; }
+.xcpcio-integrity select[multiple] { min-height: 160px; width: 100%; }

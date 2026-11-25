@@ -42,12 +42,14 @@ if (root) {
             input.dataset.basis = basis;
         }
         for (const [tier, input] of Object.entries(inputs)) {
-            const ratio = basis === 'ratio';
-            input.max = ratio ? '100' : '100000';
-            input.title = ratio ? '占有效队伍的百分比' : '获奖队伍数';
+            // 金牌倍数: gold is a percentage, silver and bronze are multiples of the gold count.
+            const ratio = basis === 'ratio' || (basis === 'multiple' && tier === 'gold');
+            const times = basis === 'multiple' && tier !== 'gold';
+            input.max = ratio ? '100' : times ? '20' : '100000';
+            input.title = ratio ? '占队伍的百分比' : times ? '金牌数的倍数' : '获奖队伍数';
             const caption = input.closest('label')?.querySelector('.xp-medal-unit');
-            if (caption) caption.textContent = ratio ? '（%）' : '';
-            input.setAttribute('aria-label', `${basisLabels[tier] || tier}${ratio ? '比例（%）' : '数量'}`);
+            if (caption) caption.textContent = ratio ? '（%）' : times ? '（倍）' : '';
+            input.setAttribute('aria-label', `${basisLabels[tier] || tier}${ratio ? '比例（%）' : times ? '倍数' : '数量'}`);
         }
     }
     const defaultMedalInputs = Object.fromEntries(medals.map((key) => [key, root.querySelector(`[data-medal="${key}"]`)]));
@@ -56,9 +58,24 @@ if (root) {
         input.closest('label').querySelector('span')?.append(unit);
     }
     const medalBasis = document.getElementById('xp-medal-basis');
-    medalBasis.value = settings.medalBasis === 'ratio' ? 'ratio' : 'count';
-    applyBasis(defaultMedalInputs, medalBasis.value);
-    medalBasis.addEventListener('change', () => applyBasis(defaultMedalInputs, medalBasis.value));
+    const basisValue = (value) => (['ratio', 'multiple'].includes(value) ? value : 'count');
+    medalBasis.value = basisValue(settings.medalBasis);
+    const medalBase = document.getElementById('xp-medal-base');
+    const medalRounding = document.getElementById('xp-medal-rounding');
+    medalBase.value = ['submitted', 'registered'].includes(settings.medalBase) ? settings.medalBase : 'solved';
+    medalRounding.value = settings.medalRounding === 'cumulative' ? 'cumulative' : 'tier';
+    // The base counts for both shares; rounding only for 按比例.
+    const syncMedalRule = (basis, baseField, roundingField) => {
+        baseField.hidden = basis === 'count';
+        roundingField.hidden = basis !== 'ratio';
+    };
+    const syncDefaultBasis = () => {
+        applyBasis(defaultMedalInputs, medalBasis.value);
+        syncMedalRule(medalBasis.value, document.getElementById('xp-medal-base-field'), document.getElementById('xp-medal-rounding-field'));
+    };
+    syncDefaultBasis();
+    medalBasis.addEventListener('change', syncDefaultBasis);
+    const defaultMedalRule = () => ({ medalBasis: medalBasis.value, medalBase: medalBase.value, medalRounding: medalRounding.value });
     const tieBreak = document.getElementById('xp-tie-break');
     tieBreak.value = ['icpc', 'ccpc'].includes(settings.tieBreak) ? settings.tieBreak : 'hydro';
     // CCPC 新榜单模式: the threshold shows only while the mode is on.
@@ -182,15 +199,26 @@ if (root) {
     function awardFields(parent, initial, includeCounts) {
         const fields = {};
         let basis = null;
+        let base = null;
+        let rounding = null;
+        let baseWrapper = null;
+        let roundingWrapper = null;
         if (includeCounts) {
-            const wrapper = make('label', '奖牌名额', 'xp-field');
-            basis = make('select');
-            for (const [value, text] of [['count', '固定数量'], ['ratio', '按有效队伍比例（%）']]) {
-                const option = make('option', text); option.value = value; basis.append(option);
-            }
-            basis.value = initial.medalBasis === 'ratio' ? 'ratio' : 'count';
-            basis.setAttribute('aria-label', '奖牌名额方式');
-            wrapper.append(basis); parent.append(wrapper);
+            const rule = make('div', undefined, 'xp-inline-fields xp-medal-rule');
+            const select = (caption, options, value) => {
+                const wrapper = make('label', caption, 'xp-field');
+                const element = make('select');
+                for (const [optionValue, text] of options) { const option = make('option', text); option.value = optionValue; element.append(option); }
+                element.value = value; element.setAttribute('aria-label', caption);
+                wrapper.append(element); rule.append(wrapper);
+                return [wrapper, element];
+            };
+            [, basis] = select('奖牌名额', [['count', '固定数量'], ['ratio', '按队伍比例（%）'], ['multiple', '金牌比例，银铜为金牌倍数']], basisValue(initial.medalBasis));
+            [baseWrapper, base] = select('比例的分母', [['solved', '至少过一题的正式队'], ['submitted', '至少提交一次的正式队'], ['registered', '全部正式队']],
+                ['submitted', 'registered'].includes(initial.medalBase) ? initial.medalBase : 'solved');
+            [roundingWrapper, rounding] = select('取整', [['tier', '各档分别向上取整'], ['cumulative', '累计向上取整（CCPC）']],
+                initial.medalRounding === 'cumulative' ? 'cumulative' : 'tier');
+            parent.append(rule);
         }
         const grid = make('div', undefined, 'xp-medals');
         for (const [tier, label] of [['gold', '金奖'], ['silver', '银奖'], ['bronze', '铜奖']]) {
@@ -237,6 +265,25 @@ if (root) {
         names.dataset.list = '1';
         namesWrapper.append(names); choices.append(namesWrapper); fields.podiumNames = names; trophyFields.push(namesWrapper);
         parent.append(choices);
+        // ICPC World Finals Honors: the last place of each tier.
+        const honors = initial.honors || { enabled: false, highest: 25, high: 50, standard: 100 };
+        const honorsRow = make('div', undefined, 'xp-inline-fields xp-honors');
+        const honorsCheck = make('label', undefined, 'checkbox');
+        const honorsEnabled = make('input'); honorsEnabled.type = 'checkbox'; honorsEnabled.checked = !!honors.enabled;
+        honorsEnabled.setAttribute('aria-label', 'Honors');
+        honorsCheck.append(honorsEnabled, make('span', 'Honors（按 WF place）'));
+        honorsRow.append(honorsCheck);
+        const honorsPlaces = {};
+        for (const [key, caption] of [['highest', 'Highest Honors 至第'], ['high', 'High Honors 至第'], ['standard', 'Honors 至第']]) {
+            const wrapper = make('label', caption, 'xp-field');
+            const input = make('input', undefined, 'textbox'); input.type = 'number'; input.min = '1'; input.max = '100000'; input.step = '1'; input.required = true;
+            input.value = String(honors[key]); input.setAttribute('aria-label', caption);
+            wrapper.append(input); honorsRow.append(wrapper); honorsPlaces[key] = { wrapper, input };
+        }
+        parent.append(honorsRow);
+        const syncHonors = () => { for (const { wrapper } of Object.values(honorsPlaces)) wrapper.hidden = !honorsEnabled.checked; };
+        honorsEnabled.addEventListener('change', syncHonors); syncHonors();
+        const readHonors = () => ({ enabled: honorsEnabled.checked, ...Object.fromEntries(Object.entries(honorsPlaces).map(([key, { input }]) => [key, Number(input.value) || 1])) });
         const syncTrophies = () => { for (const wrapper of trophyFields) wrapper.hidden = !fields.podiumEnabled.checked; };
         fields.podiumEnabled.addEventListener('change', syncTrophies); syncTrophies();
         if (basis) {
@@ -244,13 +291,15 @@ if (root) {
             for (const input of Object.values(counts)) {
                 const unit = make('small', '', 'xp-medal-unit'); input.closest('label').firstChild?.after?.(unit);
             }
-            const sync = () => applyBasis(counts, basis.value);
+            const sync = () => { applyBasis(counts, basis.value); syncMedalRule(basis.value, baseWrapper, roundingWrapper); };
             basis.addEventListener('change', sync); sync();
         }
         return {
-            read: () => ({ ...(includeCounts ? { medals: Object.fromEntries(medals.map((key) => [key, Number(fields[key].value)])), medalBasis: basis.value } : {}),
+            read: () => ({ ...(includeCounts ? { medals: Object.fromEntries(medals.map((key) => [key, Number(fields[key].value)])),
+                medalBasis: basis.value, medalBase: base.value, medalRounding: rounding.value } : {}),
                 ...Object.fromEntries(Object.entries(fields).filter(([key]) => !medals.includes(key)).map(([key, input]) => [key,
-                    input.type === 'checkbox' ? input.checked : input.dataset.list ? input.value.split(/[、,，;；\s]+/).filter(Boolean) : input.value.trim()])) }),
+                    input.type === 'checkbox' ? input.checked : input.dataset.list ? input.value.split(/[、,，;；\s]+/).filter(Boolean) : input.value.trim()])),
+                honors: readHonors() }),
             set: (values) => {
                 for (const [key, input] of Object.entries(fields)) {
                     const value = medals.includes(key) ? values.medals[key] : values[key];
@@ -258,9 +307,18 @@ if (root) {
                     if (input.type === 'checkbox') input.checked = value; else input.value = Array.isArray(value) ? value.join('、') : value;
                     input.dispatchEvent(new Event('change'));
                 }
+                if (values.honors) {
+                    honorsEnabled.checked = !!values.honors.enabled;
+                    for (const [key, { input }] of Object.entries(honorsPlaces)) if (values.honors[key]) input.value = String(values.honors[key]);
+                    syncHonors();
+                }
+                if (base && values.medalBase) base.value = values.medalBase;
+                if (rounding && values.medalRounding) rounding.value = values.medalRounding;
                 if (basis && values.medalBasis) { basis.value = values.medalBasis; basis.dispatchEvent(new Event('change')); }
             },
-            disable: (disabled) => { for (const input of [...Object.values(fields), ...basis ? [basis] : []]) input.disabled = disabled; },
+            disable: (disabled) => {
+                for (const input of [...Object.values(fields), ...basis ? [basis, base, rounding] : [], honorsEnabled, ...Object.values(honorsPlaces).map(({ input }) => input)]) input.disabled = disabled;
+            },
         };
     }
     const defaultAwardEditor = awardFields(document.getElementById('xp-default-award-options'), settings, false);
@@ -279,11 +337,11 @@ if (root) {
                 const label = make('label', undefined, 'checkbox'); const enabled = make('input'); enabled.type = 'checkbox'; enabled.checked = !!saved;
                 label.append(enabled, make('span', '单独设置此榜奖项')); card.append(label);
                 const body = make('div'); card.append(body);
-                const initial = saved || { ...settings, ...defaultAwardEditor.read(), medalBasis: medalBasis.value, medals: Object.fromEntries(medals.map((key) => [key, Number(root.querySelector(`[data-medal="${key}"]`).value)])) };
+                const initial = saved || { ...settings, ...defaultAwardEditor.read(), ...defaultMedalRule(), medals: Object.fromEntries(medals.map((key) => [key, Number(root.querySelector(`[data-medal="${key}"]`).value)])) };
                 const fields = awardFields(body, initial, true);
                 const toggle = () => { body.hidden = !enabled.checked; fields.disable(!enabled.checked); };
                 enabled.addEventListener('change', () => {
-                    if (enabled.checked && !saved) fields.set({ ...defaultAwardEditor.read(), medalBasis: medalBasis.value, medals: Object.fromEntries(medals.map((key) => [key, Number(root.querySelector(`[data-medal="${key}"]`).value)])) });
+                    if (enabled.checked && !saved) fields.set({ ...defaultAwardEditor.read(), ...defaultMedalRule(), medals: Object.fromEntries(medals.map((key) => [key, Number(root.querySelector(`[data-medal="${key}"]`).value)])) });
                     toggle();
                 }); toggle();
                 editor = { card, summary, enabled, read: fields.read }; awardEditors.set(board.id, editor);
@@ -456,7 +514,8 @@ if (root) {
         editors.at(-1).name.focus(); markDirty(); updateAddButton(); refreshAwardEditors(); refreshSpecialBoards();
     });
     // 特别奖: a name, how the winner is found, and on which board.
-    const specialKinds = [['rank', '分榜名次'], ['lastAccept', '最后一个通过'], ['lastSolver', '有过题的最后一名'], ['manual', '指定队伍']];
+    const specialKinds = [['rank', '分榜名次'], ['lastAccept', '最晚通过'], ['lastSolver', '有过题的最后几名'], ['firstSolution', '全场首个通过'],
+        ['honorable', '其余过题队伍'], ['manual', '指定队伍']];
     const specialEditors = [];
     const specialList = document.getElementById('xp-specials');
     const addSpecialButton = document.getElementById('xp-add-special');
@@ -503,7 +562,24 @@ if (root) {
         const ties = make('input'); ties.type = 'checkbox'; ties.checked = award.ties !== false;
         const unofficialLabel = make('label', undefined, 'checkbox'); unofficialLabel.append(unofficial, make('span', '打星队伍可获'));
         const tiesLabel = make('label', undefined, 'checkbox'); tiesLabel.append(ties, make('span', '并列同奖'));
-        rule.append(board, rankLabel, unofficialLabel, tiesLabel);
+        const countLabel = make('label', undefined, 'xp-inline');
+        const count = make('input', undefined, 'textbox xp-rank'); count.type = 'number'; count.min = '1'; count.max = '10'; count.step = '1'; count.value = String(award.count || 1);
+        count.setAttribute('aria-label', '获奖队数');
+        countLabel.append(count, '队');
+        rule.append(board, rankLabel, countLabel, unofficialLabel, tiesLabel);
+        // Conditions: enough teams on the board, a standing no lower than a medal line, no medal of its own.
+        const conditions = make('div', undefined, 'xp-line');
+        const minLabel = make('label', undefined, 'xp-inline');
+        const minTeams = make('input', undefined, 'textbox xp-rank'); minTeams.type = 'number'; minTeams.min = '0'; minTeams.max = '100000'; minTeams.step = '1';
+        minTeams.value = String(award.minTeams || 0); minTeams.setAttribute('aria-label', '榜上至少队数');
+        minLabel.append('榜上至少', minTeams, '队');
+        const floor = make('select'); floor.setAttribute('aria-label', '成绩线');
+        for (const [value, text] of [['none', '成绩不限'], ['gold', '不低于金奖末位'], ['silver', '不低于银奖末位'], ['bronze', '不低于铜奖末位']]) {
+            floor.append(new Option(text, value, false, value === (award.floor || 'none')));
+        }
+        const excludeMedalists = make('input'); excludeMedalists.type = 'checkbox'; excludeMedalists.checked = !!award.excludeMedalists;
+        const excludeLabel = make('label', undefined, 'checkbox'); excludeLabel.append(excludeMedalists, make('span', '不含获奖牌队伍'));
+        conditions.append(minLabel, floor, excludeLabel);
         // 指定队伍: chosen from the participants by name or school.
         const picked = new Set(award.teamIds || []);
         const pick = make('div', undefined, 'xp-line xp-special-teams');
@@ -532,16 +608,20 @@ if (root) {
             if (id && teamById.has(id)) { picked.add(id); search.value = ''; renderChips(); markDirty(); validate(); }
         });
         pick.append(chips, search);
-        card.append(head, rule, pick);
+        card.append(head, rule, conditions, pick);
+        const counted = () => ['lastAccept', 'lastSolver'].includes(kind.value);
         const editor = { award, card, board, read: () => ({
             id: award.id, name: name.value.trim(), kind: kind.value, board: kind.value === 'manual' ? 'all' : board.value || 'all', rank: Number(rank.value) || 1,
-            teamIds: kind.value === 'manual' ? [...picked] : [], unofficial: kind.value === 'rank' && unofficial.checked, ties: ties.checked,
+            teamIds: kind.value === 'manual' ? [...picked] : [], unofficial: kind.value !== 'manual' && unofficial.checked, ties: ties.checked,
+            count: counted() ? Math.min(10, Math.max(1, Number(count.value) || 1)) : 1, minTeams: kind.value === 'manual' ? 0 : Math.max(0, Number(minTeams.value) || 0),
+            floor: kind.value === 'manual' ? 'none' : floor.value, excludeMedalists: !['manual', 'honorable'].includes(kind.value) && excludeMedalists.checked,
         }) };
         const layout = () => {
             const manual = kind.value === 'manual';
-            rule.hidden = manual; pick.hidden = !manual;
+            rule.hidden = manual; conditions.hidden = manual; pick.hidden = !manual;
             rankLabel.hidden = kind.value !== 'rank';
-            unofficialLabel.hidden = kind.value !== 'rank';
+            countLabel.hidden = !counted();
+            excludeLabel.hidden = kind.value === 'honorable';
             rank.required = kind.value === 'rank';
             validate();
         };
@@ -561,7 +641,8 @@ if (root) {
     updateSpecialButton();
     addSpecialButton.addEventListener('click', () => {
         if (specialEditors.length >= 20) return;
-        const editor = addSpecial({ id: `s-${crypto.randomUUID().slice(0, 8)}`, name: '', kind: 'rank', board: 'all', rank: 1, teamIds: [], unofficial: false, ties: true });
+        const editor = addSpecial({ id: `s-${crypto.randomUUID().slice(0, 8)}`, name: '', kind: 'rank', board: 'all', rank: 1, teamIds: [], unofficial: false, ties: true,
+            count: 1, minTeams: 0, floor: 'none', excludeMedalists: false });
         editor.card.querySelector('input').focus(); markDirty(); updateSpecialButton();
     });
     for (const id of ['xp-participation', 'xp-schools']) document.getElementById(id).addEventListener('change', refreshSpecialBoards);
@@ -571,7 +652,7 @@ if (root) {
         const payload = document.getElementById('xp-payload');
         payload.value = JSON.stringify({
             medals: Object.fromEntries(medals.map((key) => [key, Number(root.querySelector(`[data-medal="${key}"]`).value)])),
-            medalBasis: medalBasis.value,
+            ...defaultMedalRule(),
             tieBreak: tieBreak.value,
             ccpcBoard: { enabled: ccpcBoard.checked, revealBasis: revealBasis.value, reveal: Number(revealValue.value) || 1 },
             ignoreAfterAccept: ignoreAfterAccept.checked,

@@ -1,12 +1,15 @@
 // HydroXCPCIO: zero-solve teams do not receive medals or podium awards.
 import { sameStanding } from './standings.js';
 import { schoolRanks, trophyWinners } from './trophies.js';
+import { HONORS_DEFAULTS, HONORS_TIERS, honorsWinners } from './honors.js';
 export const MEDAL_DEFAULTS = Object.freeze({
   medalMode: 'imported', goldCount: 4, silverCount: 4, bronzeCount: 4,
   goldCitation: '金奖', silverCitation: '银奖', bronzeCitation: '铜奖', medalSameScore: true,
   podiumEnabled: false, championCitation: '冠军', runnerUpCitation: '亚军', thirdPlaceCitation: '季军',
   // HydroXCPCIO: trophies by team or school rank, how tied teams receive them, and their names; medals by school rank.
   podiumBasis: 'team', podiumTie: 'lastAccept', podiumNames: null, medalRanking: 'team',
+  // HydroXCPCIO: ICPC World Finals Honors by place (honors.js).
+  honorsEnabled: false, honorsHighest: HONORS_DEFAULTS.highest, honorsHigh: HONORS_DEFAULTS.high, honorsStandard: HONORS_DEFAULTS.standard,
   firstSolveMode: 'imported', firstSolveProblemIds: Object.freeze([]), firstSolveIncludeUnrank: false,
 });
 
@@ -28,6 +31,10 @@ export function normalizeMedalOptions(raw = {}) {
   if (Array.isArray(raw.podiumNames)) {
     const names = raw.podiumNames.filter((name) => typeof name === 'string' && name.trim()).map((name) => name.trim().slice(0, 80)).slice(0, 10);
     if (names.length) options.podiumNames = names;
+  }
+  if (typeof raw.honorsEnabled === 'boolean') options.honorsEnabled = raw.honorsEnabled;
+  for (const key of ['honorsHighest', 'honorsHigh', 'honorsStandard']) {
+    if (Number.isSafeInteger(raw[key]) && raw[key] > 0) options[key] = raw[key];
   }
   options.firstSolveMode = ['all', 'selected'].includes(raw.firstSolveMode) ? raw.firstSolveMode : 'imported';
   options.firstSolveProblemIds = Array.isArray(raw.firstSolveProblemIds) ? [...new Set(raw.firstSolveProblemIds
@@ -124,6 +131,13 @@ export function configuredAwards(contest, rawOptions, standings) {
     awards = awards.filter((award) => award.awardType !== 'winner' &&
       !/^podium-/.test(award.id) && !/^rank-[123]$/.test(award.id))
       .concat(podiumAwards(options, standings, contest));
+  }
+  if (options.honorsEnabled) {
+    const ids = new Set(HONORS_TIERS.map((tier) => tier.id));
+    const ranked = standings.filter((row) => !row.unrank).map((row) => ({ teamId: row.teamId, rank: row.rank, solved: row.solved }));
+    awards = awards.filter((award) => !ids.has(award.id)).concat(honorsWinners(ranked, {
+      highest: options.honorsHighest, high: options.honorsHigh, standard: options.honorsStandard,
+    }).filter((award) => award.teamIds.length).map((award) => ({ ...award, displayMode: 'list', awardType: 'honors' })));
   }
   if (options.firstSolveMode !== 'imported') {
     awards = awards.filter((award) => award.awardType !== 'first-to-solve' && !/^first-to-solve-/.test(award.id))

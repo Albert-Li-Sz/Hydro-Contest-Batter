@@ -1,8 +1,8 @@
 import type { SpecialResult } from './special-awards';
 import type { BoardData } from './board';
-import { enhanceBoard } from './board';
-import type { BoardAwards, BoardSettings } from './settings';
-import { awardsFor, medalCounts } from './settings';
+import { enhanceBoard, medalPool } from './board';
+import type { BoardAwards, BoardSettings, MedalPool } from './settings';
+import { awardsFor, cappedMedals, medalCounts } from './settings';
 import type { ResolverBoard, ResolverConfig, ResolverContest, ResolverPayload } from './resolver-types';
 import { buildGame } from '../resolver/server/lib/engine.js';
 
@@ -19,34 +19,25 @@ export class ResolverError extends Error {
 export function resolverBoards(data: BoardData, settings: BoardSettings, identity: boolean): ResolverBoard[] {
     const enhanced = enhanceBoard(data, settings, { identity });
     const groups = enhanced.contest.group as Record<string, string>;
-    const durationMs = (data.contest.end_time - data.contest.start_time) * 1000;
-    const solved = new Set(data.submissions.filter((record) => record.status === 'CORRECT' && record.timestamp >= 0
-        && record.timestamp < durationMs).map((record) => record.team_id));
-    const official = new Set(data.teams.filter((team) => !team.group.includes('unofficial')).map((team) => team.team_id));
     const board = (id: string, name: string, teamIds: string[]): ResolverBoard => {
         const awards = awardsFor(settings, id);
-        const eligible = teamIds.filter((teamId) => official.has(teamId) && solved.has(teamId)).length;
-        const counts = medalCounts(awards, eligible);
-        // As on the board: never more medals than eligible teams.
-        let remaining = eligible;
-        const capped = Object.fromEntries((['gold', 'silver', 'bronze'] as const).map((tier) => {
-            const count = Math.min(counts[tier], remaining);
-            remaining -= count;
-            return [tier, count];
-        })) as unknown as ResolverBoard['medalCounts'];
-        return { id, name, teamIds, medals: awards.medals, awards, eligible, medalCounts: capped };
+        const pool = medalPool(data, teamIds);
+        // As on the board: never more medals than official teams that solved something.
+        return { id, name, teamIds, medals: awards.medals, awards, eligible: pool.solved, pool, medalCounts: cappedMedals(medalCounts(awards, pool), pool.solved) };
     };
     return [board('all', '主榜', data.teams.map((team) => team.team_id)),
         ...Object.entries(groups).map(([id, name]) => board(id, name, enhanced.teams.filter((team) => team.group.includes(id)).map((team) => team.team_id)))];
 }
 
-/** `eligible`: official teams of the board that solved something, the base of 按比例设奖. */
-function resolverAwardConfig(awards: BoardAwards, eligible = 0) {
-    const counts = medalCounts(awards, eligible);
+/** `pool`: the board's official teams the medal counts rest on (lib/settings.ts MedalBase). */
+function resolverAwardConfig(awards: BoardAwards, pool: number | MedalPool = 0) {
+    const counts = medalCounts(awards, pool);
+    const honors = awards.honors;
     return { goldCount: counts.gold, silverCount: counts.silver, bronzeCount: counts.bronze,
         goldCitation: awards.goldCitation, silverCitation: awards.silverCitation, bronzeCitation: awards.bronzeCitation,
         medalSameScore: awards.medalSameScore, podiumEnabled: awards.podiumEnabled, firstSolve: awards.firstSolve,
-        podiumBasis: awards.podiumBasis ?? 'team', podiumTie: awards.podiumTie ?? 'lastAccept', podiumNames: awards.podiumNames, medalRanking: awards.medalRanking ?? 'team' };
+        podiumBasis: awards.podiumBasis ?? 'team', podiumTie: awards.podiumTie ?? 'lastAccept', podiumNames: awards.podiumNames, medalRanking: awards.medalRanking ?? 'team',
+        honorsEnabled: !!honors?.enabled, honorsHighest: honors?.highest ?? 25, honorsHigh: honors?.high ?? 50, honorsStandard: honors?.standard ?? 100 };
 }
 
 export function defaultResolverConfig(settings: BoardAwards, ended: boolean): ResolverConfig {
@@ -103,7 +94,7 @@ export function prepareResolver(
     if (!board) throw new ResolverError('所选分榜已不存在，请刷新配置页');
     // Shared rules are authoritative, including for stale pages and direct API callers. A ratio counts the
     // board's official teams with an accepted run in the final results, which the resolver reveals.
-    config = { ...config, ...resolverAwardConfig(board.awards, board.eligible) };
+    config = { ...config, ...resolverAwardConfig(board.awards, board.pool ?? board.eligible) };
     if (config.mode === 'official' && config.boardId === 'all') throw new ResolverError('请选择一个分榜作为正式参赛范围');
     const durationMs = (data.contest.end_time - data.contest.start_time) * 1000;
     if (!(durationMs > 0)) throw new ResolverError('比赛时间无效');

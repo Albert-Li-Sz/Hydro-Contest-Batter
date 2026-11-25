@@ -1,4 +1,4 @@
-import type { BoardRules, Medals } from './settings';
+import type { BoardRules, MedalPool, Medals } from './settings';
 
 export interface ResolverTeam {
     id: string;
@@ -44,8 +44,10 @@ export interface ResolverBoard {
     teamIds: string[];
     medals: Medals;
     awards: BoardRules;
-    /** Official members that solved something in this data: the base of 按比例设奖 and the medal cap. */
+    /** Official members that solved something in this data: the medal cap. */
     eligible: number;
+    /** Official members counted three ways, the base of 按比例设奖 (sessions saved before it lack this). */
+    pool?: MedalPool;
     /** Medals of each tier these rules give `eligible` teams (before ties share a medal). */
     medalCounts: Medals;
 }
@@ -68,6 +70,11 @@ export interface ResolverConfig {
     podiumTie: 'lastAccept' | 'shared';
     podiumNames: string[];
     medalRanking: 'team' | 'school';
+    /** ICPC World Finals Honors by place (resolver/public/js/honors.js). */
+    honorsEnabled?: boolean;
+    honorsHighest?: number;
+    honorsHigh?: number;
+    honorsStandard?: number;
     firstSolve: boolean;
     rowsPerScreen: number;
     autoplay: boolean;

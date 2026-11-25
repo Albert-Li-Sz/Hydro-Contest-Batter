@@ -32,7 +32,7 @@ describe('Clarification desk', () => {
 
     it('retains distinct standard replies and validates customizable templates, problem scope and text', () => {
         expect(deskSettings().replies).toEqual(clarificationReplyPresets);
-        expect(new Set(deskSettings().replies).size).toBe(5);
+        expect(new Set(deskSettings().replies).size).toBe(6);
         expect(readDeskSettings({ replies: [' 是 ', '否', '是'], freezeMinutes: 5 })).toEqual({ replies: ['是', '否'], freezeMinutes: 5 });
         expect(() => readDeskSettings({ replies: [' '], freezeMinutes: 5 })).toThrow(/回复模板/);
         expect(() => readDeskSettings({ replies: [], freezeMinutes: 121 })).toThrow(/120/);

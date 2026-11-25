@@ -82,16 +82,21 @@ function updateAwards(board, config) {
     const summary = document.getElementById('resolver-award-summary');
     summary.replaceChildren();
     const ratio = rules.medalBasis === 'ratio';
+    const multiple = rules.medalBasis === 'multiple';
     for (const tier of ['gold', 'silver', 'bronze']) {
         const item = document.createElement('div');
-        const count = config ? config[`${tier}Count`] : ratio ? board.medalCounts?.[tier] : board.medals[tier];
+        const count = config ? config[`${tier}Count`] : ratio || multiple ? board.medalCounts?.[tier] : board.medals[tier];
         // 按比例设奖: the share and what it comes to.
         item.textContent = rules[`${tier}Citation`] + ' · ' + (count ?? '—') + ' 名';
-        if (ratio) item.append(' ', ratioMeter('奖牌名额比例', board.medals[tier]));
+        if (ratio || (multiple && tier === 'gold')) item.append(' ', ratioMeter('奖牌名额比例', board.medals[tier]));
+        else if (multiple) item.append(` · 金牌的 ${board.medals[tier]} 倍`);
         summary.append(item);
     }
+    const base = { solved: '至少过一题', submitted: '至少提交一次', registered: '全部' }[rules.medalBase || 'solved'];
+    const pool = board.pool ? board.pool[rules.medalBase || 'solved'] : board.eligible;
     document.getElementById('resolver-award-policy').dataset.help = [
-        ratio && `按有效队伍比例设奖（有效队伍 ${board.eligible ?? '—'} 支：正式且至少通过一题，名额向上取整）`,
+        (ratio || multiple) && `按队伍比例设奖（${base}的正式队 ${pool ?? '—'} 支，${multiple ? '金牌向上取整，银铜为金牌倍数' : rules.medalRounding === 'cumulative' ? '累计向上取整' : '各档分别向上取整'}）`,
+        rules.honors?.enabled && `Honors：第 ${rules.honors.highest}、${rules.honors.high}、${rules.honors.standard} 名为界，按 WF place`,
         { icpc: '同分规则：ICPC 区域赛（罚时按分钟，再比最后一题通过时间）', ccpc: '同分规则：CCPC（罚时按分钟，同题数同用时并列）' }[rules.tieBreak] || '同分规则：Hydro（罚时精确到秒）',
         rules.medalRanking === 'school' ? '奖牌按学校名次' : rules.medalSameScore ? '并列同奖' : '按名额授奖',
         rules.firstSolve && (rules.unofficialFirstSolve ? '一血奖含打星选手' : '一血奖仅限正式选手'),

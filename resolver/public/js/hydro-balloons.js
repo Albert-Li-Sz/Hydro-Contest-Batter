@@ -268,6 +268,7 @@ function renderDeliver() {
     listBox = el('div', { class: 'balloon-list' });
     const notes = [];
     if (data.afterFreeze === 'hold' && data.contest.locked) notes.push('已封榜：封榜后的通过暂缓配送，解除封榜后自动转为待配送。');
+    if (data.afterFreeze === 'encourage' && data.contest.locked) notes.push(`已封榜：气球不足 ${data.encourageCount} 个的队伍继续配送，其余暂缓到解除封榜。`);
     if (!data.teams.some((team) => team.seat)) notes.push('还没有导入座位号：气球无法按考场分组。可用 onsite-toolkit 导入座位后刷新。');
     root.replaceChildren(status, ...notes.map((text) => el('p', { class: 'manage-alert', text })), renderStats(), renderMatrix(), renderFilters(), listBox);
     renderList();
@@ -300,8 +301,11 @@ function renderSettings() {
     // Basics
     const afterFreeze = el('select', { class: 'select' },
         new Option('继续发放（现场可从气球看出封榜后的通过）', 'continue', false, draft.afterFreeze === 'continue'),
-        new Option('暂缓，解除封榜后再发', 'hold', false, draft.afterFreeze === 'hold'));
-    afterFreeze.addEventListener('change', () => { draft.afterFreeze = afterFreeze.value; markDirty(); });
+        new Option('暂缓，解除封榜后再发', 'hold', false, draft.afterFreeze === 'hold'),
+        new Option('只给气球较少的队伍继续发放（鼓励气球）', 'encourage', false, draft.afterFreeze === 'encourage'));
+    afterFreeze.addEventListener('change', () => { draft.afterFreeze = afterFreeze.value; markDirty(); renderSettings(); });
+    const encourageCount = el('input', { class: 'textbox', type: 'number', min: 1, max: 20, step: 1, value: draft.encourageCount ?? 3, 'aria-label': '鼓励气球个数' });
+    encourageCount.addEventListener('change', () => { if (encourageCount.checkValidity()) { draft.encourageCount = Number(encourageCount.value); markDirty(); } });
     // CCPC 新榜单模式: a first-solve balloon that does not tell the problem, and colours of each team's own.
     draft.first = { style: 'problem', color: { name: '金', hex: '#d4af37' }, labels: 'number', ...draft.first };
     const firstStyle = el('select', { class: 'select' },
@@ -329,6 +333,7 @@ function renderSettings() {
                         submit: async () => { await post('enable', { enabled: false }); await refresh(true); } });
                 } }))),
             el('label', {}, '封榜之后的通过', afterFreeze),
+            el('label', { hidden: draft.afterFreeze !== 'encourage' }, '每队封榜后仍可收到的气球（含封榜前）', encourageCount),
             el('label', {}, '一血气球', firstStyle),
             el('label', { hidden: draft.first.style === 'problem' }, '一血气球颜色', el('div', { class: 'balloon-inline' }, firstPicker, firstName)),
             el('label', { hidden: draft.first.style !== 'sequence' }, '一血编号', firstLabels),

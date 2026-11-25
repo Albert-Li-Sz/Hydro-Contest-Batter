@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Hydro Contest Better v1.23.2 操作手册，涵盖安装升级、ACM 比赛配置、比赛配置与工作台、CCPC 赛制、增强榜、成绩导出、答疑台、滚榜、大屏、气球配送、机位监控、比赛录制、反应视频、直播、打印和赛后清理。">
+  <meta name="description" content="Hydro Contest Better v1.24.0 操作手册，涵盖安装升级、ACM 比赛配置、比赛配置与工作台、CCPC 赛制、增强榜、成绩导出、答疑台、滚榜、大屏、气球配送、机位监控、比赛录制、反应视频、直播、打印和赛后清理。">
   <meta name="theme-color" content="#811c39">
   <title>Hydro Contest Better 操作手册</title>
   <link rel="stylesheet" href="./manual.css">
@@ -15,7 +15,7 @@
       <a class="brand" href="./">Hydro Contest Better</a>
       <nav aria-label="项目链接">
         <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better">源码</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.23.2">下载 v1.23.2</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.24.0">下载 v1.24.0</a>
       </nav>
     </div>
   </header>
@@ -35,8 +35,10 @@
         <a href="./media-worker.html">媒体机与反应视频教程</a>
         <a href="#print">比赛打印</a>
         <a href="#judging">评测监控与重测</a>
+        <a href="#jury-integrity">裁判操作与诚信复核</a>
         <a href="#resolver">赛后滚榜</a>
         <a href="#results">成绩快照与导出</a>
+        <a href="#certificates">证书制作与领取</a>
         <a href="#cleanup">赛后清理</a>
         <a href="#integration">CCS API 对接</a>
         <a href="#troubleshoot">故障排查</a>
@@ -44,7 +46,7 @@
     </aside>
     <main id="manual">
       <header class="intro">
-        <p class="version">适用于插件 v1.23.2 · Hydro 5.x</p>
+        <p class="version">适用于插件 v1.24.0 · Hydro 5.x</p>
         <h1>Hydro 比赛操作手册</h1>
         <p class="lead">从安装插件、配置 ACM 比赛，到现场投屏、气球配送、打印、直播和赛后滚榜。</p>
         <p>界面截图使用演示比赛数据。点击配图可查看原图。</p>
@@ -69,19 +71,19 @@
       <section id="install" aria-labelledby="install-heading">
         <h2 id="install-heading">安装与升级</h2>
         <p>使用运行 Hydro 的系统账号执行命令。需要 Hydro 5.x、Node.js 22 或以上。用 PM2 管理 Hydro 时，默认进程名为 <code>hydrooj</code>。</p>
-        <p>从发布页下载 <code>hydro-scoreboard-xcpcio-plus-1.23.2.tgz</code> 和同名 <code>.sha256</code> 文件，放在同一个目录。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.23.2">v1.23.2 下载</a></p>
+        <p>从发布页下载 <code>hydro-scoreboard-xcpcio-plus-1.24.0.tgz</code> 和同名 <code>.sha256</code> 文件，放在同一个目录。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.24.0">v1.24.0 下载</a></p>
 
         <h3>校验并解压</h3>
-        <pre><code>sha256sum -c hydro-scoreboard-xcpcio-plus-1.23.2.tgz.sha256
-mkdir xcpcio-v1.23.2
-tar -xzf hydro-scoreboard-xcpcio-plus-1.23.2.tgz -C xcpcio-v1.23.2</code></pre>
+        <pre><code>sha256sum -c hydro-scoreboard-xcpcio-plus-1.24.0.tgz.sha256
+mkdir xcpcio-v1.24.0
+tar -xzf hydro-scoreboard-xcpcio-plus-1.24.0.tgz -C xcpcio-v1.24.0</code></pre>
 
         <figure class="guide-shot">
           <a href="./images/manual/install-archive.svg"><img src="./images/manual/install-archive.svg" width="840" height="262" loading="lazy" alt="终端示例中的 SHA-256 校验显示 OK，解压后可找到 package/install.sh"></a>
           <figcaption>校验结果显示 OK 后再解压。进入新目录，确认 package 下有 install.sh。</figcaption>
         </figure>
         <h3>首次安装</h3>
-        <pre><code>bash xcpcio-v1.23.2/package/install.sh install</code></pre>
+        <pre><code>bash xcpcio-v1.24.0/package/install.sh install</code></pre>
         <p>脚本将插件复制到 <code>$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus</code>，执行 <code>hydrooj addon add</code>，然后重启 Hydro。</p>
         <figure class="guide-shot">
           <a href="./images/manual/install-choice.svg"><img src="./images/manual/install-choice.svg" width="840" height="298" loading="lazy" alt="首次安装选 install，已有安装从新包执行 upgrade，两种方式都要验证比赛入口"></a>
@@ -91,7 +93,7 @@ tar -xzf hydro-scoreboard-xcpcio-plus-1.23.2.tgz -C xcpcio-v1.23.2</code></pre>
           <summary>手动安装到新目录</summary>
           <pre><code>addon_dir="$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 mkdir -p "$addon_dir"
-tar -xzf hydro-scoreboard-xcpcio-plus-1.23.2.tgz -C "$addon_dir" --strip-components=1
+tar -xzf hydro-scoreboard-xcpcio-plus-1.24.0.tgz -C "$addon_dir" --strip-components=1
 hydrooj addon add "$addon_dir"
 pm2 restart hydrooj</code></pre>
           <figure class="guide-shot">
@@ -101,7 +103,7 @@ pm2 restart hydrooj</code></pre>
         </details>
 
         <h3>已有安装时升级</h3>
-        <pre><code>bash xcpcio-v1.23.2/package/install.sh upgrade
+        <pre><code>bash xcpcio-v1.24.0/package/install.sh upgrade
 pm2 status hydrooj</code></pre>
         <p>在浏览器打开 Hydro 首页和一场 ACM 比赛，确认榜单、滚榜和大屏入口可用。自定义目录用 <code>--dir</code> 指向原安装位置，非默认 PM2 进程用 <code>--service</code>。容器部署用 <code>--no-restart</code>，然后通过容器管理方式重启 Hydro。</p>
         <figure class="guide-shot">
@@ -123,7 +125,7 @@ pm2 status hydrooj</code></pre>
         <h2 id="configuration-heading">比赛配置与工作台</h2>
         <p>打开一场 ACM 比赛，用比赛所有者或有「编辑比赛」权限的账号进入右侧菜单的「比赛配置与工作台」。电脑上从左侧选择分类，手机上点标题下的分类。复制当前地址即可让另一位比赛管理员直达同一组设置。</p>
         <ol>
-          <li><strong>赛制与奖项。</strong>选择赛制，核对确认框中的规则后应用。选择固定数量或有效队伍比例，再填写金银铜名额。按学校或参赛资格自动分榜，也可从「编辑手动分榜」「各榜奖项」「特别奖」打开对应编辑区。简单开关即时保存，完整分榜表单请点击「保存设置」。</li>
+          <li><strong>赛制与奖项。</strong>选择赛制，核对确认框中的规则后应用。在「奖牌与奖杯」套用模板，核对分母、取整方法和金银铜名额。按学校或参赛资格自动分榜，也可从「编辑手动分榜」「各榜奖项」「特别奖」打开对应编辑区。简单开关即时保存，完整分榜表单请点击「保存设置」。</li>
           <li><strong>公开与访问。</strong>逐项检查公开榜单、学校显示、CCS API、比赛中公开选手屏幕和反应视频。将指针移到问号上，或者用 Tab 聚焦、在手机上轻点问号即可查看说明。按 Esc 或点到其他位置收起。复制公开链接后可用未登录窗口检查观众看到的内容。</li>
         </ol>
         <figure class="guide-shot">
@@ -152,9 +154,9 @@ pm2 status hydrooj</code></pre>
           <li>在 Hydro 创建 ACM 比赛，录入题目、开始时间、结束时间和封榜时间。需要打印时在比赛设置开启「允许打印」。</li>
           <li>核对选手显示名、学校字段和正式参赛资格。需要座位图、配送或打印分区时，使用 onsite-toolkit 导入座位号，例如 <code>A-01</code>、<code>B-12</code>。</li>
           <li>从比赛右侧菜单打开「榜单规则与奖项」（增强榜页的「榜单规则与奖项」同样可以进入）。只有主榜默认存在。按需开启学校榜、正式资格榜，或创建手动分榜并筛选、勾选成员。</li>
-          <li>选择同分规则：「Hydro 规则」罚时精确到秒；「ICPC 区域赛规则」罚时按分钟计，再比最后一题通过时间，仍相同则并列；「CCPC 规则」罚时按分钟计，题数和总用时相同即并列。设置赛事默认奖项，名额可填固定数量，或按有效队伍（正式且至少通过一题）的比例，如金 10%、银 20%、铜 30%，各自向上取整。奖牌和奖杯（默认冠军、亚军、季军）可按队伍名次或学校名次颁发，奖杯并列时可让最晚通过早者得或共享。在「各榜奖项」展开目标榜并勾选「单独设置此榜奖项」，可独立配置金银铜、并列同奖、一血和奖杯。增强榜、滚榜、大屏、直播、CCS API 和成绩导出共用这些规则。</li>
+          <li>选择同分规则：「Hydro 规则」罚时精确到秒；「ICPC 区域赛规则」罚时按分钟计，再比最后一题通过时间，仍相同则并列；「CCPC 规则」罚时按分钟计，题数和总用时相同即并列。设置赛事默认奖项，名额可按固定数量、比例或金牌倍数计算。比例分母可选过题、有提交或全部正式队，取整可选各档分别取整或累计取整。ICPC World Finals 模板还会生成三档 Honors。奖牌和奖杯（默认冠军、亚军、季军）可按队伍名次或学校名次颁发，奖杯并列时可让最晚通过早者得或共享。在「各榜奖项」展开目标榜并勾选「单独设置此榜奖项」，可独立配置金银铜、并列同奖、一血和奖杯。增强榜、滚榜、大屏、直播、CCS API 和成绩导出共用这些规则。</li>
           <li>比赛当天的常用设置集中在比赛右侧菜单的「比赛配置与工作台」：一键切换 Hydro、ICPC 区域赛或 CCPC 赛制，修改奖项、封榜与公开、分榜、气球、打印和画面采集，滚榜结束后解除封榜。CCPC 赛制开启封榜前隐藏题号（过题达到门槛才显示题号，每队格子按各自顺序排列）、过题后忽略再次提交、统一的一血气球和每队各自配色。</li>
-          <li>在「特别奖」添加最佳女队、顽强拼搏等奖项。可按所选榜的名次、最后一次首次通过、有过题的最后一名或指定队伍发奖。两个「最后」规则仅考虑有过题的正式队伍。公开增强榜在比赛结束、解封且评测完成后显示获奖名单。</li>
+          <li>在「特别奖」添加最佳女队、顽强拼搏奖或优胜奖。先选榜单和评奖方式，再核对打星资格、最少队数、成绩线、是否排除奖牌队及获奖队数。保存后在成绩页核对获奖名单。</li>
           <li>按赛事需求开启「公开榜单」「向所有观众显示学校」和「替换原生榜单」。保存后用未登录窗口检查已开启的公开榜链接与学校显示。</li>
         </ol>
         <figure class="guide-shot">
@@ -334,8 +336,15 @@ pm2 status hydrooj</code></pre>
         <p>删除用户或队伍会永久移除相应数据。执行前在确认页核对账号、队伍和是否勾选了删除提交或取消报名。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/usage.md#系统管理">系统管理详细说明</a></p>
       </section>
 
+      <section id="jury-integrity" aria-labelledby="jury-integrity-heading">
+        <h2 id="jury-integrity-heading">裁判操作与诚信复核</h2>
+        <p>在赛事工作台打开「裁判操作」。核查题目数据时可按题、按比赛时间暂缓公布，相关气球同步暂缓。单队发生停机时可登记补时，恢复公布或撤销补时都要填写原因。人工改判需要重测权限并重新输入当前账号密码，改判前系统自动保存成绩快照。</p>
+        <p>在「诚信复核」按题分析相似代码，并排查看两份提交。建立复核后，选择队伍即可沿时间轴查看提交、屏幕和摄像头录像及采集中断。裁判填写结论后可导出证据包，认定违规时系统会保存成绩快照。</p>
+      </section>
+
       <section id="resolver" aria-labelledby="resolver-heading">
         <h2 id="resolver-heading">赛后滚榜</h2>
+        <p>在滚榜播放页打开「颁奖台本」，按本场会话的揭晓顺序查看候场、上台和特别奖名单。可直接打印，彩排会话的台本标有「仅供彩排」。</p>
         <ol>
           <li>在比赛侧边栏打开「滚榜预演与播放」。赛前可彩排。正式滚榜应在比赛结束、相关提交评测或重测完成之后进行。</li>
           <li>选择「仅滚所选榜单」来显示该榜成员，或选择「所选分榜正式，其余非正式」来展示全部队伍并按所选榜决定正式资格。</li>
@@ -367,6 +376,15 @@ pm2 status hydrooj</code></pre>
           <figcaption>选择重测前的快照与当前成绩对比，确认变化后再导出成绩和获奖名单。</figcaption>
         </figure>
         <p><a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/usage.md#成绩与导出">成绩快照与导出说明</a></p>
+      </section>
+
+      <section id="certificates" aria-labelledby="certificates-heading">
+        <h2 id="certificates-heading">证书制作与领取</h2>
+        <ol>
+          <li>打开「成绩快照与导出 → 证书」，选择已结束、已解封且评测完成的快照及榜单。下载制证信息表，核对中英文姓名、学校和教练后上传并锁定。</li>
+          <li>在模板编辑器选择纸张方向、背景和字段位置。检查样张后出证，可下载合并 PDF 或按学校分目录的 ZIP。获发证书的队伍从比赛详情的「我的证书」领取。</li>
+          <li>更正资料后重新锁表并出证，变更的证书取得新编号。扫描旧证书的二维码可查到更正状态和新编号。</li>
+        </ol>
       </section>
 
       <section id="cleanup" aria-labelledby="cleanup-heading">
@@ -540,8 +558,8 @@ pm2 status hydrooj</code></pre>
       </section>
       <footer class="manual-footer">
         <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/usage.md">完整使用文档</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.23.2/docs/verification.md">验证记录</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.23.2/NOTICE">来源与许可</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.24.0/docs/verification.md">验证记录</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.24.0/NOTICE">来源与许可</a>
         <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/issues">报告问题</a>
       </footer>
     </main>

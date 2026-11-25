@@ -82,8 +82,10 @@ export function resultBoard(source: ResultsData, board: string): ResultBoard {
     const teamInfo = new Map(teams.map((team) => [team.team_id, team]));
     const raw = new Map(enhanced.submissions.map((run) => [run.submission_id, run]));
     // Trophies first, as they are presented.
+    // ICPC World Finals Honors are listed with the other awards, after the medals.
+    const honorsIds = new Set(['highest-honors', 'high-honors', 'honors']);
     const resultAwards: ResultAward[] = [...ranking.awards].sort((a, b) => Number(b.id.startsWith('podium-')) - Number(a.id.startsWith('podium-')))
-        .map((award) => ({ id: award.id, name: award.citation, kind: award.id.startsWith('podium-') ? 'trophy' : 'medal', teamIds: award.teams }));
+        .map((award) => ({ id: award.id, name: award.citation, kind: award.id.startsWith('podium-') ? 'trophy' : honorsIds.has(award.id) ? 'special' : 'medal', teamIds: award.teams }));
 
     // Same eligibility as the selected board. An earlier eligible pending attempt can still take first solve.
     const eligible = new Set(info.teams.filter((team) => !team.isOutOfContest || rules.unofficialFirstSolve).map((team) => team.id));

@@ -537,3 +537,6 @@
 .xp-settings .button:disabled, .xp-settings .button[disabled] { opacity: .4; cursor: not-allowed; }
 .xp-savebar.xp-savebar--dirty { border-color: #5f9fd6; box-shadow: 0 -4px 18px #5f9fd633; }
 .xp-savebar.xp-savebar--dirty #xp-save-hint { color: #5f9fd6; opacity: 1; }
+.xp-page .xp-medal-rule .xp-field { max-width: 260px; }
+.xp-page .xp-honors { margin-top: 8px; }
+.xp-page .xp-honors .checkbox { padding-bottom: 20px; }

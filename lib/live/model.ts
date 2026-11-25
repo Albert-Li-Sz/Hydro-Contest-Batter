@@ -1,7 +1,7 @@
 import type { BoardData } from '../board';
-import { problemColor, schoolGroup, schoolName, UNSET_PROBLEM_COLOR } from '../board';
+import { medalPool, problemColor, schoolGroup, schoolName, UNSET_PROBLEM_COLOR } from '../board';
 import type { BoardSettings } from '../settings';
-import { awardsFor, medalCounts } from '../settings';
+import { awardsFor, medalCounts, type MedalPool } from '../settings';
 import { resolverAssetBase } from '../resolver-data';
 import type {
     AwardChain, ContestInfo, ContestStatus, GroupInfo, MediaType, OrganizationInfo, ProblemInfo, RunInfo, RunResult, TeamInfo, Verdict,
@@ -87,11 +87,11 @@ export function contestStatus(contest: LiveContestTimes, now: number): ContestSt
     return { type: 'finalized', startedAtUnixMs: start, finishAtUnixMs: end, finalizedAtUnixMs: end, frozenAtUnixMs: null };
 }
 
-/** `eligible`: official teams of the board that solved something, the base of 按比例设奖. */
-function medalChain(settings: BoardSettings, eligible: number, group?: string): AwardChain[] {
+/** `pool`: the board's official teams the medal counts rest on (lib/settings.ts MedalBase). */
+function medalChain(settings: BoardSettings, pool: MedalPool, group?: string): AwardChain[] {
     const rules = awardsFor(settings, group || 'all');
     const tiebreakMode = rules.medalSameScore ? 'ALL' : 'NONE';
-    const counts = medalCounts(rules, eligible);
+    const counts = medalCounts(rules, pool);
     const awards = [];
     let total = 0;
     for (const [key, citation] of [['gold', rules.goldCitation], ['silver', rules.silverCitation], ['bronze', rules.bronzeCitation]] as const) {
@@ -101,8 +101,9 @@ function medalChain(settings: BoardSettings, eligible: number, group?: string): 
         if (count > 0) awards.push({ id: `${key}-medal`, citation, chainLimit: total, minScore: 1, tiebreakMode } as const);
     }
     const podium = rules.podiumEnabled ? { hydroPodium: { basis: rules.podiumBasis, tie: rules.podiumTie, names: rules.podiumNames } } : {};
-    return awards.length || rules.podiumEnabled
-        ? [{ awards, excludedGroups: ['unofficial'], hydroMedalRanking: rules.medalRanking, ...podium, ...group ? { groups: [group] } : {} }] : [];
+    const honors = rules.honors?.enabled ? { hydroHonors: { highest: rules.honors.highest, high: rules.honors.high, standard: rules.honors.standard } } : {};
+    return awards.length || rules.podiumEnabled || rules.honors?.enabled
+        ? [{ awards, excludedGroups: ['unofficial'], hydroMedalRanking: rules.medalRanking, ...podium, ...honors, ...group ? { groups: [group] } : {} }] : [];
 }
 
 const logoKey = (name: string) => name.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -158,10 +159,8 @@ export function buildContestInfo(source: LiveSource, { fallbackOrganizationLogo 
             customFields: { ...team.members?.length ? { members: team.members.join(' · ') } : {}, ...team.school_key ? { hydroSchool: team.school_key } : {} } as Record<string, string>,
         };
     });
-    // As on the board (lib/board.ts): official teams with an accepted run among the data shown.
-    const solved = new Set(data.submissions.filter((record) => record.status === 'CORRECT' && record.timestamp >= 0
-        && record.timestamp < durationMs).map((record) => record.team_id));
-    const eligible = (list: TeamInfo[]) => list.filter((team) => !team.isOutOfContest && solved.has(team.id)).length;
+    // As on the board (lib/board.ts): the board's official teams, counted on the data shown.
+    const eligible = (list: TeamInfo[]) => medalPool(data, list.map((team) => team.id));
     return {
         name: contest.title,
         status: contestStatus(contest, source.now),

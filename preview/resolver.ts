@@ -1,3 +1,4 @@
+import { ceremonyScript } from '../lib/ceremony';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Environment } from 'nunjucks';
 import { type BoardData, enhanceBoard } from '../lib/board';
@@ -60,16 +61,20 @@ export function createResolverPreview(env: Environment, logoNames: Record<string
                     json({ id: session._id, url: `${base}/sessions/${session._id}`, overview: session.overview });
                 }
             } else {
-                const match = /^\/sessions\/([a-f\d-]+)(?:\/(data|playback|delete))?$/.exec(url.pathname.slice(base.length));
+                const match = /^\/sessions\/([a-f\d-]+)(?:\/(data|playback|delete|script))?$/.exec(url.pathname.slice(base.length));
                 if (!match) throw new ResolverError('Not found', 404);
                 const session = await sessions.get(scope, match[1]);
                 const operation = match[2];
                 if (!operation && request.method === 'GET') {
                     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(env.render('xcpcio_resolver_play.html', {
-                        tdoc: { title: session.overview.title }, codeBase, configUrl: base, runtimeJson: toScriptJson({
+                        tdoc: { title: session.overview.title }, codeBase, configUrl: base, scriptUrl: `${base}/sessions/${session._id}/script`, runtimeJson: toScriptJson({
                             id: session._id, controlToken: session.controlToken, screensUrl: '/contest/demo/screens',
                             base: `${base}/sessions/${session._id}`, rehearsal: session.config.rehearsal,
                         }),
+                    }));
+                } else if (operation === 'script' && request.method === 'GET') {
+                    response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(env.render('xcpcio_resolver_script.html', {
+                        tdoc: { title: session.overview.title }, codeBase, playUrl: `${base}/sessions/${session._id}`, script: ceremonyScript(await sessions.read(session)),
                     }));
                 } else if (operation === 'delete' && request.method === 'POST') {
                     await sessions.remove(session);

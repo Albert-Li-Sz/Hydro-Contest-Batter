@@ -82,3 +82,8 @@
 - 新增 `public/js/trophies.js`：学校名次（CCPC 基本规则 4.2）和奖杯（按队伍或学校名次；并列时最晚通过早者得或共享），榜单、滚榜、Live、CCS 与成绩导出共用。
 - `public/js/medals.js` 的奖杯改用 `trophies.js`，支持 `podiumBasis`、`podiumTie`、`podiumNames`；奖牌可按学校名次授予（`medalRanking: 'school'`）。
 - `server/lib/engine.js` 的 `normalizeContest()` 保留 `tieBreak: 'ccpc'` 与队伍的 `schoolKey`。
+
+## v1.24.0 奖项与颁奖台本
+
+- `public/js/medals.js` 使用 `honors.js` 的 place 规则生成三档 Honors，与成绩导出和 ICPC Live 共用名次线。
+- Hydro 播放模板新增颁奖台本入口。台本从该会话的成绩和奖项生成，保留彩排标记以及同队的特别奖。

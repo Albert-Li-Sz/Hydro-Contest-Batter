@@ -11,6 +11,7 @@
  * (lib/live/model.ts, lib/live/scoreboard.ts), so every surface agrees.
  */
 import type { BoardData } from '../board';
+import { creditedTime, type TimeCredit } from '../jury';
 import { enhanceBoard, schoolGroup, schoolName } from '../board';
 import { buildContestInfo, buildRuns, type LiveBoard, type LiveSource } from '../live/model';
 import { computeScoreboard, runsByTeam, sameScore, standingsAtRuns } from '../live/scoreboard';
@@ -86,6 +87,7 @@ export interface RecordSource {
     pid: number;
     lang: string;
     submittedAt: number;
+    held?: boolean;
     /** Earlier judgings (record.history) first, the current one last. */
     judgings: JudgingSource[];
 }
@@ -130,6 +132,7 @@ export interface CcsSource {
     problems: ProblemSource[];
     languages: LanguageSource[];
     records: RecordSource[];
+    credits?: Record<string, Pick<TimeCredit, 'from' | 'minutes'>[]>;
     clarifications: ClarificationSource[];
     persons: PersonSource[];
     accounts: AccountSource[];
@@ -387,6 +390,13 @@ function buildTeams(source: CcsSource, view: View) {
     return { groups, organizations: [...organizations.values()], teams };
 }
 
+/** Team-relative contest time; absolute timestamps remain the original clock readings. */
+function teamTime(source: CcsSource, uid: number, at: number) {
+    const elapsed = at - source.contest.beginAt;
+    const credits = source.credits?.[String(uid)];
+    return credits?.length ? creditedTime(elapsed, credits) : elapsed;
+}
+
 function buildSubmissions(source: CcsSource, view: View, visibleTeams: Set<string>) {
     const { contest } = source;
     const times = contestTimes(source);
@@ -405,13 +415,13 @@ function buildSubmissions(source: CcsSource, view: View, visibleTeams: Set<strin
             team_id: team,
             account_id: source.accounts.some(account => account.uid === record.uid) ? `u${record.uid}` : null,
             time: abstime(record.submittedAt),
-            contest_time: reltime(record.submittedAt - contest.beginAt),
+            contest_time: reltime(teamTime(source, record.teamUid, record.submittedAt)),
             entry_point: null,
             files: view === 'public' ? [] : [{ href: `contests/${contest.id}/submissions/${record.submissionId}/files`, filename: 'files.zip', mime: 'application/zip' }],
         });
         // The public sees results of submissions before the freeze (all of them once thawed), and
         // only "rejected" for a wrong one while the contest runs, as on the public board.
-        const embargoed = view === 'public' && times.publicFrozen && record.submittedAt > contest.lockAt!;
+        const embargoed = view === 'public' && (record.held || (times.publicFrozen && record.submittedAt > contest.lockAt!));
         if (embargoed) continue;
         const simplified = view === 'public' && !times.ended;
         const judgings = view === 'public' ? record.judgings.slice(-1) : record.judgings;
@@ -432,9 +442,9 @@ function buildSubmissions(source: CcsSource, view: View, visibleTeams: Set<strin
                 judgement_type_id: simplified ? null : type,
                 simplified_judgement_type_id: simplifiedOf(type),
                 current,
-                ...(start !== null ? { start_time: abstime(start), start_contest_time: reltime(start - contest.beginAt) } : {}),
+                ...(start !== null ? { start_time: abstime(start), start_contest_time: reltime(teamTime(source, record.teamUid, start)) } : {}),
                 end_time: done ? abstime(judging.judgeAt!) : null,
-                end_contest_time: done ? reltime(judging.judgeAt! - contest.beginAt) : null,
+                end_contest_time: done ? reltime(teamTime(source, record.teamUid, judging.judgeAt!)) : null,
                 max_run_time: done && judging.time !== null ? Math.round(judging.time) / 1000 : null,
             });
             if (view === 'full') {
@@ -576,9 +586,9 @@ function buildCommentary(source: CcsSource, view: View, visibleTeams: Set<string
         if (!visibleTeams.has(team) || !problem || !record) continue;
         const name = escapeMessage(teamName.get(run.teamId) || team);
         const refs = { team_ids: [team], problem_ids: [problem.id], submission_ids: [record.submissionId] };
-        const submittedAt = contest.beginAt + run.time;
+        const submittedAt = record.submittedAt;
         result.push({
-            id: `s${record.rid}`, time: abstime(submittedAt), contest_time: reltime(run.time),
+            id: `s${record.rid}`, time: abstime(submittedAt), contest_time: reltime(teamTime(source, record.teamUid, submittedAt)),
             message: `${name} 提交了 ${problem.letter} 题`, tags: ['submission'], source_id: null, ...refs,
         });
         if (run.result.type !== 'ICPC') continue;
@@ -601,7 +611,7 @@ function buildCommentary(source: CcsSource, view: View, visibleTeams: Set<string
             tags.push('accepted');
         }
         result.push({
-            id: `v${record.rid}`, time: abstime(Math.max(judgeAt, submittedAt)), contest_time: reltime(Math.max(judgeAt, submittedAt) - contest.beginAt),
+            id: `v${record.rid}`, time: abstime(Math.max(judgeAt, submittedAt)), contest_time: reltime(teamTime(source, record.teamUid, Math.max(judgeAt, submittedAt))),
             message, tags, source_id: null, ...refs,
         });
     }
@@ -651,7 +661,10 @@ export function buildObjects(source: CcsSource, view: View): CcsObjects {
 }
 
 function computeObjects(source: CcsSource, view: View): CcsObjects {
-    if (view.startsWith('team-')) return teamObjects(buildObjects(source, 'full'), buildObjects(source, 'public'), view.slice(5));
+    if (view.startsWith('team-')) {
+        const held = new Set(source.records.filter((record) => record.held).map((record) => record.submissionId));
+        return teamObjects(buildObjects(source, 'full'), buildObjects(source, 'public'), view.slice(5), held);
+    }
     const hidden = view === 'public' && !source.publicVisible;
     const { groups, organizations, teams } = buildTeams(source, view);
     const visibleTeams = new Set(hidden ? [] : teams.map((team) => team.id));
@@ -682,9 +695,9 @@ function computeObjects(source: CcsSource, view: View): CcsObjects {
  * What a team sees: the public view, with its own submissions' full judgements and runs, and its
  * own clarifications (questions and the replies to them).
  */
-export function teamObjects(full: CcsObjects, publicObjects: CcsObjects, team: string): CcsObjects {
+export function teamObjects(full: CcsObjects, publicObjects: CcsObjects, team: string, held: ReadonlySet<string> = new Set()): CcsObjects {
     const own = new Set(full.submissions.filter((submission) => submission.team_id === team).map((submission) => submission.id));
-    const ownJudgements = full.judgements.filter((judgement) => own.has(judgement.submission_id));
+    const ownJudgements = full.judgements.filter((judgement) => own.has(judgement.submission_id) && !held.has(judgement.submission_id));
     const ownJudgementIds = new Set(ownJudgements.map((judgement) => judgement.id));
     const groups = new Set(full.teams.find(t => t.id === team)?.group_ids || []);
     const ownClars = full.clarifications.filter((clar) => clar.from_team_id === team || clar.to_team_ids?.includes(team)

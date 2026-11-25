@@ -59,6 +59,8 @@ export function applyManage(ctx: Context, dependencies: {
     links: ContestLinks<Tdoc>;
     /** Capture every affected ACM contest before any of its records enter a new judging. */
     beforeRejudge: (domainId: string, contests: string[], jobId: string, operator: number) => Promise<void>;
+    /** 暂缓公布 the contest problems a rejudge covers until the jury releases them (lib/jury-routes.ts). */
+    holdForRejudge?: (domainId: string, contestId: string, pids: number[], jobId: string, operator: number) => Promise<void>;
 }) {
     const codeBase = resolverCodeBase(JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8')).version);
     // Hydro's own collections without typings for these fields; queries mirror Hydro's models.
@@ -731,6 +733,9 @@ export function applyManage(ctx: Context, dependencies: {
             };
             const affectedContests = [...new Set(records.flatMap((record) => record.contest ? [String(record.contest)] : []))];
             await dependencies.beforeRejudge(target, affectedContests, String(jobId), this.user._id);
+            if (input.holdResults === true && selection.scope === 'contest' && selection.contest && dependencies.holdForRejudge) {
+                await dependencies.holdForRejudge(target, selection.contest, selection.pids, String(jobId), this.user._id);
+            }
             await jobs.insertOne(job);
             for (const [pid, group] of groupByProblem(records)) {
                 const pdoc = await ProblemModel.get(target, pid);

@@ -17,6 +17,10 @@ import { applyLive } from './lib/live/routes';
 import { applyMonitor } from './lib/monitor-routes';
 import { applyOverview } from './lib/overview-routes';
 import { applyResults } from './lib/results-routes';
+import { applyCertificates } from './lib/certificates/routes';
+import { applyJury } from './lib/jury';
+import { applyJuryRoutes, juryStore } from './lib/jury-routes';
+import { applyIntegrity } from './lib/integrity-routes';
 import { applyCcs } from './lib/ccs/routes';
 import { applyManage } from './lib/manage-routes';
 import { applyPrintServers } from './lib/print-routes';
@@ -173,6 +177,9 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     const settingsVersion = new WeakMap<BoardSettings, number>();
     // Anonymous viewers all poll the same frozen data; share one computation per short window.
     const publicCache = new Map<string, { expires: number, body: Promise<BoardData> }>();
+    (ctx.on as (event: string, handler: (contest: string) => void) => unknown)('xcpcio/ccs-touch', (contest) => {
+        for (const key of publicCache.keys()) if (key.startsWith(`${contest}@`)) publicCache.delete(key);
+    });
     const publicTtl = Math.min(5000, Math.floor(config.refreshInterval / 2));
     const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'public/hydro-xcpcio/manifest.json'), 'utf8'));
     const profileFields = config.profileFields || defaultProfileFields;
@@ -182,14 +189,11 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
      * The contest's board data with its board rules: 过题后忽略再次提交 for everyone, and before the freeze the CCPC
      * board's hidden labels for every public projection (`realtime` false). Every channel reads it through here.
      */
+    // 裁判操作 (lib/jury.ts): 计时补偿 for every view, 暂缓公布 for the public ones.
+    const jury = juryStore(ctx.db);
     const loadData = async (tdoc: Tdoc, realtime: boolean, identity = false, results: boolean | 'live' = false, saved?: BoardSettings) => {
-        const [data, settings] = await Promise.all([loadContestData(tdoc, realtime, identity, results), saved || loadSettings(tdoc)]);
-        return applyBoardRules(data, settings, tdoc, Date.now(), realtime);
-    };
-    // The CCS API keeps one problem per id (its public view is withheld while the labels are hidden, lib/ccs/source.ts).
-    const loadPlain = async (tdoc: Tdoc, realtime: boolean, identity = false, results: boolean | 'live' = false) => {
-        const [data, settings] = await Promise.all([loadContestData(tdoc, realtime, identity, results), loadSettings(tdoc)]);
-        return applyBoardRules(data, settings, tdoc, Date.now(), true);
+        const [data, settings, state] = await Promise.all([loadContestData(tdoc, realtime, identity, results), saved || loadSettings(tdoc), jury.load(tdoc)]);
+        return applyBoardRules(applyJury(data, state, tdoc.pids, !realtime), settings, tdoc, Date.now(), realtime);
     };
     const respond = async (handler: Handler, tdoc: Tdoc, realtime: boolean, json: boolean, publicView = false, saved?: BoardSettings) => {
         const settings = saved || await loadSettings(tdoc);
@@ -344,7 +348,7 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     // 气球配送: its balloons feed the 气球配送图 screen, its tickets the print servers' receipt printers.
     // Links that work without a Hydro login register here, so they can be revoked after the contest.
     const links = new ContestLinks<Tdoc>();
-    const balloons = applyBalloons(ctx, { loadSettings, links });
+    const balloons = applyBalloons(ctx, { loadSettings, links, jury: jury.load });
     const reactions = config.live !== false && config.liveCapture !== false ? applyReactions(ctx, {
         loadSettings, loadData: loadContestData, links, screenDuringContest: async (tdoc): Promise<boolean> => (await live?.capture?.get(tdoc))?.screenDuringContest ?? false,
     }) : undefined;
@@ -352,8 +356,11 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
         screenVideos: reactions?.screenVideos, playScreenVideo: reactions?.playScreenVideo, screenLayouts: reactions?.screenLayouts });
     applyOverview(ctx, { loadSettings, loadData });
     const results = applyResults(ctx, { loadSettings, loadData, statusOf: boardStatus, resolver });
-    applyCcs(ctx, { loadSettings, loadData: loadPlain });
-    applyManage(ctx, { machines: monitor.machines, links, beforeRejudge: results.beforeRejudge });
+    applyCertificates(ctx, { loadSettings, snapshot: results.snapshot });
+    const juryRoutes = applyJuryRoutes(ctx, { store: jury, loadData: (tdoc) => loadData(tdoc, true, true, true), snapshot: results.snapshot });
+    applyIntegrity(ctx, { loadData: (tdoc) => loadData(tdoc, true, true, true), snapshot: results.snapshot, jury: jury.load });
+    applyCcs(ctx, { loadSettings, loadData: loadContestData, loadJury: jury.load });
+    applyManage(ctx, { machines: monitor.machines, links, beforeRejudge: results.beforeRejudge, holdForRejudge: juryRoutes.holdForRejudge });
     applyPresence(ctx);
     applyPrintServers(ctx, { receipts: balloons.receipts });
     const live = config.live !== false

@@ -25,6 +25,7 @@ const themed = [
     '/manage/xcpcio-users', '/manage/xcpcio-users#seats', '/manage/xcpcio-judges', '/manage/xcpcio-rejudge', '/manage/xcpcio-printers',
     `${contest}/clarification-desk`, ...['recordings', 'settings', 'tests'].map((tab) => `${contest}/live/capture#${tab}`),
     `${contest}/reactions/manage`, `${contest}/reactions/manage/layouts`, `${contest}/reactions`,
+    `${contest}/jury`, `${contest}/integrity`, `${contest}/certificates`, `${contest}/certificates/mine`,
     `${contest}/results`, `${contest}/control`, ...['access', 'venue', 'media', 'recording', 'work'].map(key => `${contest}/control#${key}`), `${contest}/rejudge-review`,
 ];
 const plain = [`${contest}/live-capture/me?as=1`, `${contest}/problems?as=1`, `${contest}/presence?phase=before`,
@@ -212,7 +213,7 @@ async function configuration(context, base) {
     await control.getByRole('button', { name: '创建连接', exact: true }).waitFor();
     await control.goBack();
     await category('赛制与奖项').click();
-    await control.getByRole('radio', { name: 'CCPC' }).click();
+    await control.getByRole('radiogroup', { name: '赛制', exact: true }).getByRole('radio', { name: 'CCPC', exact: true }).click();
     await control.getByRole('button', { name: '改用', exact: true }).click();
     await control.getByRole('status').filter({ hasText: '已改用 CCPC 赛制' }).waitFor();
     check(where, await control.getByLabel('同分规则').inputValue() === 'ccpc', 'the 赛制 did not change the ranking rule');

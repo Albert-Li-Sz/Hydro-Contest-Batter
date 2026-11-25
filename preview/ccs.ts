@@ -4,13 +4,14 @@ import { Readable } from 'node:stream';
 import { randomBytes } from 'node:crypto';
 import type { Context } from 'hydrooj';
 import type { BoardData } from '../lib/board';
+import { emptyJury, type JuryState } from '../lib/jury';
 import type { BoardSettings } from '../lib/settings';
 import { applyCcsApi } from '../lib/ccs/service';
 import type { HydroApi } from '../lib/ccs/source';
 import { previewDatabase } from './resolver-memory-db';
 
 export const previewCcsId = '68ea00000000000000000000';
-export function createCcsPreview(data: BoardData, getSettings: () => BoardSettings) {
+export function createCcsPreview(data: BoardData, getSettings: () => BoardSettings, getJury: () => JuryState = emptyJury) {
     class ObjectId {
         constructor(public value = `${Math.floor(Date.now() / 1000).toString(16)}${randomBytes(8).toString('hex')}`) {}
         toString() { return this.value; }
@@ -70,6 +71,7 @@ export function createCcsPreview(data: BoardData, getSettings: () => BoardSettin
     } as unknown as HydroApi;
     const app = applyCcsApi(host, ctx as Context, {
         loadSettings: async () => getSettings(),
+        loadJury: async () => getJury(),
         loadData: async (_tdoc, realtime, identity) => {
             const board = structuredClone(data);
             board.teams = board.teams.map(t => ({ ...t, organization: identity ? t.organization : undefined }));

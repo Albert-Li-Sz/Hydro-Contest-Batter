@@ -1,5 +1,5 @@
 export const clarificationReplyPresets = [
-    '否', '是', '请仔细阅读题面', '无可奉告', '不提供额外数据',
+    '否', '是', '请仔细阅读题面', '无可奉告', '不提供额外数据', '将在答疑环节统一回答',
 ];
 export const clarificationAnnouncements = [
     { name: '封榜时间', text: '本场比赛将在 {封榜时间} 封榜。封榜期间仍可正常提交。' },

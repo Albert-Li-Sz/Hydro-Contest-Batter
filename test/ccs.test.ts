@@ -47,6 +47,25 @@ describe('CCS 2026-01 objects', () => {
         const own = teamObjects(buildObjects(s, 'full'), pub, '1');
         expect(own.judgements.every(j => own.submissions.find(r => r.id === j.submission_id)?.team_id === '1')).toBe(true);
     });
+    it('applies jury time credits in every view and withholds a held team’s judgement and runs', () => {
+        const source = ccsFixture();
+        const record = source.records[0];
+        record.held = true;
+        source.credits = { [record.teamUid]: [{ from: 0, minutes: 5 }] };
+        const full = buildObjects(source, 'full');
+        const judging = full.judgements.find((item) => item.submission_id === record.submissionId)!;
+        expect(judging.judgement_type_id).toBe('AC');
+        expect(full.runs.some((run) => run.judgement_id === judging.id)).toBe(true);
+        for (const view of ['full', 'public', `team-${record.teamUid}`] as const) {
+            const objects = buildObjects(source, view);
+            expect(objects.submissions.find((item) => item.id === record.submissionId)).toMatchObject({
+                time: abstime(record.submittedAt), contest_time: reltime(record.submittedAt - source.contest.beginAt - 300_000),
+            });
+            if (view === 'full') continue;
+            expect(objects.judgements.some((item) => item.id === judging.id)).toBe(false);
+            expect(objects.runs.some((run) => run.judgement_id === judging.id)).toBe(false);
+        }
+    });
     it('lists the team itself to its members while the public cannot see teams yet', () => {
         const s = ccsFixture(); s.publicVisible = false;
         const pub = buildObjects(s, 'public');
@@ -67,7 +86,7 @@ describe('CCS 2026-01 objects', () => {
     });
     it('publishes special awards only when the results are final and visible', () => {
         const source = ccsFixture();
-        source.settings.specialAwards = [{ id: 'last', name: '顽强拼搏奖', kind: 'lastAccept', board: 'all', rank: 1, teamIds: [], unofficial: false, ties: true }];
+        source.settings.specialAwards = [{ id: 'last', name: '顽强拼搏奖', kind: 'lastAccept', board: 'all', rank: 1, teamIds: [], unofficial: false, ties: true, count: 1, minTeams: 0, floor: 'none', excludeMedalists: false }];
         const special = (view: 'public' | 'full') => buildObjects(structuredClone(source), view).awards.find(item => item.id === 'special-last');
         expect(special('public')).toMatchObject({ citation: '顽强拼搏奖', team_ids: ['3'] });
         source.contest.lockAt = source.contest.beginAt + 3600_000;

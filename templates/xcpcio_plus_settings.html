@@ -27,10 +27,22 @@
             <option value="icpc">ICPC 区域赛规则（罚时按分钟，再比最后一题通过时间）</option>
             <option value="ccpc">CCPC 规则（罚时按分钟，同题数同用时并列）</option>
           </select></label>
-          <label class="xp-field">奖牌名额<select class="select" id="xp-medal-basis">
-            <option value="count">固定数量</option>
-            <option value="ratio">按有效队伍比例（%）</option>
-          </select></label>
+          <div class="xp-inline-fields xp-medal-rule">
+            <label class="xp-field">奖牌名额<select class="select" id="xp-medal-basis">
+              <option value="count">固定数量</option>
+              <option value="ratio">按队伍比例（%）</option>
+              <option value="multiple">金牌比例，银铜为金牌倍数</option>
+            </select></label>
+            <label class="xp-field" id="xp-medal-base-field">比例的分母<select class="select" id="xp-medal-base">
+              <option value="solved">至少过一题的正式队</option>
+              <option value="submitted">至少提交一次的正式队</option>
+              <option value="registered">全部正式队</option>
+            </select></label>
+            <label class="xp-field" id="xp-medal-rounding-field">取整<select class="select" id="xp-medal-rounding">
+              <option value="tier">各档分别向上取整</option>
+              <option value="cumulative">累计向上取整（CCPC）</option>
+            </select></label>
+          </div>
           <div class="xp-medals" id="xp-default-medals">
             <label><span><i class="xp-dot xp-gold"></i>金牌</span><input class="textbox" aria-label="金牌数量" data-medal="gold" type="number" min="0" max="100000" step="1" required></label>
             <label><span><i class="xp-dot xp-silver"></i>银牌</span><input class="textbox" aria-label="银牌数量" data-medal="silver" type="number" min="0" max="100000" step="1" required></label>

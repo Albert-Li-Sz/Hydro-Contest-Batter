@@ -9,6 +9,7 @@ import type { BoardSettings } from './settings';
 import { toScriptJson } from './settings';
 import { defaultResolverConfig, parseResolverConfig, prepareResolver, ResolverError, resolverAssetBase, resolverBoards, resolverCodeBase } from './resolver-data';
 import { ResolverSessions, ResolverSession, ResolverScope } from './resolver-sessions';
+import { ceremonyScript } from './ceremony';
 
 export function applyResolver(ctx: Context, dependencies: {
     /** Sessions idle for longer than this are deleted together with their snapshots. */
@@ -149,7 +150,7 @@ export function applyResolver(ctx: Context, dependencies: {
             this.response.template = 'xcpcio_resolver_play.html';
             this.response.body = {
                 tdoc: this.tdoc, codeBase,
-                configUrl: this.base,
+                configUrl: this.base, scriptUrl: `${this.base}/sessions/${session._id}/script`,
                 runtimeJson: toScriptJson({
                     id: session._id, controlToken: session.controlToken, screensUrl: `/d/${encodeURIComponent(this.tdoc.domainId)}/contest/${this.tdoc.docId}/screens`,
                     base: `${this.base}/sessions/${session._id}`, rehearsal: session.config.rehearsal,
@@ -180,6 +181,16 @@ export function applyResolver(ctx: Context, dependencies: {
         }
     }
 
+    /** 颁奖台本 of the session: printable, for the host and the staging area. */
+    class ResolverScriptHandler extends ResolverHandler {
+        async get() {
+            const session = this.resolverSession;
+            if (!session) throw new ResolverError('滚榜会话不存在', 404);
+            this.response.template = 'xcpcio_resolver_script.html';
+            this.response.body = { tdoc: this.tdoc, codeBase, playUrl: `${this.base}/sessions/${session._id}`, script: ceremonyScript(await sessions.read(session)) };
+        }
+    }
+
     class ResolverDeleteHandler extends ResolverHandler {
         deletingSession = true;
         async post() {
@@ -196,6 +207,7 @@ export function applyResolver(ctx: Context, dependencies: {
     ctx.Route('contest_resolver_data', '/contest/:tid/resolver/sessions/:sid/data', ResolverDataHandler);
     ctx.Route('contest_resolver_playback', '/contest/:tid/resolver/sessions/:sid/playback', ResolverPlaybackHandler);
     ctx.Route('contest_resolver_delete', '/contest/:tid/resolver/sessions/:sid/delete', ResolverDeleteHandler);
+    ctx.Route('contest_resolver_script', '/contest/:tid/resolver/sessions/:sid/script', ResolverScriptHandler);
     ctx.on('handler/after', (handler) => {
         const tdoc = handler.response.body?.tdoc;
         if (tdoc?.rule !== 'acm' || !handler.user._id) return;

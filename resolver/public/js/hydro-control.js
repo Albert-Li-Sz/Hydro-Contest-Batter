@@ -105,8 +105,24 @@ function contestBlock() {
 }
 
 
+function medalTemplateBar() {
+    const bar = el('div', { class: 'manage-tabs', role: 'radiogroup', 'aria-label': '奖牌模板' });
+    for (const template of data.medalTemplates || []) {
+        const active = data.medalTemplate === template.id;
+        bar.append(el('button', {
+            type: 'button', role: 'radio', 'aria-checked': active ? 'true' : 'false', 'data-active': active ? '' : undefined, text: template.name,
+            onclick: () => { if (!active) save('board', template.board, `已套用${template.name}奖牌名额`); },
+        }));
+    }
+    return bar;
+}
+
 function rules({ board, links }) {
     const ratio = board.medalBasis === 'ratio';
+    const multiple = board.medalBasis === 'multiple';
+    const honors = board.honors || { enabled: false, highest: 25, high: 50, standard: 100 };
+    const unit = (key) => (ratio || (multiple && key === 'gold') ? '（%）' : multiple ? '（倍）' : '');
+    const limit = (key) => (ratio || (multiple && key === 'gold') ? 100 : multiple ? 20 : 100000);
     return [
         group('赛制与同分规则', presetBar(),
             row(choose('同分规则', board.tieBreak, [['hydro', 'Hydro（罚时按秒）'], ['icpc', 'ICPC（按分钟，再比最后通过）'], ['ccpc', 'CCPC（按分钟，同分并列）']],
@@ -118,11 +134,17 @@ function rules({ board, links }) {
                 choose('单位', board.ccpcBoard.revealBasis, [['count', '队'], ['percent', '% 队伍']],
                     (value) => save('board', { ccpcBoard: { revealBasis: value, reveal: value === 'percent' ? 20 : 50 } })),
                 el('span', { class: 'resolver-muted', text: '显示题号' })) : null),
-        group('奖牌与奖杯',
-            row(choose('奖牌名额', board.medalBasis, [['count', '固定数量'], ['ratio', '按有效队伍比例']], (value) => save('board', { medalBasis: value })),
+        group('奖牌与奖杯', medalTemplateBar(),
+            row(choose('奖牌名额', board.medalBasis, [['count', '固定数量'], ['ratio', '按队伍比例'], ['multiple', '金牌比例，银铜为倍数']], (value) => save('board', { medalBasis: value })),
+                board.medalBasis !== 'count' ? choose('比例的分母', board.medalBase, [['solved', '至少过一题的正式队'], ['submitted', '至少提交一次的正式队'], ['registered', '全部正式队']],
+                    (value) => save('board', { medalBase: value })) : null,
+                ratio ? choose('取整', board.medalRounding, [['tier', '各档分别向上取整'], ['cumulative', '累计向上取整']], (value) => save('board', { medalRounding: value })) : null,
                 choose('奖牌依据', board.medalRanking, [['team', '队伍名次'], ['school', '学校名次']], (value) => save('board', { medalRanking: value }))),
             row(...[['gold', '金牌'], ['silver', '银牌'], ['bronze', '铜牌']].map(([key, title]) =>
-                number(title + (ratio ? '（%）' : ''), board.medals[key], (value) => save('board', { medals: { [key]: value } }), { max: ratio ? 100 : 100000 }))),
+                number(title + unit(key), board.medals[key], (value) => save('board', { medals: { [key]: value } }), { max: limit(key) }))),
+            row(check('Honors（按 WF place）', honors.enabled, (enabled) => save('board', { honors: { enabled } })),
+                ...honors.enabled ? [['highest', 'Highest Honors 至第'], ['high', 'High Honors 至第'], ['standard', 'Honors 至第']].map(([key, title]) =>
+                    number(title, honors[key], (value) => save('board', { honors: { [key]: value } }), { min: 1 })) : []),
             row(check('并列同奖', board.medalSameScore, (v) => save('board', { medalSameScore: v })),
                 check('奖杯', board.podiumEnabled, (v) => save('board', { podiumEnabled: v })),
                 check('一血奖', board.firstSolve, (v) => save('board', { firstSolve: v })),
@@ -159,7 +181,8 @@ function venue({ balloons, contest, links }) {
                 check('每队各自配色', balloons.teamColors, (teamColors) => save('balloons', { teamColors }), { disabled: !balloons.enabled })),
             row(choose('一血气球', balloons.first.style, [['problem', '题目颜色，标记一血'], ['uniform', '统一的一血气球'], ['sequence', '统一，按全场顺序编号']],
                 (style) => save('balloons', { first: { style } }), { disabled: !balloons.enabled }),
-                choose('封榜后的气球', balloons.afterFreeze, [['hold', '解除封榜后发放'], ['continue', '继续发放']], (afterFreeze) => save('balloons', { afterFreeze }))),
+                choose('封榜后的气球', balloons.afterFreeze, [['hold', '解除封榜后发放'], ['continue', '继续发放'], ['encourage', '只给气球较少的队伍']], (afterFreeze) => save('balloons', { afterFreeze })),
+                balloons.afterFreeze === 'encourage' ? number('不足几个时继续发', balloons.encourageCount ?? 3, (encourageCount) => save('balloons', { encourageCount }), { min: 1, max: 20 }) : null),
             related(link('气球颜色与小票分单', links.balloons + '#settings'))),
         group('选手打印', row(check('允许选手打印', contest.allowPrint, (allowPrint) => save('print', { allowPrint }))), related(link('打印设备与队列', links.printers))),
         group('答疑与考场', related(link('答疑分工与封榜提醒', links.desk + '#settings'), link('座位、登录与清理', links.seats))),
@@ -182,7 +205,7 @@ function work({ review, links }) {
         group('赛场运行', related(link('机位签到与监控', links.presence), link('答疑与公告', links.desk, clarificationIcon()),
             link('气球配送', links.balloons + '#deliver'), link('评测队列与监控', links.monitor))),
         group('成绩与复核', review ? el('p', { text: '结果变更 ' + review.changes + ' · 评测中 ' + review.pending + ' · 待更新会话 ' + review.stale }) : null,
-            related(link('重测复核', links.review), link('批量重测', links.rejudge), link('成绩快照与导出', links.results))),
+            related(link('重测复核', links.review), link('批量重测', links.rejudge), link('成绩快照与导出', links.results), link('证书', links.certificates), link('裁判操作', links.jury), link('诚信复核', links.integrity))),
         group('观看比赛', related(link('比赛榜单', links.board), link('赛况总览', links.overview),
             link('录像回看', links.capture && links.capture + '#recordings'), link('反应视频与渲染', data.reactions && links.reactions))),
         group('比赛管理', related(link('编辑比赛', links.edit), link('评测机与调度', links.judges))),

@@ -37,7 +37,7 @@ export function previewDatabase() {
             if (value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).every((name) => name in operators)) {
                 return Object.entries(value).every(([name, expected]) => operators[name](actual, expected));
             }
-            return actual === value;
+            return Array.isArray(actual) ? actual.includes(value) : actual === value;
         });
     const db = {
         collection(name: string) {

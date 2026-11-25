@@ -9,7 +9,8 @@ import type { Context, Tdoc } from 'hydrooj';
 export type HydroApi = typeof import('hydrooj');
 import { type BoardData, problemColor, UNSET_PROBLEM_COLOR } from '../board';
 import { resolverBoards } from '../resolver-data';
-import { labelsHidden } from '../ccpc-board';
+import { applyBoardRules, labelsHidden } from '../ccpc-board';
+import { applyJury, heldProblems, type JuryState } from '../jury';
 import type { BoardSettings } from '../settings';
 import { isTeamEntry, memberIds, type TeamEntry } from '../teams';
 import type {
@@ -19,6 +20,7 @@ import { type CcsStore, contestKey } from './store';
 
 export interface SourceDependencies {
     loadData: (tdoc: Tdoc, realtime: boolean, identity: boolean, staffResults: boolean) => Promise<BoardData>;
+    loadJury: (tdoc: Tdoc) => Promise<JuryState>;
     loadSettings: (tdoc: Tdoc) => Promise<BoardSettings>;
 }
 
@@ -124,13 +126,20 @@ async function loadCcsSource(ctx: Context, store: CcsStore, dependencies: Source
     const key = contestKey(domainId, tid);
     const frozen = await store.frozenSource(key);
     if (frozen) return frozen;
-    const settings = await dependencies.loadSettings(tdoc);
-    const [full, publicData, stored, entries] = await Promise.all([
+    const [settings, jury] = await Promise.all([dependencies.loadSettings(tdoc), dependencies.loadJury(tdoc)]);
+    const [rawFull, rawPublic, stored, entries] = await Promise.all([
         dependencies.loadData(tdoc, true, true, true),
         dependencies.loadData(tdoc, false, settings.showIdentity, false),
         store.contest(domainId, tid),
         ContestModel.getMultiStatus(domainId, { docId: tdoc.docId }).toArray() as Promise<(TeamEntry & { unrank?: boolean })[]>,
     ]);
+    // CCS retains the original problem IDs, even when the public board hides labels.
+    const plain = (data: BoardData, publicView: boolean) => applyBoardRules(applyJury(data, jury, tdoc.pids, publicView), settings, tdoc, Date.now(), true);
+    const full = plain(rawFull, false);
+    const publicData = plain(rawPublic, true);
+    const holds = heldProblems(jury, tdoc.beginAt.getTime());
+    const credits: NonNullable<CcsSource['credits']> = {};
+    for (const { teamId, from, minutes } of jury.credits) (credits[teamId] ||= []).push({ from, minutes });
     const domain = await DomainModel.get(domainId);
     const roles = Object.entries({ ...BUILTIN_ROLES, ...domain?.roles }).filter(([, value]) => {
         const perm = BigInt(String(value));
@@ -189,6 +198,8 @@ async function loadCcsSource(ctx: Context, store: CcsStore, dependencies: Source
     const [submissionIds, clarificationIds] = await Promise.all([store.mappedIds(key, 'submissions'), store.mappedIds(key, 'clarifications')]);
     const records: RecordSource[] = recordDocs.map((doc) => {
         const rid = `${doc._id}`;
+        const submittedAt = toMs(doc.ccsTime) ?? idTime(doc._id);
+        const heldSince = holds.get(doc.pid);
         const previous = (history.get(rid) || []).sort((a, b) => (toMs(a.judgeAt) ?? 0) - (toMs(b.judgeAt) ?? 0)).map(judging);
         return {
             rid,
@@ -197,7 +208,8 @@ async function loadCcsSource(ctx: Context, store: CcsStore, dependencies: Source
             teamUid: teamOfUser.get(doc.uid) ?? doc.uid,
             pid: doc.pid,
             lang: String(doc.lang || ''),
-            submittedAt: toMs(doc.ccsTime) ?? idTime(doc._id),
+            submittedAt,
+            held: heldSince !== undefined && submittedAt >= heldSince,
             judgings: [...previous, judging(doc)],
         };
     });
@@ -248,7 +260,7 @@ async function loadCcsSource(ctx: Context, store: CcsStore, dependencies: Source
         meta: stored.meta || {},
         settings,
         full,
-        public: publicData,
+        public: publicData, credits,
         // CCPC 新榜单模式: no public scoreboard while the board hides problem labels.
         publicVisible: !!ContestModel.canShowScoreboard.call(nobody as never, tdoc, false) && !labelsHidden(settings.ccpcBoard, tdoc, Date.now()),
         boards: resolverBoards(full, settings, true),

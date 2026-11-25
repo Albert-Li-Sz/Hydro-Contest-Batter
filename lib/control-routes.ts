@@ -4,7 +4,7 @@ import {
     ContestModel, type Context, Handler, NotFoundError, ObjectId, param, PERM, PRIV, type Tdoc, Types, ValidationError,
 } from 'hydrooj';
 import { type BalloonSettings } from './balloons';
-import { contestPhase, patchBoard, presetIds, presetOf, presets, type PresetId } from './control';
+import { contestPhase, medalTemplateOf, medalTemplates, patchBoard, presetIds, presetOf, presets, type PresetId } from './control';
 import type { CaptureSettings } from './live/capture';
 import { resolverCodeBase } from './resolver-data';
 import { type BoardSettings, toScriptJson } from './settings';
@@ -43,22 +43,25 @@ export function applyControl(ctx: Context, dependencies: {
             },
             preset: presetOf(board, balloons),
             presets: presetIds.map((id) => ({ id, name: presets[id].name })),
+            medalTemplate: medalTemplateOf(board),
+            medalTemplates,
             board: {
                 tieBreak: board.tieBreak, ccpcBoard: board.ccpcBoard, ignoreAfterAccept: board.ignoreAfterAccept,
-                medals: board.medals, medalBasis: board.medalBasis, medalRanking: board.medalRanking, medalSameScore: board.medalSameScore,
+                medals: board.medals, medalBasis: board.medalBasis, medalBase: board.medalBase, medalRounding: board.medalRounding, honors: board.honors,
+                medalRanking: board.medalRanking, medalSameScore: board.medalSameScore,
                 podiumEnabled: board.podiumEnabled, podiumBasis: board.podiumBasis, podiumTie: board.podiumTie, podiumNames: board.podiumNames,
                 firstSolve: board.firstSolve, unofficialFirstSolve: board.unofficialFirstSolve,
                 schoolBoards: board.schoolBoards, participationBoards: board.participationBoards, manualBoards: board.manualBoards.length,
                 specialAwards: board.specialAwards.length,
                 publicAccess: board.publicAccess, showIdentity: board.showIdentity, ccsApi: board.ccsApi,
             },
-            balloons: { enabled: balloons.enabled, afterFreeze: balloons.afterFreeze, first: balloons.first, teamColors: balloons.teamColors, tickets: balloons.tickets.enabled },
+            balloons: { enabled: balloons.enabled, afterFreeze: balloons.afterFreeze, encourageCount: balloons.encourageCount, first: balloons.first, teamColors: balloons.teamColors, tickets: balloons.tickets.enabled },
             reactions,
             capture: capture && { clips: capture.recording.clips.enabled, archive: capture.recording.archive.enabled, enabled: capture.enabled, screenDuringContest: capture.screenDuringContest, webcam: capture.webcam },
             review,
             links: {
                 settings: `${base}/xcpcio-settings`, board: `${base}/scoreboard/xcpcio-plus`, publicBoard: board.publicAccess ? `${base}/xcpcio-public` : null,
-                results: `${base}/results`, review: `${base}/rejudge-review`, resolver: `${base}/resolver`, screens: `${base}/screens`,
+                results: `${base}/results`, certificates: `${base}/certificates`, jury: `${base}/jury`, integrity: `${base}/integrity`, review: `${base}/rejudge-review`, resolver: `${base}/resolver`, screens: `${base}/screens`,
                 reactions: `${base}/reactions/manage`, balloons: `${base}/balloons`, live: dependencies.live ? `${base}/live` : null, capture: dependencies.capture ? `${base}/live/capture` : null,
                 presence: `${base}/presence`, monitor: `${base}/monitor`, overview: `${base}/overview`, desk: `${base}/clarification-desk`,
                 printers: systemAdmin ? '/manage/xcpcio-printers' : null, rejudge: systemAdmin ? '/manage/xcpcio-rejudge' : null,

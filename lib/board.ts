@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import type { BoardSettings, Medals } from './settings';
-import { awardsFor, medalCounts } from './settings';
+import type { BoardSettings, MedalPool, Medals } from './settings';
+import { awardsFor, cappedMedals, medalCounts } from './settings';
 import { AWARD_EXEMPT_TAG, SCHOOL_TAG } from './award-policy.mjs';
 
 export interface BoardTeam {
@@ -60,14 +60,23 @@ export function schoolGroup(name: string): string {
     return `school-${createHash('sha256').update(schoolName(name)).digest('hex').slice(0, 16)}`;
 }
 
-function cappedMedals(configured: Medals, solvedTeams: number): Medals {
-    let remaining = solvedTeams;
-    const result = { gold: 0, silver: 0, bronze: 0 };
-    for (const key of ['gold', 'silver', 'bronze'] as const) {
-        result[key] = Math.min(configured[key], remaining);
-        remaining -= result[key];
+/**
+ * The official teams of `teamIds` that medal counts may be based on (lib/settings.ts MedalBase): all of them,
+ * those with a submission during the contest, and those with an accepted one among the submissions given.
+ */
+export function medalPool(data: Pick<BoardData, 'contest' | 'teams' | 'submissions'>, teamIds: Iterable<string>): MedalPool {
+    const ids = new Set(teamIds);
+    const official = new Set(data.teams.filter((team) => ids.has(team.team_id) && !team.group.includes('unofficial')).map((team) => team.team_id));
+    const duration = (data.contest.end_time - data.contest.start_time) * 1000;
+    const submitted = new Set<string>();
+    const solved = new Set<string>();
+    for (const record of data.submissions) {
+        if (!official.has(record.team_id) || !(record.timestamp >= 0 && record.timestamp < duration)
+            || !(record.problem_id >= 0 && record.problem_id < data.contest.problem_quantity)) continue;
+        submitted.add(record.team_id);
+        if (record.status === 'CORRECT') solved.add(record.team_id);
     }
-    return result;
+    return { registered: official.size, submitted: submitted.size, solved: solved.size };
 }
 
 /** Names the board switcher already shows for automatic boards, which manual boards must not repeat. */
@@ -113,10 +122,6 @@ export function enhanceBoard(data: BoardData, settings: BoardSettings, { identit
             ...settings.manualBoards.filter((board) => membership.get(board.id)!.has(team.team_id)).map((board) => `manual-${board.id}`),
         ])],
     }));
-    const duration = (data.contest.end_time - data.contest.start_time) * 1000;
-    const solved = new Set(data.submissions.filter((submission) => submission.status === 'CORRECT'
-        && submission.timestamp >= 0 && submission.timestamp < duration
-        && submission.problem_id >= 0 && submission.problem_id < data.contest.problem_quantity).map((submission) => submission.team_id));
     // CCPC 新榜单模式 (lib/ccpc-board.ts): columns from here on are positions in each team's row, not problems.
     const { hiddenFrom } = data;
     const medal: Record<string, Medals & { hydroAwards: ReturnType<typeof awardsFor> & { hiddenFrom?: number } }> = {};
@@ -124,9 +129,9 @@ export function enhanceBoard(data: BoardData, settings: BoardSettings, { identit
     for (const id of allGroups) {
         const members = teams.filter((team) => id === 'all' || team.group.includes(id));
         const awards = awardsFor(settings, id);
-        // Eligible: official teams on this board that solved something (also the base of 按比例设奖).
-        const eligible = members.filter((team) => solved.has(team.team_id) && !team.group.includes('unofficial')).length;
-        medal[id] = { ...cappedMedals(medalCounts(awards, eligible), eligible), hydroAwards: hiddenFrom === undefined ? awards : { ...awards, hiddenFrom } };
+        // Medals go to official teams on this board that solved something; the counts may rest on more of them.
+        const pool = medalPool(data, members.map((team) => team.team_id));
+        medal[id] = { ...cappedMedals(medalCounts(awards, pool), pool.solved), hydroAwards: hiddenFrom === undefined ? awards : { ...awards, hiddenFrom } };
     }
     return {
         ...data,

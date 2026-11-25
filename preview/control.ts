@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Environment } from 'nunjucks';
 import type { BoardData } from '../lib/board';
 import type { BalloonSettings } from '../lib/balloons';
-import { contestPhase, patchBoard, presetIds, presetOf, presets, type PresetId } from '../lib/control';
+import { contestPhase, medalTemplateOf, medalTemplates, patchBoard, presetIds, presetOf, presets, type PresetId } from '../lib/control';
 import type { CaptureSettings } from '../lib/live/capture';
 import { filterChanges, impactOf, lastChange, reviewChanges, verdictName, type ReviewChange, type ReviewItem } from '../lib/rejudge-review';
 import { resolverCodeBase } from '../lib/resolver-data';
@@ -87,21 +87,23 @@ export function createControlPreview(env: Environment, version: string, demo: ()
         return {
             contest: { title: demo().contest.contest_name, ...contest, phase: contestPhase(contest, Date.now()), allowPrint },
             preset: presetOf(settings, balloons), presets: presetIds.map((id) => ({ id, name: presets[id].name })),
+            medalTemplate: medalTemplateOf(settings), medalTemplates,
             board: {
                 tieBreak: settings.tieBreak, ccpcBoard: settings.ccpcBoard, ignoreAfterAccept: settings.ignoreAfterAccept,
-                medals: settings.medals, medalBasis: settings.medalBasis, medalRanking: settings.medalRanking, medalSameScore: settings.medalSameScore,
+                medals: settings.medals, medalBasis: settings.medalBasis, medalBase: settings.medalBase, medalRounding: settings.medalRounding, honors: settings.honors,
+                medalRanking: settings.medalRanking, medalSameScore: settings.medalSameScore,
                 podiumEnabled: settings.podiumEnabled, podiumBasis: settings.podiumBasis, podiumTie: settings.podiumTie, podiumNames: settings.podiumNames,
                 firstSolve: settings.firstSolve, unofficialFirstSolve: settings.unofficialFirstSolve,
                 schoolBoards: settings.schoolBoards, participationBoards: settings.participationBoards, manualBoards: settings.manualBoards.length,
                 specialAwards: settings.specialAwards.length, publicAccess: settings.publicAccess, showIdentity: settings.showIdentity, ccsApi: settings.ccsApi,
             },
-            balloons: { enabled: balloons.enabled, afterFreeze: balloons.afterFreeze, first: balloons.first, teamColors: balloons.teamColors, tickets: balloons.tickets.enabled },
+            balloons: { enabled: balloons.enabled, afterFreeze: balloons.afterFreeze, encourageCount: balloons.encourageCount, first: balloons.first, teamColors: balloons.teamColors, tickets: balloons.tickets.enabled },
             reactions: reactions?.summary(),
             capture: { clips:capture.recording.clips.enabled, archive:capture.recording.archive.enabled, enabled: capture.enabled, screenDuringContest: capture.screenDuringContest, webcam: capture.webcam },
             review: { changes: summary.total, pending: summary.pending, stale: summary.sessions.filter((session) => session.stale).length },
             links: {
                 settings: `${base}/xcpcio-settings`, board: `${base}/scoreboard/xcpcio-plus`, publicBoard: settings.publicAccess ? `${base}/xcpcio-public` : null,
-                results: `${base}/results`, review: `${base}/rejudge-review`, resolver: `${base}/resolver`, screens: `${base}/screens`, balloons: `${base}/balloons`,
+                results: `${base}/results`, certificates: `${base}/certificates`, jury: `${base}/jury`, integrity: `${base}/integrity`, review: `${base}/rejudge-review`, resolver: `${base}/resolver`, screens: `${base}/screens`, balloons: `${base}/balloons`,
                 reactions: `${base}/reactions/manage`, live: `${base}/live`, capture: `${base}/live/capture`, presence: `${base}/presence`, monitor: `${base}/monitor`, overview: `${base}/overview`,
                 desk: `${base}/clarification-desk`, seats: '/manage/xcpcio-users#seats', judges: '/manage/xcpcio-judges', printers: '/manage/xcpcio-printers', rejudge: '/manage/xcpcio-rejudge', edit: `${base}/edit`,
             },

@@ -1,0 +1,31 @@
+{% set page_name = 'xcpcio_certificate_verify' %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<link rel="stylesheet" href="{{ codeBase }}/hydro-config.css">
+<link rel="stylesheet" href="{{ codeBase }}/hydro-certificates.css">
+<div class="row resolver-config xcpcio-certificates" id="hydro-resolver-config"><div class="medium-12 columns">
+  <section class="section visible certificate-verify">
+    <div class="section__header resolver-heading"><div><h1 class="section__title">证书核验</h1><p class="resolver-muted">{{ code }}</p></div></div>
+    <div class="section__body">
+      {% if not found %}
+      <p class="certificate-state certificate-state--bad">没有这张证书</p>
+      <p class="resolver-muted">请核对证书上的编号。编号由 10 位数字和大写字母组成，不含 0、1、I、O。</p>
+      {% else %}
+      {% if certificate.status == 'valid' %}<p class="certificate-state certificate-state--ok">有效证书</p>
+      {% elif certificate.status == 'corrected' %}<p class="certificate-state certificate-state--warn">已更正，以新证书为准</p>
+      {% else %}<p class="certificate-state certificate-state--bad">已撤销{% if certificate.reason %}：{{ certificate.reason }}{% endif %}</p>{% endif %}
+      <dl class="certificate-facts">
+        <dt>比赛</dt><dd>{{ certificate.contest }}</dd>
+        <dt>奖项</dt><dd>{{ certificate.award or certificate.kind }}</dd>
+        <dt>获奖者</dt><dd>{{ certificate.name }}{% if certificate.nameEn %}（{{ certificate.nameEn }}）{% endif %}</dd>
+        {% if certificate.team and certificate.team != certificate.name %}<dt>队伍</dt><dd>{{ certificate.team }}</dd>{% endif %}
+        {% if certificate.school %}<dt>学校</dt><dd>{{ certificate.school }}</dd>{% endif %}
+        <dt>证书类型</dt><dd>{{ certificate.kind }}</dd>
+        <dt>颁发时间</dt><dd>{{ certificate.issuedAt.toISOString().slice(0, 10) }}</dd>
+        {% if certificate.replacedBy %}<dt>新证书</dt><dd><a href="./{{ certificate.replacedBy }}">{{ certificate.replacedBy }}</a></dd>{% endif %}
+      </dl>
+      {% endif %}
+    </div>
+  </section>
+</div></div>
+{% endblock %}

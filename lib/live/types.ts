@@ -83,6 +83,8 @@ export interface AwardChain {
     hydroMedalRanking?: 'team' | 'school';
     /** HydroXCPCIO: trophies (冠军、亚军、季军…) of this board. */
     hydroPodium?: { basis: 'team' | 'school'; tie: 'lastAccept' | 'shared'; names: string[] };
+    /** HydroXCPCIO: ICPC World Finals Honors by place (resolver/public/js/honors.js). */
+    hydroHonors?: { highest: number; high: number; standard: number };
 }
 
 export interface QueueSettings {
