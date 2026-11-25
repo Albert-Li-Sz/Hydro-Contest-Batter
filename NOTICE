@@ -2,7 +2,7 @@ Hydro XCPCIO Plus is based on @hydrooj/scoreboard-xcpcio.
 Hydro plugin integration is derived from hydro-dev/Hydro, AGPL-3.0-or-later.
 https://github.com/hydro-dev/Hydro/tree/master/packages/scoreboard-xcpcio
 
-The initial Hydro-Contest-Batter repository's (formerly Hydro-Contes-Batter)
+The initial Hydro-Contest-Better repository's (formerly Hydro-Contest-Batter and Hydro-Contes-Batter)
 Apache-2.0 notice is preserved verbatim in licenses/Repository-initial-Apache-2.0.txt from commit
 61ea976cc1bc9a392cce0fc7938804b0ce13d2bd. The imported Hydro plugin integration
 continues to use its existing AGPL-3.0-or-later license.
