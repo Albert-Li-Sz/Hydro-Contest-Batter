@@ -114,6 +114,9 @@ export function applyCertificates(ctx: Context, dependencies: {
         async postLogo(_domainId: string, input?: string) { await this.operate('logo', input); }
 
         @param('payload', Types.String, true)
+        async postDecoration(_domainId: string, input?: string) { await this.operate('decoration', input); }
+
+        @param('payload', Types.String, true)
         async postSnapshot(_domainId: string, input?: string) { await this.operate('snapshot', input); }
 
         async postIssue() { await this.operate('issue'); }

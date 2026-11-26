@@ -1,6 +1,9 @@
 import { deflateSync, inflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { previewDatabase } from '../preview/resolver-memory-db';
+import { englishSchoolName, pinyinName } from '../resolver/public/js/certificate-names.js';
+import { certificateFrame, decorationBox } from '../resolver/public/js/certificate-frame.js';
+import { designLabels, type CertificateDesign } from '../resolver/public/js/certificate-designs.js';
 import {
     certificateEntries, competitionTemplate, defaultConfig, fillText, missingFields, normalizeConfig, overridesFromCsv, parseCsv, planIssue, fingerprint, sheetOf, sheetRows,
 } from '../lib/certificates/model';
@@ -14,6 +17,8 @@ import { resultBoard, resultsCsv, type ResultsData } from '../lib/results';
 import { defaultSettings, normalizeSettings } from '../lib/settings';
 import { demoData } from './fixture';
 
+const translucentPng = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGPoEDP4zzDzDAMADmEDM8+OsIAAAAAASUVORK5CYII=';
+
 function source(): ResultsData {
     const data = demoData();
     const settings = normalizeSettings({ ...defaultSettings, medals: { gold: 1, silver: 1, bronze: 1 }, firstSolve: true, unofficialFirstSolve: true });
@@ -24,6 +29,16 @@ function source(): ResultsData {
 }
 
 describe('证书清单', () => {
+    it('matches registered school names and formats given names before single and compound surnames', () => {
+        expect(englishSchoolName(' 南京晓庄学院 ')).toBe('Nanjing Xiaozhuang University');
+        expect(englishSchoolName('北京大学')).toBe('Peking University');
+        expect(englishSchoolName('哈尔滨工业大学（深圳）')).toBe('Harbin Institute of Technology, Shenzhen');
+        expect(englishSchoolName('北京大学测试分校')).toBe('');
+        expect(['李四', '王建国', '欧阳修', '歐陽娜娜', '单田芳', '曾乐乐', '吕安', '李希安'].map(pinyinName))
+            .toEqual(['Si Li', 'Jianguo Wang', 'Xiu Ouyang', 'Nana Ouyang', 'Tianfang Shan', 'Lele Zeng', 'An Lü', "Xi'an Li"]);
+        expect(['', 'Alice Wang', '李A', '李𰻞'].map(pinyinName)).toEqual(['', '', '', '']);
+    });
+
     it('gives certificates by the awards: medals to official teams, first solves also to unofficial ones', () => {
         const result = resultBoard(source(), 'all');
         const config = { ...defaultConfig('测试赛'), kinds: { team: true, member: true, coach: true, participation: true } };
@@ -45,7 +60,9 @@ describe('证书清单', () => {
         expect(fillText('获奖证书', {})).toBe('获奖证书');
         const config = defaultConfig('测试赛');
         const [entry] = certificateEntries(resultBoard(source(), 'all'), config);
-        expect(missingFields(config.templates.award, entry)).toEqual(expect.arrayContaining(['nameEn', 'issuer', 'date']));
+        expect(entry.values.nameEn).toBe('Che Lin');
+        expect(missingFields(config.templates.award, entry)).toEqual(expect.arrayContaining(['issuer', 'date']));
+        expect(missingFields(config.templates.award, entry)).not.toContain('nameEn');
         expect(missingFields(config.templates.award, entry)).not.toContain('number');
     });
 
@@ -58,8 +75,32 @@ describe('证书清单', () => {
         const { overrides, updated, unknown } = overridesFromCsv(`${csv}"999",队员,1,无名,,,,,\r\n`, result, {});
         expect(updated).toBe(rows.length - 1);
         expect(unknown).toEqual(['999']);
-        expect(overrides['1']).toEqual({ teamEn: 'Team Lin', schoolEn: 'Nanjing Xiaozhuang University', members: [{ nameEn: 'Lin Che' }] });
-        expect(sheetOf(result, overrides)[0]).toMatchObject({ teamEn: 'Team Lin', members: [{ name: '林澈', nameEn: 'Lin Che' }] });
+        expect(overrides['1']).toEqual({ teamEn: 'Team Lin', members: [{ nameEn: 'Lin Che' }] });
+        expect(sheetOf(result, overrides)[0]).toMatchObject({ teamEn: 'Team Lin', schoolEn: 'Nanjing Xiaozhuang University', members: [{ name: '林澈', nameEn: 'Lin Che' }] });
+    });
+
+    it('recomputes automatic cells after Chinese-only CSV edits and retains explicit English spellings', () => {
+        const result = resultBoard(source(), 'all');
+        const csv = (rows: string[][]) => overridesFromCsv(resultsCsv(rows), result, {}).overrides;
+        const rows = sheetRows(sheetOf(result, {}));
+        expect(csv(rows)).toEqual({});
+        for (const row of rows.slice(1).filter(([id]) => id === '1')) {
+            row[3] = row[1] === '教练' ? '王建国' : '李四';
+            row[7] = '北京大学';
+        }
+        const changed = csv(rows);
+        expect(sheetOf(result, changed)[0]).toMatchObject({
+            schoolEn: 'Peking University', members: [{ nameEn: 'Si Li' }], coaches: [{ nameEn: 'Jianguo Wang' }],
+        });
+        expect(changed['1'].members).toEqual([{ name: '李四' }]);
+        const partial = '队伍 ID,角色,序号,英文姓名,学校英文名\n1,队员,1,Simon Lee,PKU';
+        const manual = overridesFromCsv(partial, result, changed).overrides;
+        const reimported = overridesFromCsv(resultsCsv(sheetRows(sheetOf(result, manual))), result, manual).overrides;
+        expect(reimported).toEqual(manual);
+        const renamed = overridesFromCsv('队伍 ID,角色,序号,姓名\n1,队员,1,李思', result, reimported).overrides;
+        expect(sheetOf(result, renamed)[0]).toMatchObject({ schoolEn: 'PKU', members: [{ name: '李思', nameEn: 'Simon Lee' }] });
+        const cleared = overridesFromCsv('队伍 ID,角色,序号,英文姓名,学校英文名\n1,队员,1,,', result, renamed).overrides;
+        expect(sheetOf(result, cleared)[0]).toMatchObject({ schoolEn: 'Peking University', members: [{ nameEn: 'Si Li' }] });
     });
 
     it('plans an issue that keeps unchanged certificates, replaces changed ones and revokes the rest', () => {
@@ -75,6 +116,17 @@ describe('证书清单', () => {
         expect(plan.unchanged).toBe(entries.length - plan.correct.length);
     });
 
+    it('retains a separately entered English name and its sparse roster slot across CSV downloads and uploads', () => {
+        const result = resultBoard(source(), 'all');
+        const csv = '队伍 ID,角色,序号,姓名,英文姓名\n1,队员,5,李四,Simon Lee';
+        const { overrides } = overridesFromCsv(csv, result, {});
+        const team = sheetOf(result, overrides).find((t) => t.teamId === '1')!;
+        expect(team.members.at(-1)).toEqual({ name: '李四', nameEn: 'Simon Lee', sourceIndex: 4 });
+        const rows = sheetRows([team]);
+        expect(rows.find((row) => row[3] === '李四')?.slice(1, 5)).toEqual(['队员', '5', '李四', 'Simon Lee']);
+        expect(overridesFromCsv(resultsCsv(rows), result, overrides).overrides).toEqual(overrides);
+    });
+
     it('checks templates and settings on save', () => {
         const config = defaultConfig('测试赛');
         expect(() => normalizeConfig({ templates: { award: { ...config.templates.award, fields: [{ id: 'a', type: 'text', text: 'x', x: 999, y: 10, size: 10 }] } } }, config)).toThrow('横向');
@@ -85,6 +137,41 @@ describe('证书清单', () => {
 });
 
 describe('PDF 与二维码', () => {
+    it('keeps five distinct preset layouts and their vector masters for either page orientation', () => {
+        const designs = Object.keys(designLabels) as CertificateDesign[];
+        const config = defaultConfig('测试赛');
+        for (const orientation of ['landscape', 'portrait'] as const) {
+            const pages = [];
+            for (const kind of ['award', 'participation'] as const) {
+                for (const design of designs) {
+                    const template = competitionTemplate(kind, orientation, design);
+                    const saved = normalizeConfig({ templates: { [kind]: template } }, config).templates[kind];
+                    const values = { name: '李四', nameEn: 'Si Li', number: 'TEST234567' };
+                    const render = (t: typeof template) => certificatePage(t, kind === 'award' ? 'team' : kind, values, 'https://example.org/check', null);
+                    const page = render(saved);
+                    expect(page).toEqual(render(template));
+                    expect(page.qr).toBeTruthy();
+                    expect(page.texts.map((t) => t.text)).toEqual(expect.arrayContaining(['李四', 'Si Li', 'TEST234567']));
+                    pages.push(page);
+                }
+            }
+            const art = pages.slice(0, designs.length).map((p) => JSON.stringify(certificateFrame(p.width, p.height, p.design)));
+            expect(new Set(art).size).toBe(designs.length);
+            expect(buildPdf(pages).toString('latin1').match(/\/Subtype \/Form\b/g)).toHaveLength(designs.length);
+        }
+    });
+
+    it('fits arbitrary photo dimensions at the same top-left position on paper and in the editor', () => {
+        for (const page of [{ width: 297, height: 210 }, { width: 210, height: 297 }]) {
+            for (const aspect of [0.01, .75, 1, 2, 100]) {
+                const box = decorationBox(page, { x: 1, y: 1, width: .7, aspect });
+                expect(box.width / box.height).toBeCloseTo(aspect, 8);
+                expect(box.x + box.width).toBeCloseTo(page.width);
+                expect(box.y + box.height).toBeCloseTo(page.height);
+                expect(Math.min(box.x, box.y)).toBeGreaterThanOrEqual(-1e-8);
+            }
+        }
+    });
     it('writes a PDF whose cross-reference table points at its objects', () => {
         const config = defaultConfig('测试赛');
         const values = { name: '林澈', nameEn: 'Lin Che', award: '金奖', contest: '测试赛', number: 'ABCDEFGHJK' };
@@ -143,7 +230,7 @@ describe('PDF 与二维码', () => {
             expect(left.width / left.height).toBe(2);
             expect(right.x + right.width).toBeCloseTo(page.width - left.x);
             expect(page.engraved).toBe(true);
-            expect(page.texts.find((item) => item.text === 'Silver Medal')?.color).toEqual([82, 106, 120]);
+            expect(page.texts.find((item) => item.text === 'Silver Medal')?.color).toEqual([54, 111, 149]);
         }
         const { frame: _frame, ...legacy } = config.templates.award;
         const old = normalizeConfig({ templates: { award: legacy } }, config).templates.award;
@@ -183,9 +270,31 @@ describe('证书出具与核验', () => {
         return { db, service, request, store, scope, data, show: () => { identity = true; } };
     }
 
+    it('keeps legacy locked spellings and certificate numbers until the organizer unlocks and reviews the sheet', async () => {
+        const { db, service, request, scope } = await setup();
+        const configs = db.collection('xcpcio.certificates');
+        await configs.updateOne(scope, { $set: { locked: true }, $unset: { lockedEnglish: '' } });
+        const sheet = async () => (await service.file(request, 'sheet', {})).data.toString('utf8');
+        expect(await sheet()).not.toContain('Che Lin');
+        await service.operate(request, 'issue', {});
+        const code = (await service.mine({ ...request, uid: 1 })).list![0].code;
+        expect((await service.verify(scope.domainId, code)).certificate).toMatchObject({ nameEn: '', status: 'valid' });
+        await service.operate(request, 'config', { locked: true });
+        expect(await service.operate(request, 'issue', {})).toMatchObject({ created: 0, corrected: 0 });
+        await service.operate(request, 'config', { locked: false });
+        expect(await sheet()).toContain('Che Lin');
+        await service.operate(request, 'config', { locked: true });
+        expect((await configs.findOne(scope))?.lockedEnglish?.['1']).toMatchObject({ schoolEn: 'Nanjing Xiaozhuang University', members: ['Che Lin'] });
+        expect((await service.verify(scope.domainId, code)).certificate!.status).toBe('valid');
+        await service.operate(request, 'issue', {});
+        const updated = (await service.verify(scope.domainId, code)).certificate!;
+        expect(updated.status).toBe('corrected');
+        expect((await service.verify(scope.domainId, updated.replacedBy!)).certificate).toMatchObject({ nameEn: 'Che Lin', status: 'valid' });
+    });
+
     it('keeps two independent school logos per contest across previews, issued PDFs, ZIP and contestant downloads', async () => {
         const { service, request } = await setup();
-        const png = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGPoEDP4zzDzDAMADmEDM8+OsIAAAAAASUVORK5CYII=';
+        const png = translucentPng;
         const select = (slot: number, data: string | null) => service.operate(request, 'logo', { slot, data, label: `学校 ${slot}` });
         const marks = (pdf: Buffer) => pdf.toString('latin1').match(/\/SMask /g)?.length || 0;
         const sample = async () => marks((await service.file(request, 'sample', {})).data);
@@ -214,6 +323,46 @@ describe('证书出具与核验', () => {
         await select(1, null);
         expect(await sample()).toBe(0);
         expect((await service.operate(request, 'issue', {}))).toMatchObject({ created: 0, corrected: 0 });
+    });
+
+    it('stores movable decoration layers per template and prints them in every download without changing issued numbers', async () => {
+        const { service, request } = await setup();
+        const id = 'ab'.repeat(12);
+        const layer = { template: 'award', id };
+        const op = (input: Record<string, unknown>) => service.operate(request, 'decoration', { ...layer, ...input });
+        const add = { action: 'add', label: '缎带.png', data: translucentPng };
+        await op(add);
+        await op(add); // Retry of the same upload.
+        const move = { action: 'move', x: .3, y: .4, width: .2, revision: 1 };
+        await op(move);
+        await expect(op(move)).rejects.toThrow('修改');
+        await expect(op({ ...move, revision: 2, width: 1.1 })).rejects.toThrow('纸面');
+        await expect(op({ action: 'remove', revision: 1 })).rejects.toThrow('修改');
+        const { decorations, logos } = await service.data(request);
+        expect(decorations).toEqual([{ ...layer, label: '缎带.png', x: .3, y: .4, width: .2, aspect: 2, revision: 2 }]);
+        expect(logos).toEqual([]);
+        const other = { ...request, scope: { ...request.scope, contestId: 'other' } };
+        await expect(service.operate(other, 'decoration', { ...layer, ...move, revision: 2 })).rejects.toThrow();
+        expect((await service.data(other)).decorations).toEqual([]);
+        await expect(service.asset(other.scope, id)).rejects.toThrow();
+        const marked = (bytes: Buffer) => bytes.toString('latin1').includes('/SMask ');
+        const sample = (template: string) => service.file(request, 'sample', { template });
+        expect(marked((await sample('award')).data)).toBe(true);
+        expect(marked((await sample('participation')).data)).toBe(false);
+        await service.operate(request, 'config', { locked: true, templates: { award: competitionTemplate('award', 'portrait', 'gplt') } });
+        await service.operate(request, 'issue', {});
+        const recipient = { ...request, uid: 1 };
+        const code = (await service.mine(recipient)).list![0].code;
+        expect(marked((await service.mine(recipient, code)).file!.data)).toBe(true);
+        expect(marked((await service.file(request, 'pdf', {})).data)).toBe(true);
+        const entries = readZip((await service.file(request, 'zip', {})).data, { maxFiles: 100, maxBytes: 2_000_000 });
+        expect(entries.length).toBeGreaterThan(0);
+        expect(entries.every((file) => marked(file.data))).toBe(true);
+        await op({ action: 'remove', revision: 2 });
+        await op({ action: 'remove', revision: 2 });
+        await expect(service.asset(request.scope, id)).rejects.toThrow();
+        expect(marked((await service.mine(recipient, code)).file!.data)).toBe(false);
+        expect(await service.operate(request, 'issue', {})).toMatchObject({ created: 0, corrected: 0 });
     });
 
     it('issues from a locked sheet only, then corrects and revokes what changed', async () => {

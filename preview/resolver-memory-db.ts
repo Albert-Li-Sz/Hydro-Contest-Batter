@@ -104,7 +104,7 @@ export function previewDatabase() {
                 },
                 async deleteOne(filter: Record<string, any>) {
                     const row = [...table.values()].find((item) => matches(item, filter));
-                    if (row) table.delete(row._id);
+                    return { acknowledged: true, deletedCount: row && table.delete(row._id) ? 1 : 0 };
                 },
                 async deleteMany(filter: Record<string, any>) {
                     for (const row of table.values()) if (matches(row, filter)) table.delete(row._id);

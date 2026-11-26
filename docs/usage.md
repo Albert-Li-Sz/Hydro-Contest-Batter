@@ -108,12 +108,12 @@ Schema 测试固定使用官方 2026-01 分支文件；上游 schema 对 runs �
 
 需要 Node.js 22 或以上版本及 Hydro 5.x。使用运行 Hydro 的系统用户操作；命令中的 `$HOME` 对应这个用户。自 0.8.1 起，安装包包含供 Hydro 直接加载的源码和完整预构建资源。
 
-从发布页下载 `hydro-scoreboard-xcpcio-plus-1.24.1.tgz` 和同名 `.sha256` 文件，放入同一个目录。首次安装按以下步骤校验、解压、注册 addon 并重启服务。[v1.24.1 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.24.1)
+从发布页下载 `hydro-scoreboard-xcpcio-plus-1.25.0.tgz` 和同名 `.sha256` 文件，放入同一个目录。首次安装按以下步骤校验、解压、注册 addon 并重启服务。[v1.25.0 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.25.0)
 
 ```bash
-sha256sum -c hydro-scoreboard-xcpcio-plus-1.24.1.tgz.sha256
+sha256sum -c hydro-scoreboard-xcpcio-plus-1.25.0.tgz.sha256
 mkdir -p "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
-tar -xzf hydro-scoreboard-xcpcio-plus-1.24.1.tgz \
+tar -xzf hydro-scoreboard-xcpcio-plus-1.25.0.tgz \
   -C "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus" --strip-components=1
 hydrooj addon add "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 pm2 restart hydrooj
@@ -126,9 +126,9 @@ pm2 restart hydrooj
 在新的临时目录中校验并解压安装包。
 
 ```bash
-sha256sum -c hydro-scoreboard-xcpcio-plus-1.24.1.tgz.sha256
+sha256sum -c hydro-scoreboard-xcpcio-plus-1.25.0.tgz.sha256
 mkdir -p xcpcio-update
-tar -xzf hydro-scoreboard-xcpcio-plus-1.24.1.tgz -C xcpcio-update
+tar -xzf hydro-scoreboard-xcpcio-plus-1.25.0.tgz -C xcpcio-update
 ```
 
 首次安装运行 `bash xcpcio-update/package/install.sh install`。升级已有安装运行 `bash xcpcio-update/package/install.sh upgrade`。
@@ -347,15 +347,20 @@ Honors 使用单独的获奖位次（place）。Highest Honors 分界以内使�
 比赛所有者或有编辑比赛权限的工作人员，从「成绩快照与导出 → 证书」或赛事工作台进入。
 
 1. **选择出证依据。** 选择已有成绩快照或新拍一份，选定分榜、出证奖项和种类。可生成团队、个人、教练获奖证书，以及正式队员的参赛证明。打星队能获得哪些奖项，由所选成绩快照的奖项规则决定。
-2. **核对制证信息表。** 在页面按队编辑，或下载带队伍 ID、角色和序号的 CSV，补全中英文姓名、队伍、学校后上传。也可填写颁发单位和日期。页面会列出模板引用的缺失字段，缺值会留空。核对后点「核对完毕，锁定信息表」。更换快照或分榜后须重新锁定。
-3. **选择版式。** 团队、个人和教练共用「获奖证书」模板，默认横向 A4。「参赛证明」单独设置，默认纵向 A4。已有比赛保留已保存的模板。要换成新版，先选方向，再点「套用竞赛版式」，核对或拖动文字、二维码后点「保存模板」。
+2. **核对制证信息表。** 选定成绩快照后，核对队名、学校、队员和教练，填写比赛名称、颁发单位和日期。表内标出当前模板缺少的字段。页面和下载的 CSV 都会按中文校名匹配英文，例如南京晓庄学院对应 Nanjing Xiaozhuang University。队员和教练的拼音采用名在前、姓在后的顺序，例如李四为 Si Li，王建国为 Jianguo Wang，欧阳修为 Xiu Ouyang。
+
+   在「编辑」或 CSV 里可补写未收录的校名，或指定多音字、护照拼写和惯用英文名。手填值优先，清空英文栏可恢复自动匹配。核对后点「核对完毕，锁定信息表」。切换快照或分榜后需要重新核对并锁定。旧版已锁定的信息表可解锁、核对英文后再锁定出证。
+3. **选择版式。** 在「模板」里分别设置「获奖证书」和「参赛证明」。从「预设样式」选择典雅雕花、ICPC、CCPC、天梯赛或蓝桥杯风格，现场预览横向或纵向 A4，再拖动文字和二维码，点「保存模板」。切换预设会换用该样式的底纹、字体和字段布局。默认获奖证书为横向、参赛证明为纵向，团队、个人和教练共用获奖证书模板。
 4. **设置学校校徽。** 在「模板 → 学校校徽」的左侧或右侧点「选学校」，输入中文或英文校名并确认。也可点「上传图片」，选择每张不超过 6 MB 的 PNG 或 JPEG。校徽按原比例显示，透明 PNG 可透出纸色或自定义底图。两个位置可分别替换或移除，也可全部留空。校徽操作立即保存，对本场的获奖证书和参赛证明同时生效。
-5. **核对样张并发放。** 用「样张 PDF」核对所选方向、校徽和长姓名在实际打印用阅读器中的效果。PDF 中文采用阅读器提供的宋体或黑体。比赛已结束、已解除封榜或未设封榜且已无待评测提交时，点击「出证」核对新增、更正和撤销数量。管理员可下载合并 PDF 或按学校分目录的 ZIP。获发证书的账号可在比赛详情点「我的证书」领取。
-6. **更正与核验。** 仅调整校徽、背景或版式时，重新下载即可取得新 PDF，编号沿用原号。更正姓名要先解锁信息表，修改后重新锁定并出证。奖项变化时选择反映新结果的快照再出证。受影响的证书取得新编号，失去资格的证书标记为已撤销。扫描旧证书二维码可查看状态和更正后的编号。核验页按比赛当前的学校公开设置显示学校。
+5. **添加装饰图片。** 在所选模板点「添加装饰图」，可多选 PNG 或 JPEG，每张最大 6 MB。拖动图片可移动，拖右下角可等比缩放。选中图片后也可输入毫米数精确设置左边距、上边距和宽度，或点「移除装饰图」。图片彼此重叠时，可在右侧列表选中指定图片。装饰图显示在正文和二维码下方，透明 PNG 保留透明区域。上传、移动、缩放和移除会自动保存到当前模板，切换预设仍可使用这些图片。
+6. **核对样张并发放。** 用「样张 PDF」核对所选方向、图片和长姓名在实际打印用阅读器中的效果。PDF 中文采用阅读器提供的宋体或黑体。比赛已结束、已解除封榜或未设封榜且已无待评测提交时，点击「出证」核对新增、更正和撤销数量。管理员可下载合并 PDF 或按学校分目录的 ZIP。获发证书的账号可在比赛详情点「我的证书」领取。
+7. **更正与核验。** 调整校徽、装饰图、背景或版式后，重新下载即可取得新外观，编号沿用原号。更正姓名要先解锁信息表，修改后重新锁定并出证。奖项变化时选择反映新结果的快照再出证。受影响的证书取得新编号，失去资格的证书标记为已撤销。扫描旧证书二维码可查看状态和更正后的编号。核验页按比赛当前的学校公开设置显示学校。
 
-![双校徽队伍金奖样张，左栏列出队伍、学校、队员和教练，右栏显示奖项](images/manual/certificate-team.png)
+![五种证书配色，依次为青金雕花、蓝黄红 ICPC、朱红金 CCPC、亮蓝琥珀天梯赛和瓷蓝印红蓝桥杯](images/manual/certificate-styles.jpg)
 
-三页样张依次展示横向双校徽队伍金奖、纵向单校徽个人金奖和纵向无校徽参赛证明。样张使用演示赛事和演示核验地址。[下载三页 A4 样张（PDF）](examples/certificates.pdf)
+每套都有横版队伍证书和竖版个人证书。CCPC 横版右侧的金色枝叶示范了透明装饰图的放置效果。样张使用演示赛事和演示核验地址。[查看五套版式的十页 A4 样张（PDF）](examples/certificate-styles.pdf)
+
+校徽位置另有横向双校徽、纵向单校徽和无校徽三种示例。[查看 v1.24.1 校徽排版样张（PDF）](examples/certificates.pdf)
 
 ## 响应式界面
 

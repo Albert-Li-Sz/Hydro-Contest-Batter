@@ -7,6 +7,7 @@
  */
 import { deflateSync, inflateSync } from 'node:zlib';
 import { certificateFrame } from '../../resolver/public/js/certificate-frame.js';
+import type { CertificateDesign } from '../../resolver/public/js/certificate-designs.js';
 
 export type FontStyle = 'serif' | 'sans';
 export type Align = 'left' | 'center' | 'right';
@@ -33,7 +34,9 @@ export interface PdfPage {
     background?: PdfImage | null;
     border?: boolean;
     engraved?: boolean;
+    design?: CertificateDesign;
     logos?: PlacedImage[];
+    decorations?: PlacedImage[];
     texts: PdfText[];
     qr?: PdfQr | null;
 }
@@ -193,31 +196,26 @@ function fitted(text: PdfText) {
 
 // A ZIP prints each recipient to a separate PDF using the same A4 engraving.
 const a4Frames = new Map<string, Buffer>();
-function frameContent(width: number, height: number) {
-    const key = `${width}/${height}`;
+function frameContent(width: number, height: number, design: CertificateDesign = 'engraved') {
+    const key = `${design}/${width}/${height}`;
     const cached = a4Frames.get(key);
     if (cached) return cached;
     const ops = [`q ${PT} 0 0 ${-PT} 0 ${num(height * PT)} cm 1 J 1 j`];
     const color = (hex: string) => [1, 3, 5].map((i) => num(parseInt(hex.slice(i, i + 2), 16) / 255)).join(' ');
-    for (const path of certificateFrame(width, height)) {
+    for (const path of certificateFrame(width, height, design)) {
         if (path.fill) ops.push(`${color(path.fill)} rg`);
         if (path.stroke) ops.push(`${color(path.stroke)} RG ${path.weight} w`);
         for (const [op, ...coords] of path.commands) ops.push(op === 'Z' ? 'h' : `${coords.join(' ')} ${op.toLowerCase()}`);
         ops.push(path.fill ? 'f' : 'S');
     }
     const compressed = deflateSync(ops.concat('Q').join('\n'));
-    if (key === '297/210' || key === '210/297') a4Frames.set(key, compressed);
+    if ((width === 297 && height === 210) || (width === 210 && height === 297)) a4Frames.set(key, compressed);
     return compressed;
 }
 
 function pageContent(page: PdfPage, paint: string[]) {
     const height = page.height * PT;
-    const width = page.width * PT;
     const ops = [...paint];
-    if (page.border) {
-        ops.push('q 0.55 0.42 0.18 RG 2 w', `${num(10 * PT)} ${num(10 * PT)} ${num(width - 20 * PT)} ${num(height - 20 * PT)} re S`,
-            '0.6 w', `${num(13 * PT)} ${num(13 * PT)} ${num(width - 26 * PT)} ${num(height - 26 * PT)} re S Q`);
-    }
     for (const item of page.texts) {
         if (!item.text) continue;
         const size = fitted(item);
@@ -289,10 +287,10 @@ export function buildPdf(pages: PdfPage[], title = '证书'): Buffer {
         const objects = new Map<string, number>();
         const paint: string[] = [];
         if (page.engraved && !page.background) {
-            const key = `${page.width}/${page.height}`;
+            const key = `${page.design ?? 'engraved'}/${page.width}/${page.height}`;
             if (!frames.has(key)) {
                 const bounds = `0 0 ${num(page.width * PT)} ${num(page.height * PT)}`;
-                const drawing = stream(`/Type /XObject /Subtype /Form /BBox [${bounds}] /Resources << >> /Filter /FlateDecode`, frameContent(page.width, page.height));
+                const drawing = stream(`/Type /XObject /Subtype /Form /BBox [${bounds}] /Resources << >> /Filter /FlateDecode`, frameContent(page.width, page.height, page.design));
                 frames.set(key, add(drawing));
             }
             objects.set('Frame', frames.get(key)!);
@@ -304,6 +302,11 @@ export function buildPdf(pages: PdfPage[], title = '证书'): Buffer {
             paint.push(`q ${num(width * PT)} 0 0 ${num(height * PT)} ${num(x * PT)} ${num((page.height - y - height) * PT)} cm /Im${id} Do Q`);
         };
         if (page.background) draw({ image: page.background, x: 0, y: 0, width: page.width, height: page.height });
+        if (page.border) {
+            const rect = (d: number) => `${num(d * PT)} ${num(d * PT)} ${num((page.width - 2*d) * PT)} ${num((page.height - 2*d) * PT)} re S`;
+            paint.push('q 0.55 0.42 0.18 RG 2 w', rect(10), '0.6 w', rect(13), 'Q');
+        }
+        for (const decoration of page.decorations || []) draw(decoration);
         for (const logo of page.logos || []) draw(logo);
         if (objects.size) resources.push(`/XObject << ${[...objects].map(([key, id]) => `/${key} ${id} 0 R`).join(' ')} >>`);
         const content = add(stream('/Filter /FlateDecode', deflateSync(Buffer.from(pageContent(page, paint), 'latin1'))));

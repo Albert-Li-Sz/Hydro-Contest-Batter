@@ -5,6 +5,13 @@
 .xcpcio-certificates .certificate-stage .certificate-border { position: absolute; inset: 4.76% 3.37%; border: 2px solid #8c6b2e; outline: 1px solid #8c6b2e; outline-offset: -6px; pointer-events: none; }
 .xcpcio-certificates .certificate-frame { position: absolute; inset: 0; width: 100%; height: 100%; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .xcpcio-certificates .certificate-school-logo { position: absolute; object-fit: contain; pointer-events: none; }
+.xcpcio-certificates .certificate-artwork { position: absolute; cursor: move; touch-action: none; }
+.xcpcio-certificates .certificate-artwork img { display: block; width: 100%; height: 100%; pointer-events: none; }
+.xcpcio-certificates .certificate-artwork:hover, .xcpcio-certificates .certificate-artwork.is-selected { outline: 1px dashed #347bb2; }
+.xcpcio-certificates .certificate-resize { display: none; position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; transform: translate(45%, 45%); cursor: nwse-resize; }
+.xcpcio-certificates .certificate-resize::after { content: ''; position: absolute; inset: 3px; background: #fff; border: 2px solid #347bb2; }
+.xcpcio-certificates .certificate-artwork.is-selected .certificate-resize { display: block; }
+.xcpcio-certificates .certificate-field.is-qr { z-index: 1; }
 .xcpcio-certificates .certificate-field { width: max-content; max-width: none; position: absolute; white-space: nowrap; line-height: 1; cursor: move; padding: 1px 2px; border: 1px dashed transparent; color: #2b2118; }
 .xcpcio-certificates .certificate-field:hover, .xcpcio-certificates .certificate-field.is-selected { border-color: #5f9fd6; background: rgba(95, 159, 214, .08); }
 .xcpcio-certificates .certificate-field.is-qr { display: grid; place-items: center; background: repeating-conic-gradient(#222 0 25%, #fff 0 50%) 0 0 / 16% 16%; border: 1px solid #222; }

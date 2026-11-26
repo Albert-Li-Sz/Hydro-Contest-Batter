@@ -1,7 +1,8 @@
-// Original engraved frame. Coordinates are millimetres from the top left, shared by the editor and PDF.
-const navy = '#243e53';
-const brass = '#a17840';
-const pale = '#bdc9c7';
+// Coordinates are millimetres from the top left, shared by the editor and PDF.
+import { presetFrame } from './certificate-designs.js';
+const navy = '#12529a';
+const brass = '#d59117';
+const pale = '#78a6b4';
 const rounded = (n) => Math.round(n * 100) / 100;
 
 export function logoBox(width, slot) {
@@ -10,22 +11,23 @@ export function logoBox(width, slot) {
 }
 
 const distinctions = new Map([
-    ...['金奖', '金牌'].map((name) => [name, ['Gold Medal', '#895d2d']]),
-    ...['银奖', '银牌'].map((name) => [name, ['Silver Medal', '#526a78']]),
-    ...['铜奖', '铜牌'].map((name) => [name, ['Bronze Medal', '#94553b']]),
+    ...['金奖', '金牌'].map((name) => [name, ['Gold Medal', '#ab5800']]),
+    ...['银奖', '银牌'].map((name) => [name, ['Silver Medal', '#366f95']]),
+    ...['铜奖', '铜牌'].map((name) => [name, ['Bronze Medal', '#ae4622']]),
     ['一等奖', ['First Prize']], ['二等奖', ['Second Prize']], ['三等奖', ['Third Prize']], ['冠军', ['Champion']],
 ]);
 export const awardEnglish = (award) => distinctions.get(award)?.[0] || '';
 export const fieldInk = (field, award) => (field.medalColor && distinctions.get(award)?.[1]) || field.color;
 
-export function certificateFrame(width, height) {
+export function certificateFrame(width, height, design = 'engraved') {
+    if (design !== 'engraved') return presetFrame(width, height, design);
     const paths = [];
     const add = (stroke, weight, commands, fill) => paths.push({ stroke, weight, commands, fill });
     const rect = (x, y, w, h) => [['M', x, y], ['L', x + w, y], ['L', x + w, y + h], ['L', x, y + h], ['Z']];
     const line = (x1, y1, x2, y2) => [['M', x1, y1], ['L', x2, y2]];
-    add(null, 0, rect(0, 0, width, height), '#fffdf7');
-    add(navy, 0.65, rect(6.5, 6.5, width - 13, height - 13));
-    add(brass, 0.22, rect(7.7, 7.7, width - 15.4, height - 15.4));
+    add(null, 0, rect(0, 0, width, height), '#fffaeb');
+    add(navy, 1.05, rect(6.5, 6.5, width - 13, height - 13));
+    add(brass, 0.48, rect(7.8, 7.8, width - 15.6, height - 15.6));
     add(navy, 0.28, rect(11, 11, width - 22, height - 22));
     // Interlaced waves in the narrow perimeter band. Whole periods meet cleanly at all four ends.
     const engraving = [];
@@ -59,7 +61,7 @@ export function certificateFrame(width, height) {
     const landscape = width > height;
     const headerRule = landscape ? 54 : 62;
     const mid = width / 2;
-    add(brass, 0.25, [...line(25, headerRule, mid - 4, headerRule), ...line(mid + 4, headerRule, width - 25, headerRule)]);
+    add(brass, 0.45, [...line(25, headerRule, mid - 4, headerRule), ...line(mid + 4, headerRule, width - 25, headerRule)]);
     add(null, 0, [['M', mid - 2.5, headerRule], ['L', mid, headerRule - 1.1], ['L', mid + 2.5, headerRule], ['L', mid, headerRule + 1.1], ['Z']], brass);
     // An open guilloché cartouche frames the distinction; the centre stays clear for type.
     const cx = landscape ? 219 : width / 2;
@@ -72,8 +74,15 @@ export function certificateFrame(width, height) {
             rosette.push([i ? 'L' : 'M', rounded(cx + 1.48 * radius * Math.cos(angle)), rounded(cy + .52 * radius * Math.sin(angle))]);
         }
     }
-    add('#e5ddcc', 0.13, rosette);
+    add('#edc981', 0.18, rosette);
     if (landscape) add(pale, 0.25, line(171, 66, 171, 127));
     add(pale, 0.25, line(25, landscape ? 165 : 248, width - 25, landscape ? 165 : 248));
     return paths;
+}
+
+// Top-left and width are fractions of the paper. Keep the image proportional and inside either A4 orientation.
+export function decorationBox(page, placement) {
+    const width = Math.min(placement.width * page.width, page.height * placement.aspect);
+    const height = width / placement.aspect;
+    return { width, height, x: Math.min(page.width - width, placement.x * page.width), y: Math.min(page.height - height, placement.y * page.height) };
 }

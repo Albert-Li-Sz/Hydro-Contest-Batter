@@ -9,6 +9,8 @@
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { awardEnglish } from '../../resolver/public/js/certificate-frame.js';
+import { designLabels, styledTemplate, type CertificateDesign } from '../../resolver/public/js/certificate-designs.js';
+import { englishSchoolName, pinyinName } from '../../resolver/public/js/certificate-names.js';
 import type { ResultBoard } from '../results';
 
 export type CertificateKind = 'team' | 'member' | 'coach' | 'participation';
@@ -16,17 +18,19 @@ export const certificateKinds: readonly CertificateKind[] = ['team', 'member', '
 export const kindNames: Record<CertificateKind, string> = { team: '团队获奖证书', member: '个人获奖证书', coach: '教练证书', participation: '参赛证明' };
 
 export interface Person { name: string; nameEn: string }
-/** 制证信息表 of one team: what the results give, with the corrections and English names entered by hand. */
+interface SheetPerson extends Person { sourceIndex?: number }
+/** 制证信息表 of one team after applying corrections and resolving its English names. */
 export interface SheetTeam {
     teamId: string;
     team: string;
     teamEn: string;
     school: string;
     schoolEn: string;
-    members: Person[];
-    coaches: Person[];
+    members: SheetPerson[];
+    coaches: SheetPerson[];
 }
 export type SheetOverride = Partial<Omit<SheetTeam, 'teamId' | 'members' | 'coaches'>> & { members?: Partial<Person>[]; coaches?: Partial<Person>[] };
+type LockedEnglish = Record<string, { schoolEn: string; members: string[]; coaches: string[] }>;
 
 export type Placeholder = 'name' | 'nameEn' | 'team' | 'teamEn' | 'school' | 'schoolEn' | 'members' | 'membersEn' | 'coach' | 'coachEn'
     | 'award' | 'rank' | 'contest' | 'contestEn' | 'date' | 'issuer' | 'number';
@@ -55,7 +59,7 @@ export interface CertificateTemplate {
     orientation: 'landscape' | 'portrait';
     font: 'serif' | 'sans';
     /** Older saved layouts use the original double rule. */
-    frame?: 'engraved' | 'classic';
+    frame?: CertificateDesign | 'classic';
     /** Asset id of the background image; without one a border is drawn. */
     background: string | null;
     fields: TemplateField[];
@@ -75,6 +79,8 @@ export interface CertificateConfig {
     sheet: Record<string, SheetOverride>;
     /** Certificates are issued only from a checked sheet. */
     locked: boolean;
+    /** English spellings reviewed at lock time. Older locked sheets have only their manual overrides. */
+    lockedEnglish?: LockedEnglish | null;
 }
 
 export interface CertificateEntry {
@@ -87,14 +93,14 @@ export interface CertificateEntry {
 }
 
 /** A team award reads as a recipient block next to the distinction. On portrait paper the distinction follows the roster. */
-export function competitionTemplate(kind: 'award' | 'participation', orientation: CertificateTemplate['orientation']): CertificateTemplate {
+export function competitionTemplate(kind: 'award' | 'participation', orientation: CertificateTemplate['orientation'], design: CertificateDesign = 'engraved'): CertificateTemplate {
     const landscape = orientation === 'landscape';
     const award = kind === 'award';
     const w = landscape ? 297 : 210;
     const mid = w / 2;
-    const ink = '#233e53';
-    const gold = '#895d2d';
-    const muted = '#4b6268';
+    const ink = '#164779';
+    const gold = '#a05605';
+    const muted = '#315b71';
     const field = (id: string, text: string, x: number, y: number, size: number, width: number, other: Partial<TemplateField> = {}): TemplateField =>
         ({ id, text, x, y, size, width, type: 'text', align: 'center', color: ink, kinds: [], ...other });
     const left = (id: string, text: string, y: number, size: number, options: Partial<TemplateField> = {}) =>
@@ -102,8 +108,8 @@ export function competitionTemplate(kind: 'award' | 'participation', orientation
     const team: CertificateKind[] = ['team'];
     const honor = landscape ? 219 : mid;
     const footer = landscape ? 181 : 264;
-    return { orientation, font: 'serif', frame: 'engraved', background: null, fields: [
-        field('title', award ? '获奖证书' : '参赛证明', mid, landscape ? 29 : 33, landscape ? 38 : 32, landscape ? 145 : 94),
+    const base: CertificateTemplate = { orientation, font: 'serif', frame: 'engraved', background: null, fields: [
+        field('title', award ? '获奖证书' : '参赛证明', mid, landscape ? 29 : 33, landscape ? 38 : 32, landscape ? 145 : 94, { color: '#114d94' }),
         field('title-en', award ? 'Certificate of Achievement' : 'Certificate of Participation', mid, landscape ? 43 : 47, 15, landscape ? 145 : 98, { color: gold }),
         left('recipient-label', award ? '颁予  /  AWARDED TO' : '参赛者  /  PARTICIPANT', landscape ? 69 : 78, 10, { color: muted }),
         left('name', '{name}', landscape ? 83 : 93, 28),
@@ -128,6 +134,7 @@ export function competitionTemplate(kind: 'award' | 'participation', orientation
         field('issuer', '{issuer}', w - 27, footer - 1, 14, landscape ? 111 : 73, { align: 'right' }),
         field('date', '{date}', w - 27, footer + 8, 11, landscape ? 111 : 73, { align: 'right', color: muted }),
     ] };
+    return design === 'engraved' ? base : styledTemplate(base, design, kind);
 }
 
 export function defaultTemplates(): CertificateConfig['templates'] {
@@ -180,7 +187,8 @@ export function normalizeTemplate(value: unknown, fallback: CertificateTemplate)
     });
     const background = input.background === null || input.background === undefined ? null
         : typeof input.background === 'string' && /^[a-f0-9]{24}$/.test(input.background) ? input.background : null;
-    return { orientation, font: input.font === 'sans' ? 'sans' : 'serif', frame: input.frame === 'engraved' ? 'engraved' : 'classic', background, fields };
+    const frame = typeof input.frame === 'string' && Object.hasOwn(designLabels, input.frame) ? input.frame as CertificateDesign : 'classic';
+    return { orientation, font: input.font === 'sans' ? 'sans' : 'serif', frame, background, fields };
 }
 
 function people(value: unknown, label: string): Partial<Person>[] | undefined {
@@ -239,22 +247,45 @@ export function normalizeConfig(value: unknown, fallback: CertificateConfig): Ce
 }
 
 /** The sheet of every team of the results: what the results give, with the overrides applied. */
-export function sheetOf(result: ResultBoard, overrides: Record<string, SheetOverride>): SheetTeam[] {
+export function sheetOf(result: ResultBoard, overrides: Record<string, SheetOverride>, locked?: LockedEnglish): SheetTeam[] {
     return result.rows.map((row) => {
         const own = overrides[row.id] || {};
-        const merge = (base: string[], edits: Partial<Person>[] = []) => base.map((name, index) => ({
-            name: edits[index]?.name || name, nameEn: edits[index]?.nameEn || '',
-        })).concat(edits.slice(base.length).filter((edit) => edit?.name).map((edit) => ({ name: edit.name!, nameEn: edit.nameEn || '' })));
+        const saved = locked?.[row.id];
+        const school = own.school || row.school;
+        const merge = (role: 'members' | 'coaches') => {
+            const base = row[role];
+            const edits = own[role] || [];
+            // Additional people in a CSV may occupy sparse slots after the original roster.
+            const result: SheetPerson[] = [];
+            for (let i = 0; i < Math.max(base.length, edits.length); i++) {
+                const name = edits[i]?.name || base[i] || '';
+                if (!name && i >= base.length) continue;
+                const nameEn = edits[i]?.nameEn || (locked ? saved?.[role][result.length] || '' : pinyinName(name));
+                result.push({ name, nameEn, ...(i !== result.length ? { sourceIndex: i } : {}) });
+            }
+            return result;
+        };
         return {
-            teamId: row.id, team: own.team || row.name, teamEn: own.teamEn || '', school: own.school || row.school, schoolEn: own.schoolEn || '',
-            members: merge(row.members, own.members), coaches: merge(row.coaches, own.coaches),
+            teamId: row.id, team: own.team || row.name, teamEn: own.teamEn || '', school,
+            schoolEn: own.schoolEn || (locked ? saved?.schoolEn || '' : englishSchoolName(school)),
+            members: merge('members'), coaches: merge('coaches'),
         };
     });
 }
 
+export function certificateSheet(result: ResultBoard, config: CertificateConfig) {
+    return sheetOf(result, config.sheet, config.locked ? config.lockedEnglish ?? {} : undefined);
+}
+
+export function freezeEnglish(sheet: SheetTeam[]): LockedEnglish {
+    return Object.fromEntries(sheet.map((team) => [team.teamId, {
+        schoolEn: team.schoolEn, members: team.members.map((person) => person.nameEn), coaches: team.coaches.map((person) => person.nameEn),
+    }]));
+}
+
 /** Every certificate these results give under `config`, in board order and award order. */
-export function certificateEntries(result: ResultBoard, config: CertificateConfig): CertificateEntry[] {
-    const sheet = new Map(sheetOf(result, config.sheet).map((team) => [team.teamId, team]));
+export function certificateEntries(result: ResultBoard, config: CertificateConfig, teams = certificateSheet(result, config)): CertificateEntry[] {
+    const sheet = new Map(teams.map((team) => [team.teamId, team]));
     const rows = new Map(result.rows.map((row) => [row.id, row]));
     const skip = new Set(config.skipAwards);
     const base = (team: SheetTeam, award: string, rank: string) => ({
@@ -369,8 +400,8 @@ export function sheetRows(sheet: SheetTeam[]): string[][] {
     const rows: string[][] = [CSV_HEADER];
     for (const team of sheet) {
         const common = [team.team, team.teamEn, team.school, team.schoolEn];
-        team.members.forEach((person, index) => rows.push([team.teamId, '队员', String(index + 1), person.name, person.nameEn, ...common]));
-        team.coaches.forEach((person, index) => rows.push([team.teamId, '教练', String(index + 1), person.name, person.nameEn, ...common]));
+        team.members.forEach((person, index) => rows.push([team.teamId, '队员', String((person.sourceIndex ?? index) + 1), person.name, person.nameEn, ...common]));
+        team.coaches.forEach((person, index) => rows.push([team.teamId, '教练', String((person.sourceIndex ?? index) + 1), person.name, person.nameEn, ...common]));
         if (!team.members.length && !team.coaches.length) rows.push([team.teamId, '', '', '', '', ...common]);
     }
     return rows;
@@ -396,7 +427,14 @@ export function parseCsv(input: string): string[][] {
     return rows.filter((line) => line.some((value) => value.trim()));
 }
 
-/** Overrides from an uploaded sheet: every cell that differs from the results becomes a correction. */
+// Exported automatic spellings may still be in the CSV when only its Chinese column was corrected.
+function englishOverride(value: string, manual: string | undefined, before: string, after: string) {
+    if (value === manual) return value;
+    if (value === after || (!manual && value === before)) return '';
+    return value;
+}
+
+/** Overrides from an uploaded sheet, without turning automatically filled cells into manual edits. */
 export function overridesFromCsv(csv: string, result: ResultBoard, previous: Record<string, SheetOverride>) {
     const rows = parseCsv(csv);
     const header = rows.shift()?.map((cell) => cell.trim()) || [];
@@ -424,12 +462,17 @@ export function overridesFromCsv(csv: string, result: ResultBoard, previous: Rec
         const role = read('角色');
         const index = Number(read('序号')) - 1;
         if ((role === '队员' || role === '教练') && Number.isSafeInteger(index) && index >= 0 && index < 20) {
-            const list = role === '队员' ? (own.members ||= []) : (own.coaches ||= []);
-            const baseName = (role === '队员' ? row.members : row.coaches)[index] || '';
+            const key = role === '队员' ? 'members' : 'coaches';
+            const list = own[key] ||= [];
+            const baseName = row[key][index] || '';
             const person = list[index] || {};
+            const prior = previous[teamId]?.[key]?.[index];
             const name = read('姓名'); const nameEn = read('英文姓名');
             if (name !== undefined) { if (name && name !== baseName) person.name = name; else delete person.name; }
-            if (nameEn !== undefined) { if (nameEn) person.nameEn = nameEn; else delete person.nameEn; }
+            if (nameEn !== undefined) {
+                const manual = englishOverride(nameEn, prior?.nameEn, pinyinName(prior?.name || baseName), pinyinName(person.name || baseName));
+                if (manual) person.nameEn = manual; else delete person.nameEn;
+            }
             while (list.length <= index) list.push({});
             list[index] = person;
         }
@@ -440,7 +483,14 @@ export function overridesFromCsv(csv: string, result: ResultBoard, previous: Rec
         const own = overrides[teamId];
         const base = { team: row.name, teamEn: '', school: row.school, schoolEn: '' };
         for (const [key, value] of fields) {
+            if (key === 'schoolEn') continue;
             if (value && value !== base[key]) own[key] = value; else delete own[key];
+        }
+        const schoolEn = fields.get('schoolEn');
+        if (schoolEn !== undefined) {
+            const prior = previous[teamId];
+            const manual = englishOverride(schoolEn, prior?.schoolEn, englishSchoolName(prior?.school || row.school), englishSchoolName(own.school || row.school));
+            if (manual) own.schoolEn = manual; else delete own.schoolEn;
         }
     }
     for (const [teamId, own] of Object.entries(overrides)) {
@@ -451,7 +501,7 @@ export function overridesFromCsv(csv: string, result: ResultBoard, previous: Rec
             while (list.length && !Object.keys(list.at(-1)!).length) list.pop();
             if (!list.length) delete result[key];
         }
-        overrides[teamId] = result;
+        if (Object.keys(result).length) overrides[teamId] = result; else delete overrides[teamId];
     }
     return { overrides, updated, unknown: [...new Set(unknown)] };
 }
