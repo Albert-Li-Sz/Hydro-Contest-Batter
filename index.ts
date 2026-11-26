@@ -365,7 +365,7 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     const reactions = config.live !== false && config.liveCapture !== false ? applyReactions(ctx, {
         loadSettings, loadData: loadContestData, links, screenDuringContest: async (tdoc): Promise<boolean> => (await live?.capture?.get(tdoc))?.screenDuringContest ?? false,
     }) : undefined;
-    applyScreens(ctx, { loadSettings, loadData, machines: monitor.machines, balloons: balloons.screen, links,
+    applyScreens(ctx, { loadSettings, loadData, machines: monitor.machines, balloons: balloons.screen, balloonColors: balloons.screenColors, links,
         screenVideos: reactions?.screenVideos, playScreenVideo: reactions?.playScreenVideo, screenLayouts: reactions?.screenLayouts });
     applyOverview(ctx, { loadSettings, loadData });
     const results = applyResults(ctx, { loadSettings, loadData, statusOf: boardStatus, resolver });

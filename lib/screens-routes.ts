@@ -50,6 +50,8 @@ export function applyScreens(ctx: Context, dependencies: {
     machines: (now: number) => Promise<MonitorMachine[]>;
     /** 气球配送 (lib/balloon-routes.ts): its balloons and colours, when the contest uses it. */
     balloons?: (tdoc: Tdoc) => Promise<BalloonScreenData | null>;
+    /** 气球配送's colour for each problem, or `perTeam` when every team has its own mapping. */
+    balloonColors?: (tdoc: Tdoc) => Promise<{ colors: string[]; perTeam: boolean } | null>;
     /** The contest's no-login links, revoked together after the contest (lib/links.ts). */
     links?: ContestLinks<Tdoc>;
 }) {
@@ -130,6 +132,11 @@ export function applyScreens(ctx: Context, dependencies: {
 
     const labelsOf = (tdoc: Tdoc) => tdoc.pids.map((_, index) => getAlphabeticId(index));
     const colorsOf = (tdoc: Tdoc) => tdoc.pids.map((pid) => problemColor(tdoc.balloon?.[pid]));
+    /** The balloons' colours: 气球配送's when the contest uses it; none when each team has its own mapping. */
+    const balloonColorsOf = async (tdoc: Tdoc) => {
+        const own = await cached(`${key(tdoc)}|balloon-colors`, async () => (await dependencies.balloonColors?.(tdoc)) ?? null);
+        return { perTeam: !!own?.perTeam, colors: colorsOf(tdoc).map((color, index) => (own?.perTeam ? '' : own?.colors[index] || color)) };
+    };
 
     function contestClock(tdoc: Tdoc): BoardData {
         return { contest: { contest_name: tdoc.title, problem_quantity: tdoc.pids.length, problem_id: labelsOf(tdoc),
@@ -364,8 +371,14 @@ export function applyScreens(ctx: Context, dependencies: {
                     await ContestModel.getMultiClarification(tdoc.domainId, tdoc.docId, 0), tdoc.pids, labelsOf(tdoc),
                 ));
                 else if (type === 'problem-list') payload = await cached(`${key(tdoc)}|problems`, async () => problemRows(tdoc.pids,
-                    await ProblemModel.getList(tdoc.domainId, tdoc.pids, true, false, ['docId', 'title', 'config'], true), colorsOf(tdoc), labelsOf(tdoc),
+                    await ProblemModel.getList(tdoc.domainId, tdoc.pids, true, false, ['docId', 'title', 'config'], true), (await balloonColorsOf(tdoc)).colors, labelsOf(tdoc),
                 ));
+                else if (type === 'problem-colors') {
+                    const { perTeam, colors } = await balloonColorsOf(tdoc);
+                    if (perTeam) throw new ScreenError('每队使用各自的颜色对应时不显示题目颜色');
+                    payload = screenData({ ...contest, contest: { ...contest.contest, balloon_color: colors.map((background_color) => ({ background_color })) } },
+                        null, { logoNames, locked: false, firstSolve: false, unofficialFirstSolve: false });
+                }
                 else if (type === 'judges') payload = await cached('judges', async () => {
                     const now = Date.now();
                     const [machines, count] = await Promise.all([dependencies.machines(now), TaskModel.count({ type: 'judge' })]);

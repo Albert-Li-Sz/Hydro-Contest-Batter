@@ -233,6 +233,10 @@ export function screenData(data: BoardData, members: Set<string> | null, context
 }) {
     const durationMs = (data.contest.end_time - data.contest.start_time) * 1000;
     const freezeMs = Number(data.contest.frozen_time) > 0 ? Number(data.contest.frozen_time) * 1000 : 0;
+    // CCPC 新榜单模式 (lib/ccpc-board.ts): from `hiddenFrom` on, a column is a position in each team's row, not a
+    // problem, so it has no first solve (lib/award-policy.mjs) and no per-problem statistics.
+    const { hiddenFrom } = data;
+    const hidden = (index: number) => hiddenFrom !== undefined && index >= hiddenFrom;
     const teams = data.teams.filter((team) => !members || members.has(team.team_id)).map((team) => {
         const school = (team.organization || '').trim();
         const logoId = context.logoNames[school.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ')];
@@ -297,9 +301,9 @@ export function screenData(data: BoardData, members: Set<string> | null, context
     });
     c.awards = [];
     const result = computeCells(c as never, { frozen }) as ReturnType<typeof computeCells> & { results: Record<string, any[]> };
-    const results = Object.fromEntries(Object.entries(result.results).map(([id, rows]) => [id, rows.map((row: any) => ({
+    const results = Object.fromEntries(Object.entries(result.results).map(([id, rows]) => [id, rows.map((row: any, index: number) => ({
         status: row.status, attempts: row.attempts, time: row.time, timeSeconds: row.timeSeconds,
-        penaltyCount: row.penaltyCount ?? row._penaltyCount, pending: row.pending, firstToSolve: row.firstToSolve,
+        penaltyCount: row.penaltyCount ?? row._penaltyCount, pending: row.pending, firstToSolve: row.firstToSolve && !hidden(index),
     }))]));
     // The first-solves list follows the board's eligibility: starred participants only when allowed.
     // It lists the earliest eligible accepts even when the first-solve award itself is switched off.
@@ -308,7 +312,7 @@ export function screenData(data: BoardData, members: Set<string> | null, context
     const sourceOrder = new Map((c.submissions as any[]).map((s, i) => [s.id, i]));
     const solved = new Set<string>();
     for (const submission of [...c.submissions as any[]].sort((a, b) => a.contestTime - b.contestTime)) {
-        if (unranked.has(submission.teamId) && !context.unofficialFirstSolve) continue;
+        if ((unranked.has(submission.teamId) && !context.unofficialFirstSolve) || hidden(Number(submission.problemId))) continue;
         if (submission.status === 'solved' && !solved.has(submission.problemId)) {
             solved.add(submission.problemId);
             firstSolves.push({ ...submission, sourceOrder: sourceOrder.get(submission.id) });
@@ -328,7 +332,7 @@ export function screenData(data: BoardData, members: Set<string> | null, context
     const trend = context.trend ? rankTrend(c, result.standings, lastEventMs, frozen) : undefined;
     c.submissions = (c.submissions as any[]).slice(-100);
     return {
-        outcomes: visible, seats, trend,
+        outcomes: visible, seats, trend, hiddenFrom,
         // Unranked (打星) rows carry rank 0; show them with a star as the resolver does, not as "0".
         contest: c, results, standings: result.standings.map((row) => (row.unrank ? { ...row, rank: '*' } : row)), firstSolves, frozen,
         stats: { submissions: stats, lastEventMs },
@@ -401,19 +405,37 @@ type Balloon = { teamId: string; problemId: string; submissionId: string };
 /** Only the fields required by the selected view go to a token holder. */
 export function screenProjection(type: ScreenType, item: ScreenItem, data: ScreenProjection, pendingBalloons: Balloon[] = []) {
     const { contest, standings, results, outcomes, seats, trend, ...common } = data;
+    const { hiddenFrom } = common;
     if (type === 'rank-trend') return trend;
+    // CCPC 新榜单模式: only the labelled columns are problems every team shares.
+    const shown = hiddenFrom ?? contest.problems.length;
+    if (hiddenFrom === 0 && (type === 'problem-stats' || (type === 'outcomes' && item.variant === 'problem'))) {
+        throw new ScreenError('题号公开前不显示各题统计');
+    }
+    if (type === 'problem-stats' && hiddenFrom !== undefined) {
+        const flat = common.stats.submissions;
+        const kept: number[] = [];
+        for (let i = 0; i + 6 < flat.length; i += 7) if (flat[i + 1] < shown) kept.push(...flat.slice(i, i + 7));
+        return {
+            ...common, stats: { ...common.stats, submissions: kept }, standings,
+            contest: { ...contest, problems: contest.problems.slice(0, shown),
+                submissions: (contest.submissions as { problemId: string }[]).filter((row) => Number(row.problemId) < shown) },
+            results: Object.fromEntries(Object.entries(results).map(([id, cells]) => [id, cells.slice(0, shown)])),
+        };
+    }
     if (type === 'outcomes') {
         const stepMinutes = Math.max(15, Math.ceil(contest.durationMs / (60_000 * 16 * 15)) * 15);
         const byProblem = item.variant === 'problem';
         const buckets = new Map<number, Record<string, number>>();
         for (const record of outcomes) {
+            if (byProblem && record.problem_id >= shown) continue;
             const index = byProblem ? record.problem_id : Math.floor(record.timestamp / (stepMinutes * 60_000));
             const status = record.status === 'FROZEN' ? 'PENDING' : record.status;
             const counts = buckets.get(index) || {};
             counts[status] = (counts[status] || 0) + 1;
             buckets.set(index, counts);
         }
-        const length = byProblem ? contest.problems.length : Math.max(-1, ...buckets.keys()) + 1;
+        const length = byProblem ? shown : Math.max(-1, ...buckets.keys()) + 1;
         return Array.from({ length }, (_, index) => ({
             label: byProblem ? contest.problems[index].label : `${index * stepMinutes}–${Math.min((index + 1) * stepMinutes, Math.ceil(contest.durationMs / 60_000))} min`,
             counts: buckets.get(index) || {},
@@ -476,8 +498,9 @@ export function screenProjection(type: ScreenType, item: ScreenItem, data: Scree
             if (row.status !== 'CORRECT' || seen.has(key)) return [];
             seen.add(key);
             if (item.variant === 'first' && !first.has(row.submission_id)) return [];
+            // An accept in an unlabelled column is announced without a problem, as the board shows it.
             return [{ id: row.submission_id, name: teams.get(row.team_id)?.displayName, time: row.timestamp,
-                problem: problems[row.problem_id], first: first.has(row.submission_id) }];
+                problem: row.problem_id < shown ? problems[row.problem_id] : null, first: first.has(row.submission_id) }];
         }).slice(-20).reverse();
     }
     return { ...common, contest, standings, results };

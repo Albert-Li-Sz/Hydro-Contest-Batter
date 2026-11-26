@@ -58,6 +58,8 @@ export class ContestView {
   /** IProblemSummary: pending/solved counts over all teams. */
   getProblemSummary(i) {
     let numPending = 0, numSolved = 0;
+    // Hydro: a column past `hiddenFrom` (CCPC 新榜单模式) is no problem to count.
+    if (i >= (this.data.hiddenFrom ?? Infinity)) return { numPending, numSolved };
     for (const cells of Object.values(this.data.results || {})) {
       const cell = cells?.[i];
       if (cell?.status === "pending") numPending += cell.pending || 1;
@@ -101,11 +103,12 @@ export class ContestView {
       });
     }
     // Contest.calculateResultsAndStandings: first submission (by time) per problem decides FTS.
-    const fts = [];
+    // Hydro: from `hiddenFrom` on (CCPC 新榜单模式) a column is a position in each team's row, not a problem.
+    const fts = [], hiddenFrom = this.data.hiddenFrom ?? Infinity;
     const sorted = out.filter((s) => s.team && s.contestTime >= 0 && s.contestTime < this.c.durationMs)
       .sort((a, b) => a.contestTime - b.contestTime || a.index - b.index);
     for (const s of sorted) {
-      if (fts[s.problemIndex] !== undefined || s.team.unrank) continue;
+      if (fts[s.problemIndex] !== undefined || s.team.unrank || s.problemIndex >= hiddenFrom) continue;
       if (s.status === "SOLVED") fts[s.problemIndex] = s.index;
       else if (s.status === "SUBMITTED") fts[s.problemIndex] = -1;
     }

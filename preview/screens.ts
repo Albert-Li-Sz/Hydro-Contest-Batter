@@ -6,6 +6,7 @@ import type { BoardData } from '../lib/board';
 import type { BoardSettings } from '../lib/settings';
 import { awardsFor, toScriptJson } from '../lib/settings';
 import { resolverBoards, resolverCodeBase } from '../lib/resolver-data';
+import { hideProblemLabels } from '../lib/ccpc-board';
 import { ResolverSessions } from '../lib/resolver-sessions';
 import {
     decodePoster, defaultScreenConfig, groupSources, hiddenBeforeStart, intervalTypes, maxPosterImages, presentationItem,
@@ -127,14 +128,25 @@ export function createScreensPreview(env: Environment, logoNames: Record<string,
             else {
                 const seats = new Map(data.teams.map((team, i) => [team.team_id, `${String.fromCharCode(65 + Math.floor(i / 8))}-${String(i % 8 + 1).padStart(2, '0')}`]));
                 const locked = url.searchParams.get('phase') === 'frozen';
-                const source = locked ? { ...data, contest: { ...data.contest, frozen_time: 4 * 3600 } } : data;
+                const frozen = locked ? { ...data, contest: { ...data.contest, frozen_time: 4 * 3600 } } : data;
+                // As index.ts applyBoardRules: ?running=1 is before the freeze, where the CCPC board hides labels.
+                const source = standingsTypes.has(type) && settings.ccpcBoard.enabled && url.searchParams.get('running') === '1' && !locked
+                    ? hideProblemLabels(frozen, settings.ccpcBoard) : frozen;
+                const rules = awardsFor(settings, boardId);
                 const projection = screenData(source, boardId === 'all' ? null : new Set(board.teamIds), {
                     logoNames, locked, seats, trend: type === 'rank-trend',
                     groups: type === 'groups' && item.source === 'boards' ? boards.filter((group) => group.id !== 'all') : null,
-                    firstSolve: awardsFor(settings, boardId).firstSolve, unofficialFirstSolve: awardsFor(settings, boardId).unofficialFirstSolve,
+                    firstSolve: rules.firstSolve, unofficialFirstSolve: rules.unofficialFirstSolve, tieBreak: rules.tieBreak,
                 });
-                payload = screenProjection(type, item, projection, data.submissions.filter((row) => row.status === 'CORRECT').slice(-5)
-                    .map((row) => ({ teamId: row.team_id, problemId: String(row.problem_id), submissionId: row.submission_id })));
+                try {
+                    if (type === 'balloons' && source.hiddenFrom !== undefined) throw new ScreenError('封榜前隐藏题号时不显示气球配送图');
+                    payload = screenProjection(type, item, projection, source.submissions.filter((row) => row.status === 'CORRECT').slice(-5)
+                        .map((row) => ({ teamId: row.team_id, problemId: String(row.problem_id), submissionId: row.submission_id })));
+                } catch (error) {
+                    if (!(error instanceof ScreenError)) throw error;
+                    json({ ...head, notice: error.message });
+                    return true;
+                }
             }
             json({ ...head, item: presentationItem(type, item, data), data: payload });
         } catch (error) {

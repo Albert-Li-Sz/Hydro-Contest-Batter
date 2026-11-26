@@ -3,6 +3,7 @@ import { defaultSettings } from '../lib/settings';
 import { resolverBoards } from '../lib/resolver-data';
 import { broadcastRows, decodePoster, defaultScreenConfig, hiddenBeforeStart, normalizeScreenConfig, presentationItem, saveScreenConfig,
     reactionPlaylist, screenCategories, screenData, screenProjection, screenTypes } from '../lib/screens-data';
+import { hideProblemLabels } from '../lib/ccpc-board';
 import { demoData } from './fixture';
 
 const settings = { ...defaultSettings, showIdentity: true, manualBoards: [{ id: 'mixed', name: '混合榜', teamIds: ['1', '4', '7'] }] };
@@ -150,6 +151,42 @@ describe('big-screen data', () => {
         expect(result.stats.submissions.slice(-7)[3]).toBe(2);
         expect(result.contest.submissions.at(-1)).toMatchObject({ id: 'late', status: 'pending' });
         expect(result.clock.startTime).toBe(new Date(data.contest.start_time * 1000).toISOString());
+    });
+    it('treats unlabelled columns of the CCPC 新榜单模式 as positions, not problems', async () => {
+        // A is solved by three teams (shown); B, C and D first by teams 1, 2 and 3, each in its own row's column 1.
+        const run = (id: string, team: string, problem: number, minute: number) =>
+            ({ submission_id: id, team_id: team, problem_id: problem, timestamp: minute * 60_000, status: 'CORRECT' });
+        const data = demoData();
+        data.contest = { ...data.contest, problem_quantity: 4, problem_id: ['A', 'B', 'C', 'D'], frozen_time: 3600,
+            balloon_color: ['#e53935', '#1e88e5', '#43a047', '#fdd835'].map((background_color) => ({ color: '#000', background_color })) };
+        data.submissions = [run('1', '1', 0, 3), run('2', '2', 0, 4), run('3', '3', 0, 6), run('4', '2', 2, 5),
+            run('5', '1', 1, 10), run('6', '3', 3, 20), run('7', '5', 1, 30)];
+        const hidden = hideProblemLabels(data, { enabled: true, reveal: 3, revealBasis: 'count' });
+        expect(hidden.hiddenFrom).toBe(1);
+        const view = screenData(hidden, null, { ...env, locked: false, tieBreak: 'ccpc' });
+        const config = defaultScreenConfig();
+        expect(highlighted(view)).toEqual(['1:0']);
+        expect(view.firstSolves.map((row: any) => `${row.teamId}:${row.problemId}`)).toEqual(['1:0']);
+        expect((screenProjection('announce', config.items.announce, view) as any[]).map((row) => [row.name, row.problem?.label ?? null, row.first]))
+            .toEqual([['许青', null, false], ['陈言', null, false], ['林澈', null, false], ['陈言', 'A', false], ['周宁', null, false], ['周宁', 'A', false], ['林澈', 'A', true]]);
+        expect(screenProjection('outcomes', { ...config.items.outcomes, variant: 'problem' }, view)).toEqual([{ label: 'A', counts: { CORRECT: 3 } }]);
+        const stats = screenProjection('problem-stats', config.items['problem-stats'], view) as any;
+        expect(stats.contest.problems.map((problem: { label: string }) => problem.label)).toEqual(['A']);
+        expect(stats.stats.submissions.length).toBe(3 * 7);
+        expect(Object.values(stats.results).every((cells: any) => cells.length === 1)).toBe(true);
+        // The scoreboard keeps every column; the queue and the other ICPC Tools views find no first solve past them.
+        expect((screenProjection('scoreboard', config.items.scoreboard, view) as any).contest.problems).toHaveLength(4);
+        const { ContestView } = await import('../resolver/public/js/render/java-contest.js');
+        const fts = new ContestView(screenProjection('queue', config.items.queue, view)).getAllSubmissions()
+            .filter((row: { firstToSolve: boolean }) => row.firstToSolve).map((row: { teamId: string; problemIndex: number }) => `${row.teamId}:${row.problemIndex}`);
+        expect(fts).toEqual(['1:0']);
+        const board = new ContestView(screenProjection('scoreboard', config.items.scoreboard, view));
+        expect([0, 1, 2, 3].map((index) => board.getProblemSummary(index).numSolved)).toEqual([3, 0, 0, 0]);
+        // Before any problem is shown there is no problem to count.
+        const none = screenData(hideProblemLabels(data, { enabled: true, reveal: 10, revealBasis: 'count' }), null, env);
+        expect(() => screenProjection('problem-stats', config.items['problem-stats'], none)).toThrow('题号公开前不显示各题统计');
+        expect(() => screenProjection('outcomes', { ...config.items.outcomes, variant: 'problem' }, none)).toThrow('题号公开前不显示各题统计');
+        expect(screenProjection('outcomes', config.items.outcomes, none)).not.toHaveLength(0);
     });
 });
 

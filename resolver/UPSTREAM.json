@@ -194,7 +194,7 @@
       "source": "public/js/render/java-contest.js",
       "destination": "resolver/public/js/render/java-contest.js",
       "sha256": "bfd6a2e362f3d581fe715847d2901d2eb6ba876bfde7402189e2927d151e52c7",
-      "modifiedSha256": "c5b1aae692fc114acf5993e677a7ce0d68dcada556a474848192d937e54b9cbb"
+      "modifiedSha256": "f505348d2d8c06a7b60c7af4b2da5a3e39522327b5f84d965949a5acedd3ced8"
     },
     {
       "source": "public/js/render/java-graphics.js",

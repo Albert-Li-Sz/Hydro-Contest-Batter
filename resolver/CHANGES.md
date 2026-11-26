@@ -91,3 +91,7 @@
 ## 奖牌行配色
 
 - `public/js/render/shaded-rect.js` 的 `GOLD2`/`GOLD` 由 ICPC Tools 的铜色（205,127,50）改为金色 `#ffd700`。原值叠在 `#3c3c3c` 行底上为 rgb(115,85,56)，与铜牌行 rgb(100,84,60) 几乎无法区分；新值为 rgb(133,118,37)，白字对比度 4.55:1。银、铜行保持上游配色。
+
+## CCPC 新榜单模式的大屏
+
+- `public/js/render/java-contest.js` 的 `getAllSubmissions()` 读取大屏数据中的 `hiddenFrom`：CCPC 封榜前隐藏题号时，从该列起每列是各队自己的位置而不是同一道题，不再为这些列计算一血；`getProblemSummary()` 对这些列返回 0，实时榜单底部与方块榜的各题汇总不再把不同的题合计在一起。判题队列、队伍判题和其他 ICPC Tools 画面因此只在已公开题号的列上显示一血。

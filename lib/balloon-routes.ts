@@ -758,5 +758,12 @@ export function applyBalloons(ctx: Context, dependencies: {
                 colors: problemColors(settings, tdoc.pids, tdoc.balloon as Record<string, unknown> | undefined).map((color) => color?.hex || ''),
             };
         },
+        /** 题目与气球颜色 and 题目列表: the colours 气球配送 hands out, or `perTeam` when each team has its own. */
+        async screenColors(tdoc: Tdoc): Promise<{ colors: string[]; perTeam: boolean } | null> {
+            const settings = settingsOf(await settingsColl.findOne({ _id: contestKey(tdoc) }) as SettingsDoc | null, tdoc);
+            if (!settings.enabled) return null;
+            if (settings.teamColors) return { colors: [], perTeam: true };
+            return { colors: problemColors(settings, tdoc.pids, tdoc.balloon as Record<string, unknown> | undefined).map((color) => color?.hex || ''), perTeam: false };
+        },
     };
 }

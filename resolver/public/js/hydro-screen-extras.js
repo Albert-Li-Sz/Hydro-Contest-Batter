@@ -319,7 +319,7 @@ export class HydroScreenExtras {
     }
 
     announce(body, row) {
-        body.append(el('article', 'screen-hero', badge(row.problem.label, row.problem.color, 'screen-large-badge'),
+        body.append(el('article', 'screen-hero', row.problem ? badge(row.problem.label, row.problem.color, 'screen-large-badge') : null,
             el('h2', '', row.name), el('p', '', row.first ? this.t('一血 · 首次通过', 'First to solve') : this.t('通过', 'Accepted')),
             el('p', 'screen-muted', time(row.time))));
     }
