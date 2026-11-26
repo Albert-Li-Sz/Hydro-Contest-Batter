@@ -278,7 +278,15 @@ export function applyIntegrity(ctx: Context, dependencies: {
                 // The results the conclusion was reached on stay on the results page.
                 let snapshot = doc.snapshot;
                 if (needsSnapshot) {
-                    snapshot = await dependencies.snapshot(this.tdoc, `诚信复核认定 · ${doc.title.slice(0, 40)}`, this.user._id);
+                    try {
+                        snapshot = await dependencies.snapshot(this.tdoc, `诚信复核认定 · ${doc.title.slice(0, 40)}`, this.user._id);
+                    } catch (error) {
+                        // No violation without the results it was found on: put the case back as it was (unless changed since).
+                        await cases.updateOne({ _id: doc._id, updatedAt: now }, {
+                            $set: { status: doc.status, conclusion: doc.conclusion, assignee: doc.assignee, due: doc.due, updatedAt: doc.updatedAt }, $pop: { history: 1 },
+                        }).catch(() => null);
+                        throw error;
+                    }
                     await cases.updateOne({ _id: doc._id }, { $set: { snapshot } });
                 }
                 return { ok: true, snapshot };

@@ -1,4 +1,6 @@
 // Contest overview screen: polls the overview data, keeps the clock on the server's time.
+import { inkOn } from './ink.js';
+
 const runtime = JSON.parse(document.getElementById('overview-runtime').textContent);
 const $ = (id) => document.getElementById(id);
 let data = null;
@@ -35,12 +37,11 @@ const cell = (text, cls = '', title) => el('span', { class: `ov-cell ${cls}`, te
 /** Readable text on a balloon colour. */
 function balloon(label, color) {
     const node = el('span', { class: 'ov-balloon', text: label });
-    const hex = /^#([0-9a-f]{6})$/i.exec(color || '')?.[1];
-    if (hex) {
-        const [r, g, b] = [0, 2, 4].map((i) => Number.parseInt(hex.slice(i, i + 2), 16));
+    if (/^#[0-9a-f]{6}$/i.test(color || '')) {
+        const ink = inkOn(color, '#10203a', '#ffffff');
         node.style.background = color;
-        node.style.color = r * 0.299 + g * 0.587 + b * 0.114 > 160 ? '#10203a' : '#fff';
-        if (r * 0.299 + g * 0.587 + b * 0.114 > 160) node.style.textShadow = 'none';
+        node.style.color = ink;
+        if (ink !== '#ffffff') node.style.textShadow = 'none';
     }
     return node;
 }

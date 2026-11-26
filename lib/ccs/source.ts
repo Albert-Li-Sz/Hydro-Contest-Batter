@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Context, Tdoc } from 'hydrooj';
 export type HydroApi = typeof import('hydrooj');
-import { type BoardData, problemColor, UNSET_PROBLEM_COLOR } from '../board';
+import { type BoardData, problemColorOrNull } from '../board';
 import { resolverBoards } from '../resolver-data';
 import { applyBoardRules, labelsHidden } from '../ccpc-board';
 import { applyJury, heldProblems, type JuryState } from '../jury';
@@ -102,7 +102,7 @@ async function contestProblems(tdoc: Tdoc): Promise<ProblemSource[]> {
         const pdoc = original?.reference ? await ProblemModel.get(original.reference.domainId, original.reference.pid) : original;
         const config = pdoc && typeof pdoc.config === 'object' ? pdoc.config : {};
         const colorEntry = balloon[pid];
-        const color = problemColor(colorEntry);
+        const color = problemColorOrNull(colorEntry);
         const colorName = colorEntry && typeof colorEntry === 'object' && typeof (colorEntry as { name?: unknown }).name === 'string'
             ? (colorEntry as { name: string }).name.trim() || null : null;
         return {
@@ -112,7 +112,7 @@ async function contestProblems(tdoc: Tdoc): Promise<ProblemSource[]> {
             timeLimitMs: timeLimitMs(config.timeMax),
             memoryMb: memoryLimitMb(config.memoryMax),
             testCount: Number.isSafeInteger(config.count) ? config.count : 0,
-            color: color === UNSET_PROBLEM_COLOR ? null : color,
+            color,
             colorName,
             attachments: (pdoc?.additional_file || []).map((file: { name: string; size?: number }) => ({ name: file.name, size: file.size || 0 })),
         };

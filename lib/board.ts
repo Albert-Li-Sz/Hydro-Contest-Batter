@@ -46,10 +46,30 @@ export const UNSET_PROBLEM_COLOR = '#e2e8f0';
 /** Hydro stores a contest's balloon colours per problem as `{ color, name }` (older data: a bare string),
  * picked with a hex input. Normalise to `#rrggbb`; anything else counts as not set. */
 export function problemColor(entry: unknown): string {
+    return problemColorOrNull(entry) ?? UNSET_PROBLEM_COLOR;
+}
+
+/** The colour set for a problem, or null when none is: #e2e8f0 chosen on purpose stays a colour. */
+export function problemColorOrNull(entry: unknown): string | null {
     const raw = typeof entry === 'string' ? entry : (entry as { color?: unknown } | null | undefined)?.color;
     const hex = typeof raw === 'string' ? /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(raw.trim())?.[1].toLowerCase() : undefined;
-    if (!hex) return UNSET_PROBLEM_COLOR;
+    if (!hex) return null;
     return `#${hex.length === 3 ? hex.replace(/./g, '$&$&') : hex}`;
+}
+
+/**
+ * A problem's colour in the board data. XCPCIO needs a background for every problem, so one without a colour
+ * shows UNSET_PROBLEM_COLOR and says so in `hydro_unset` (Live and CCS then report no colour).
+ */
+export function boardBalloon(entry: unknown) {
+    const color = problemColorOrNull(entry);
+    return { color: '#000', background_color: color ?? UNSET_PROBLEM_COLOR, hydro_unset: color === null };
+}
+
+/** Whether a board data balloon entry has no colour of its own (older data without `hydro_unset`: by the placeholder). */
+export function balloonUnset(entry: { background_color?: string; hydro_unset?: boolean } | undefined) {
+    if (typeof entry?.hydro_unset === 'boolean') return entry.hydro_unset;
+    return problemColor(entry?.background_color) === UNSET_PROBLEM_COLOR;
 }
 
 export function schoolName(name?: string): string {

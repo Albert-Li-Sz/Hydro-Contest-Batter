@@ -3,7 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Context, Handler } from 'hydrooj';
 import { describe, expect, it, vi } from 'vitest';
-import { clipPriority, clipWindow, defaultRecordingSettings, estimateRecording, gradeTest, inScope, missingIntervals, normalizeRecording, presets, readRange, uploadedRecordingQuality } from '../lib/recording';
+import {
+    clipPriority, clipWindow, defaultRecordingSettings, estimateRecording, gradeTest, inScope, MIN_TEAM_STORAGE_BYTES, missingIntervals, normalizeRecording, presets, readRange,
+    teamStorageLimit, uploadedRecordingQuality,
+} from '../lib/recording';
 import { inspectSegment, RecordingStore, segmentId, serveRecordingMedia } from '../lib/recording-store';
 import { defaultCaptureSettings, normalizeCaptureSettings, readCaptureSettings } from '../lib/live/capture';
 
@@ -31,6 +34,12 @@ describe('recording settings and match planning', () => {
         expect(totals.storageBytes).toBe(18_900_000);
         expect(totals.averageMbps).toBe(2.4);
         expect(estimateRecording(active.recording, { teams: 1, seconds: 60 }, {}, false).storageBytes).toBe(9_450_000);
+        // A five-hour contest with both HD archives (about 5.7 GB per team) stays well inside the team's limit.
+        const fiveHours = 5 * 3600;
+        const archiveOnly = estimateRecording(active.recording, { teams: 1, seconds: fiveHours }).storageBytes;
+        expect(archiveOnly).toBeGreaterThan(5 * 1024 ** 3);
+        expect(teamStorageLimit(active.recording, fiveHours)).toBe(Math.ceil(archiveOnly * 3));
+        expect(teamStorageLimit(settings.recording, 60)).toBe(MIN_TEAM_STORAGE_BYTES);
     });
     it('preserves saved capture, archive and congestion choices, including historical partial documents', () => {
         const old = readCaptureSettings({ enabled: true, screenFps: 5, recording: { archive: { enabled: true, screen: { preset: 'standard' } } } });

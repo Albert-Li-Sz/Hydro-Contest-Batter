@@ -94,6 +94,7 @@ function utf16Hex(text: string) {
 const num = (value: number) => (Math.round(value * 100) / 100).toString();
 
 const MAX_IMAGE_PIXELS = 16_000_000;
+const TOO_MANY_PIXELS = `图片超过 ${MAX_IMAGE_PIXELS / 10_000} 万像素，请缩小后再上传`;
 
 /** A JPEG (baseline or progressive, grey or RGB) or a non-interlaced 8-bit PNG, ready to embed. */
 export function parseImage(buffer: Buffer, preserveAlpha = false): PdfImage {
@@ -115,7 +116,8 @@ export function parseImage(buffer: Buffer, preserveAlpha = false): PdfImage {
                 const components = buffer[offset + 7];
                 if (components !== 1 && components !== 3) throw new Error('请使用 RGB 或灰度 JPEG（不支持 CMYK）');
                 const height = buffer.readUInt16BE(offset + 3); const width = buffer.readUInt16BE(offset + 5);
-                if (!height || !width || width * height > MAX_IMAGE_PIXELS) throw new Error('JPEG 图片尺寸无效');
+                if (!height || !width) throw new Error('JPEG 图片尺寸无效');
+                if (width * height > MAX_IMAGE_PIXELS) throw new Error(TOO_MANY_PIXELS);
                 return { height, width, colors: components, filter: 'DCTDecode', data: buffer };
             }
             offset += length;
@@ -147,7 +149,8 @@ function parsePng(buffer: Buffer, preserveAlpha: boolean): PdfImage {
         offset += 12 + length;
     }
     if (depth !== 8 || interlace !== 0 || ![0, 2, 3, 4, 6].includes(type)) throw new Error('请使用 8 位、非隔行扫描的 PNG');
-    if (!width || !height || width * height > MAX_IMAGE_PIXELS) throw new Error('PNG 图片尺寸无效');
+    if (!width || !height) throw new Error('PNG 图片尺寸无效');
+    if (width * height > MAX_IMAGE_PIXELS) throw new Error(TOO_MANY_PIXELS);
     const channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[type]!;
     const stride = width * channels;
     const expected = (stride + 1) * height;

@@ -87,3 +87,7 @@
 
 - `public/js/medals.js` 使用 `honors.js` 的 place 规则生成三档 Honors，与成绩导出和 ICPC Live 共用名次线。
 - Hydro 播放模板新增颁奖台本入口。台本从该会话的成绩和奖项生成，保留彩排标记以及同队的特别奖。
+
+## 奖牌行配色
+
+- `public/js/render/shaded-rect.js` 的 `GOLD2`/`GOLD` 由 ICPC Tools 的铜色（205,127,50）改为金色 `#ffd700`。原值叠在 `#3c3c3c` 行底上为 rgb(115,85,56)，与铜牌行 rgb(100,84,60) 几乎无法区分；新值为 rgb(133,118,37)，白字对比度 4.55:1。银、铜行保持上游配色。

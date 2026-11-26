@@ -12,6 +12,7 @@ const css = `
 .xcpcio-capture-chip[data-state="waiting"] { background: #e6a23c; }
 .xcpcio-capture-chip[role="status"] { max-width: calc(100vw - 32px); cursor: default; }
 .xcpcio-capture-chip[role="status"] a { color: inherit; text-decoration: underline; }
+.xcpcio-capture-chip.xcpcio-capture-toast { bottom: 64px; background: #37475a; }
 .xcpcio-capture-mask { position: fixed; inset: 0; z-index: 2001; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0,0,0,.55); }
 .xcpcio-capture-dialog { max-width: 520px; width: 100%; padding: 24px 26px; border-radius: 10px; color: #222; background: #fff; box-shadow: 0 12px 40px rgba(0,0,0,.35); font-size: 15px; line-height: 1.7; }
 .xcpcio-capture-dialog h2 { margin: 0 0 10px; font-size: 20px; }
@@ -62,27 +63,31 @@ export function installCapturePrompt(info) {
     chip.addEventListener('click', () => (state.lastAlive && state.streams.length ? focusWindow() : showDialog()));
     document.body.append(chip);
 
+    // The capture window this page opened, which it may bring to the front itself.
+    let captureWindow = null;
+    let toast = null;
+
+    function notice(text) {
+        toast?.remove();
+        toast = element('div', { class: 'xcpcio-capture-chip xcpcio-capture-toast', role: 'status', text });
+        document.body.append(toast);
+        const shown = toast;
+        setTimeout(() => { if (toast === shown) { toast.remove(); toast = null; } }, 6000);
+    }
+
     function focusWindow() {
-        // Ask the already-open capture window to focus itself first so clicking from another tab
-        // never opens a duplicate window that kicks the live capture session with close code 4009.
-        if (channel && state.lastAlive && Date.now() - state.lastAlive < SILENT_MS) {
-            let acknowledged = false;
-            const onMessage = (event) => {
-                if (event.data?.type === 'focused') acknowledged = true;
-            };
-            channel.addEventListener('message', onMessage);
-            channel.postMessage({ type: 'focus' });
-            setTimeout(() => {
-                channel.removeEventListener('message', onMessage);
-                if (acknowledged || (state.lastAlive && Date.now() - state.lastAlive < SILENT_MS)) return;
-                const opened = window.open(info.url, info.channel, 'popup=yes,width=620,height=780');
-                opened?.focus();
-            }, 300);
-            return;
-        }
-        const opened = window.open('', info.channel);
-        if (opened && opened.location.href === 'about:blank') { opened.location.href = info.url; }
-        opened?.focus();
+        if (captureWindow && !captureWindow.closed) { captureWindow.focus(); return; }
+        // Look it up by name while the click lasts: only a click may raise another window.
+        let found = null;
+        try { found = window.open('', info.channel); } catch { found = null; }
+        let blank = false;
+        try { blank = !!found && found.location.href === 'about:blank'; } catch { blank = false; }
+        if (found && !blank) { captureWindow = found; found.focus(); return; }
+        // It runs in a window this tab cannot reach. Loading the capture page in the blank window would start
+        // a second capture and stop the first (4009), so close it and say where the running one is.
+        found?.close();
+        channel?.postMessage({ type: 'focus' });
+        notice('采集窗口在其他窗口中运行，请切换到“画面采集”窗口');
     }
 
     function openWindow(hint) {
@@ -92,6 +97,7 @@ export function installCapturePrompt(info) {
                 element('a', { href: info.url, target: info.channel, rel: 'opener', text: '点此打开采集窗口' }));
             return;
         }
+        captureWindow = opened;
         opened.focus();
         storage('setItem', seenKey, '1');
         closeDialog();
@@ -183,6 +189,7 @@ export function installCapturePrompt(info) {
         clearTimeout(first);
         channel?.close();
         chip.remove();
+        toast?.remove();
         closeDialog();
     };
 }

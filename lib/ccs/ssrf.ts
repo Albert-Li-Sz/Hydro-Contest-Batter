@@ -4,10 +4,14 @@
  * (both literal and DNS-resolved).
  */
 import dns from 'node:dns';
+import http from 'node:http';
+import https from 'node:https';
 import net from 'node:net';
 import { CcsError } from './types';
 
 export type HostLookup = (hostname: string) => Promise<string[]>;
+export interface WebhookResponse { ok: boolean; status: number }
+export type WebhookPost = (url: string, init: { headers: Record<string, string>; body: string; timeoutMs: number }) => Promise<WebhookResponse>;
 
 const defaultLookup: HostLookup = async (hostname) => {
     const records = await dns.promises.lookup(hostname, { all: true, verbatim: true });
@@ -151,4 +155,41 @@ export async function assertSafeWebhookTarget(raw: string, lookup: HostLookup = 
         throw new CcsError(400, 'webhook 域名解析到了内网或保留地址，已拒绝投递');
     }
     return parsed;
+}
+
+/**
+ * The socket's own name lookup, refusing blocked addresses: the address checked is the address connected to,
+ * so a DNS answer that changes between the check and the connection (DNS rebinding) cannot reach the intranet.
+ */
+export function pinnedLookup(lookup: HostLookup = defaultLookup): net.LookupFunction {
+    return ((hostname: string, options: dns.LookupOptions, callback: (error: Error | null, address: string | dns.LookupAddress[], family?: number) => void) => {
+        lookup(hostname).then((addresses) => {
+            const wanted = options?.family === 6 || options?.family === 'IPv6' ? 6 : options?.family === 4 || options?.family === 'IPv4' ? 4 : 0;
+            const entries = addresses.map((address) => ({ address, family: net.isIP(address) })).filter((entry) => entry.family && (!wanted || entry.family === wanted));
+            if (!entries.length) callback(new CcsError(400, `无法解析 webhook 主机 ${hostname}`), '', 0);
+            else if (entries.some((entry) => isBlockedIp(entry.address))) callback(new CcsError(400, 'webhook 域名解析到了内网或保留地址，已拒绝投递'), '', 0);
+            else if (options?.all) callback(null, entries);
+            else callback(null, entries[0].address, entries[0].family);
+        }, (error) => callback(error instanceof Error ? error : new Error(String(error)), '', 0));
+    }) as net.LookupFunction;
+}
+
+/** POSTs a webhook body over a fresh connection that only reaches addresses passing the SSRF checks; redirects count as failures. */
+export async function postWebhook(raw: string, init: Parameters<WebhookPost>[1], lookup: HostLookup = defaultLookup): Promise<WebhookResponse> {
+    const url = await assertSafeWebhookTarget(raw, lookup);
+    const client = url.protocol === 'https:' ? https : http;
+    return new Promise((resolve, reject) => {
+        const request = client.request(url, {
+            method: 'POST', agent: false, lookup: pinnedLookup(lookup),
+            headers: { ...init.headers, 'Content-Length': String(Buffer.byteLength(init.body)) },
+        }, (response) => {
+            clearTimeout(timer);
+            const status = response.statusCode ?? 0;
+            response.resume();
+            resolve({ ok: status >= 200 && status < 300, status });
+        });
+        const timer = setTimeout(() => request.destroy(new Error('webhook 请求超时')), init.timeoutMs);
+        request.on('error', (error) => { clearTimeout(timer); reject(error); });
+        request.end(init.body);
+    });
 }

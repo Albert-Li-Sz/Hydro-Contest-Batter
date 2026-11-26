@@ -68,7 +68,7 @@ export function hideProblemLabels(data: BoardData, board: CcpcBoard): BoardData 
     };
     const labels = data.contest.problem_id as string[];
     const colors = data.contest.balloon_color as { color: string; background_color: string }[] | undefined;
-    const plain = { color: '#000', background_color: UNSET_PROBLEM_COLOR };
+    const plain = { color: '#000', background_color: UNSET_PROBLEM_COLOR, hydro_unset: true };
     return {
         ...data,
         hiddenFrom: shown.length,

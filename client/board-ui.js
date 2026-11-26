@@ -4,6 +4,8 @@ const app = document.getElementById('app');
 if (app) {
     let awardRules;
     let specialText;
+    // The contest's own medal names; before they arrive, the defaults of lib/settings.ts.
+    const citationOf = (tier) => awardRules?.[`${tier}Citation`] || { gold: '金奖', silver: '银奖', bronze: '铜奖' }[tier];
     window.addEventListener('hydro-xcpcio-awards', (event) => {
         awardRules = event.detail.rules;
         const podium = document.getElementById('xp-podium');
@@ -13,7 +15,7 @@ if (app) {
         }
         for (const tier of ['gold', 'silver', 'bronze']) {
             const dot = document.querySelector(`#xp-legend .xp-${tier}`);
-            if (dot?.nextSibling) dot.nextSibling.textContent = awardRules?.[`${tier}Citation`] || { gold: '金牌', silver: '银牌', bronze: '铜牌' }[tier];
+            if (dot?.nextSibling) dot.nextSibling.textContent = citationOf(tier);
         }
         const first = document.querySelector('#xp-legend .xp-first');
         if (first) first.parentElement.hidden = !awardRules?.firstSolve;
@@ -214,7 +216,7 @@ if (app) {
                 modal.classList.add('xp-modal'); modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true');
                 const title = modal.querySelector('h3');
                 if (title?.textContent.trim()) modal.setAttribute('aria-label', title.textContent.trim());
-                const legendLabels = { Gold: '金牌', Silver: '银牌', Bronze: '铜牌', Honorable: '优胜',
+                const legendLabels = { Gold: citationOf('gold'), Silver: citationOf('silver'), Bronze: citationOf('bronze'), Honorable: '优胜',
                     'First to solve problem': '首次通过', 'Solved problem': '通过', 'Attempted problem': '未通过',
                     'Pending judgement/Frozen': '待评测 / 封榜', 队名: teamMembers ? '队伍' : '选手', 组织: '学校', 组别: '所属榜单' };
                 for (const cell of modal.querySelectorAll('td')) {
@@ -334,8 +336,8 @@ if (app) {
                         row.classList.add('xp-team-row');
                         names.forEach((name, index) => cells[index]?.classList.add(`xp-col-${name}`));
                         const rank = cells[0];
-                        const medal = [['gold', '金牌'], ['silver', '银牌'], ['bronze', '铜牌']].find(([name]) => rank.classList.contains(name));
-                        const citation = medal && (awardRules?.[`${medal[0]}Citation`] || medal[1]);
+                        const medal = ['gold', 'silver', 'bronze'].find((name) => rank.classList.contains(name));
+                        const citation = medal && citationOf(medal);
                         rank.setAttribute('aria-label', `${citation ? `${citation}，` : ''}第 ${rank.textContent.trim()} 名`);
                         rank.title = citation || '';
                         const team = cells[names.indexOf('team')];

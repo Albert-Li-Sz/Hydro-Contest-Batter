@@ -302,7 +302,7 @@ export function certificateService(db: Context['db'], dependencies: {
         } else throw new CertificateError('未知的图片操作');
         throw new CertificateError('装饰图片已被修改，请刷新后重试', 409);
     }
-    async function pages(request: CertificateRequest, config: CertificateConfig, docs: Pick<IssuedDoc, '_id' | 'kind' | 'values'>[]) {
+    async function pages(request: CertificateRequest, config: CertificateConfig, docs: (Pick<IssuedDoc, '_id' | 'kind' | 'values'> & { awardId?: string })[]) {
         const cache = new Map<string, PdfImage | null>();
         const kinds = [...new Set(docs.map((doc): TemplateKind => doc.kind === 'participation' ? 'participation' : 'award'))];
         const designs = kinds.map((kind) => config.templates[kind].frame);
@@ -323,7 +323,7 @@ export function certificateService(db: Context['db'], dependencies: {
         for (let i = 0; i < docs.length; i++) {
             const doc = docs[i];
             const template = templateFor(config, doc.kind);
-            result.push(certificatePage(template, doc.kind, doc.values, verifyUrl(request.site, request.scope.domainId, doc._id),
+            result.push(certificatePage(template, doc.kind, { ...doc.values, awardId: doc.awardId }, verifyUrl(request.site, request.scope.domainId, doc._id),
                 await background(request.scope, template.background, cache), logos, decorations.filter((d) => d.template === (doc.kind === 'participation' ? 'participation' : 'award')),
                 isEventDesign(template.frame) ? signatures[template.frame] : undefined, emblem));
             if ((i + 1) % 20 === 0) await yieldLoop();
@@ -384,7 +384,7 @@ export function certificateService(db: Context['db'], dependencies: {
                     stale: docs.filter((doc) => doc.status === 'valid' && !entries.some((entry) => entry.key === doc.key)).length,
                     // One entry of each kind, for the template editor to show real values.
                     samples: Object.fromEntries(certificateEntries(result, { ...config, kinds: { team: true, member: true, coach: true, participation: true } }, sheet)
-                        .reduce((found, entry) => (found.has(entry.kind) ? found : found.set(entry.kind, entry.values)), new Map<string, Record<string, string>>())),
+                        .reduce((found, entry) => (found.has(entry.kind) ? found : found.set(entry.kind, { ...entry.values, awardId: entry.awardId })), new Map<string, Record<string, string>>())),
                 };
             } catch (caught) {
                 if (!(caught instanceof CertificateError)) throw caught;
@@ -582,16 +582,17 @@ export function certificateService(db: Context['db'], dependencies: {
         if (format === 'sample') {
             const kind: CertificateKind = query.template === 'participation' ? 'participation' : (query.kind === 'team' || query.kind === 'coach' ? query.kind : 'member');
             let values = Object.fromEntries(Object.entries(placeholders).map(([key, label]) => [key, `〔${label}〕`])) as Record<Placeholder, string>;
+            let awardId = '';
             if (config.source) {
                 try {
                     const all = { ...config, kinds: { team: true, member: true, coach: true, participation: true } };
                     const entry = certificateEntries(boardOf(await readSource(request.scope, config.source), config.board), all).find((item) => item.kind === kind);
-                    if (entry) values = entry.values;
+                    if (entry) { values = entry.values; awardId = entry.awardId; }
                 } catch (error) {
                     if (!(error instanceof CertificateError)) throw error;
                 }
             }
-            const doc = { _id: 'SAMPLE0000', kind, values: { ...values, number: 'SAMPLE0000' } };
+            const doc = { _id: 'SAMPLE0000', kind, awardId, values: { ...values, number: 'SAMPLE0000' } };
             return { data: buildPdf(await pages(request, config, [doc]), '证书样张'), type: 'application/pdf', name: `${title}-证书样张.pdf`, inline: true };
         }
         await finishPending(request.scope);

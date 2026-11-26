@@ -357,12 +357,14 @@ export function certificateEntries(result: ResultBoard, config: CertificateConfi
 
 const FIELD = /\{([a-zA-Z]+)\}/g;
 /** A template line with the entry's values, or '' when the line has placeholders and every one is empty. */
-export function fillText(template: string, values: Partial<Record<Placeholder, string>>) {
+/** An entry's values as rendered: the placeholders plus the award's id, which tells its medal (gold-medal…). */
+export type CertificateValues = Partial<Record<Placeholder, string>> & { awardId?: string };
+export function fillText(template: string, values: CertificateValues) {
     let used = 0; let filled = 0;
     const result = template.replace(FIELD, (match, name: string) => {
         if (!Object.hasOwn(placeholders, name)) return match;
         used++;
-        const value = name === 'awardEn' ? awardEnglish(values.award || '') : values[name as Placeholder] || '';
+        const value = name === 'awardEn' ? awardEnglish(values.award || '', values.awardId) : values[name as Placeholder] || '';
         if (value) filled++;
         return value;
     });
@@ -370,12 +372,12 @@ export function fillText(template: string, values: Partial<Record<Placeholder, s
 }
 
 /** Placeholders the template prints for this kind that the entry leaves empty (缺失字段). */
-export function missingFields(template: CertificateTemplate, entry: Pick<CertificateEntry, 'kind' | 'values'>): Placeholder[] {
+export function missingFields(template: CertificateTemplate, entry: Pick<CertificateEntry, 'kind' | 'values'> & { awardId?: string }): Placeholder[] {
     const missing = new Set<Placeholder>();
     for (const item of template.fields) {
         if (item.type !== 'text' || (item.kinds.length && !item.kinds.includes(entry.kind))) continue;
         for (const [token, name] of item.text.matchAll(FIELD)) {
-            if (isEventDesign(template.frame) && eventText(token, entry.values, entry.kind, awardEnglish(entry.values.award), template.frame)) continue;
+            if (isEventDesign(template.frame) && eventText(token, entry.values, entry.kind, awardEnglish(entry.values.award, entry.awardId), template.frame)) continue;
             if (Object.hasOwn(placeholders, name) && name !== 'number' && name !== 'awardEn' && !entry.values[name as Placeholder]) missing.add(name as Placeholder);
         }
     }

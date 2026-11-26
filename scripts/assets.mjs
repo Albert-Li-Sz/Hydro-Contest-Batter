@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkPackage } from './manage-addon.mjs';
-import { patchBoardEngine, patchBoardLayouts, patchBoardSharing } from '../lib/patch-engine.mjs';
+import { patchBoardEngine, patchBoardInk, patchBoardLayouts, patchBoardSharing } from '../lib/patch-engine.mjs';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -30,6 +30,7 @@ await cp(dist, target, { recursive: true });
 let extendedEngines = 0;
 let layoutSwitches = 0;
 let patchedShareMenus = 0;
+let inkRules = 0;
 for (const file of await readdir(path.join(target, 'assets'))) {
     if (file.endsWith('.js')) {
         const scriptPath = path.join(target, 'assets', file);
@@ -44,7 +45,9 @@ for (const file of await readdir(path.join(target, 'assets'))) {
         }
         const layouts = patchBoardLayouts(source);
         layoutSwitches += layouts.count;
-        await writeFile(scriptPath, layouts.source);
+        const ink = patchBoardInk(layouts.source);
+        inkRules += ink.count;
+        await writeFile(scriptPath, ink.source);
     }
     if (!file.endsWith('.css')) continue;
     const cssPath = path.join(target, 'assets', file);
@@ -52,6 +55,7 @@ for (const file of await readdir(path.join(target, 'assets'))) {
 }
 if (extendedEngines !== 1) throw new Error('无法定位唯一的 XCPCIO 榜单引擎');
 if (patchedShareMenus !== 1) throw new Error('无法定位唯一的 XCPCIO 榜单页面');
+if (inkRules !== 1) throw new Error(`XCPCIO 气球文字颜色规则有 ${inkRules} 处，预期 1 处，请检查上游构建产物`);
 // The pinned XCPCIO build has 14 layout switches across the board and its components.
 if (layoutSwitches !== 14) throw new Error(`XCPCIO 布局切换数量为 ${layoutSwitches}，预期 14 处，请检查上游构建产物`);
 await cp(path.join(root, 'client'), target, { recursive: true });

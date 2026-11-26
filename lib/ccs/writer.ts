@@ -12,8 +12,9 @@ import { isPending } from './judgement-types';
 import { buildObjects, type CcsSource, contestTimes, type View } from './model';
 import type { SourceDependencies, HydroApi, createCcsSourceLoader } from './source';
 import { type CcsStore, contestKey, type EventDoc, type WebhookDoc } from './store';
-import { assertSafeWebhookTarget, type HostLookup } from './ssrf';
+import { assertSafeWebhookTarget, type HostLookup, postWebhook, type WebhookPost } from './ssrf';
 import { type Endpoint } from './types';
+import { VERDICT_CHANGED } from '../verdict-event';
 
 const WEBHOOK_CONCURRENCY = 4;
 const FEED_TEAM_IDLE_MS = 5 * 60_000;
@@ -29,8 +30,10 @@ const VIEWS: View[] = ['full', 'public'];
 export { diffNotifications, eventLine, notificationsOf } from './events';
 import { diffNotifications, notificationsOf, eventLine } from './events';
 
-export function applyWriter(host: HydroApi, ctx: Context, store: CcsStore, dependencies: SourceDependencies, loadCcsSource: ReturnType<typeof createCcsSourceLoader>['loadCcsSource'], webhookLookup?: HostLookup, onCommit?: (key: string) => void) {
+export function applyWriter(host: HydroApi, ctx: Context, store: CcsStore, dependencies: SourceDependencies, loadCcsSource: ReturnType<typeof createCcsSourceLoader>['loadCcsSource'], webhook: { lookup?: HostLookup; post?: WebhookPost } = {}, onCommit?: (key: string) => void) {
     const { ContestModel, ObjectId, UserModel, PERM, PRIV } = host;
+    // Delivery resolves the host again at connection time and refuses blocked addresses there (DNS rebinding).
+    const post: WebhookPost = webhook.post ?? ((url, init) => postWebhook(url, init, webhook.lookup));
     const owner = randomUUID();
     const settings = ctx.db.collection('xcpcio.enhanced.settings' as never) as unknown as {
         find: (filter: object) => { toArray: () => Promise<{ _id: string }[]> };
@@ -199,12 +202,11 @@ export function applyWriter(host: HydroApi, ctx: Context, store: CcsStore, depen
             let error: string | null = null;
             if (notifications.length) {
                 try {
-                    await assertSafeWebhookTarget(hook.url, webhookLookup);
-                    const response = await fetch(hook.url, {
-                        method: 'POST', redirect: 'error',
+                    await assertSafeWebhookTarget(hook.url, webhook.lookup);
+                    const response = await post(hook.url, {
                         headers: { 'Content-Type': 'application/json', 'Webhook-Token': hook.token },
                         body: JSON.stringify({ contest_id: target.tid, notifications }),
-                        signal: AbortSignal.timeout(10_000),
+                        timeoutMs: 10_000,
                     });
                     ok = response.ok;
                     if (!ok) error = `HTTP ${response.status}`;
@@ -269,11 +271,13 @@ export function applyWriter(host: HydroApi, ctx: Context, store: CcsStore, depen
         const key = contestKey(String(rdoc.domainId), String(rdoc.contest));
         if (nextTick.has(key)) nextTick.set(key, Math.min(nextTick.get(key)!, Date.now() + 300));
     });
-    on('record/judge', (record: any) => {
-        if (!record?.contest) return;
-        const key = contestKey(String(record.domainId), String(record.contest));
-        if (nextTick.has(key)) nextTick.set(key, 0);
-    });
+    for (const event of ['record/judge', VERDICT_CHANGED]) {
+        on(event, (record: any) => {
+            if (!record?.contest) return;
+            const key = contestKey(String(record.domainId), String(record.contest));
+            if (nextTick.has(key)) nextTick.set(key, 0);
+        });
+    }
     on('contest/edit', (tdoc: any) => {
         if (tdoc?.domainId && tdoc?.docId) nextTick.set(contestKey(tdoc.domainId, String(tdoc.docId)), 0);
         contestsCheckedAt = 0;

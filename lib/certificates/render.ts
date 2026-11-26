@@ -1,5 +1,5 @@
 /** A certificate's page from its template and issued values (lib/certificates/pdf.ts). */
-import { fillText, pageSize, type CertificateKind, type CertificateTemplate, type Placeholder } from './model';
+import { fillText, pageSize, type CertificateKind, type CertificateTemplate, type CertificateValues } from './model';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { deflateSync } from 'node:zlib';
@@ -28,7 +28,7 @@ function originalRightSignature() {
     return nativeSignature ??= { image: { ...masterImage('right.jpg'), alpha: art('right-alpha.z') }, drawing: deflateSync(art('right.pdfops')) };
 }
 
-export function certificatePage(template: CertificateTemplate, kind: CertificateKind, values: Partial<Record<Placeholder, string>>,
+export function certificatePage(template: CertificateTemplate, kind: CertificateKind, values: CertificateValues,
     verifyUrl: string, background: PdfImage | null, logos: readonly { slot: number; image: PdfImage }[] = [],
     decorations: readonly (DecorationPlacement & { image: PdfImage })[] = [],
     signatures: ReadonlyMap<number, PdfImage | null> = new Map(), emblem: 'icpc' | 'none' | PdfImage = 'icpc'): PdfPage {
@@ -59,9 +59,9 @@ export function certificatePage(template: CertificateTemplate, kind: Certificate
         decorations: decorations.map((item) => ({ image: item.image, ...decorationBox(dimensions, item) })),
         logos: logos.map(({ slot, image }) => contain(logoBox(dimensions.width, slot), image)),
         texts: fields.filter((field) => field.type === 'text').flatMap((field): PdfText[] => {
-            const style = { x: field.x, align: field.align, font: template.font, width: field.width, color: rgb(fieldInk(field, values.award)) };
+            const style = { x: field.x, align: field.align, font: template.font, width: field.width, color: rgb(fieldInk(field, values.award, values.awardId)) };
             if (isEventDesign(design)) {
-                const content = eventText(field.text, values, kind, awardEnglish(values.award || ''), design);
+                const content = eventText(field.text, values, kind, awardEnglish(values.award || '', values.awardId), design);
                 return eventLines(field, content, design).map(({ y, size, text, bold }): PdfText => ({ ...style, y, size, text,
                     ...(design === 'event' ? { eventWeight: bold ? 'bold' : 'regular' } : { bold }) }));
             }

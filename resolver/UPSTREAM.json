@@ -140,7 +140,7 @@
       "source": "public/js/render/shaded-rect.js",
       "destination": "resolver/public/js/render/shaded-rect.js",
       "sha256": "1173d7c1a53e93ffa5bdd841a16a9202a8ee1f0626a8e7920de2327ed4b87903",
-      "modifiedSha256": "1173d7c1a53e93ffa5bdd841a16a9202a8ee1f0626a8e7920de2327ed4b87903"
+      "modifiedSha256": "2d2df56bb4a1b845fd5405de6db33966e71e24c90b49051c73c4922c336c33f6"
     },
     {
       "source": "public/js/render/text.js",

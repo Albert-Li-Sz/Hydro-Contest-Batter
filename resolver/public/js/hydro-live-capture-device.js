@@ -49,10 +49,8 @@ function announce() {
 }
 channel?.addEventListener('message', (event) => {
     if (event.data?.type === 'ping') announce();
-    else if (event.data?.type === 'focus') {
-        window.focus();
-        channel.postMessage({ type: 'focused' });
-    }
+    // Asked from a contest page that cannot reach this window; browsers may ignore it without a click here.
+    else if (event.data?.type === 'focus') window.focus();
 });
 if (channel) setInterval(announce, 2000);
 

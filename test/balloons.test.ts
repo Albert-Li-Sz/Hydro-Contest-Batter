@@ -109,6 +109,12 @@ describe('balloon settings', () => {
     it('names Hydro’s colours in Chinese and prefers the ones set here', () => {
         expect(hydroColor({ color: '#e53935', name: 'red' })).toEqual({ hex: '#e53935', name: '红' });
         expect(hydroColor({ color: '#00f', name: '宝蓝' })).toEqual({ hex: '#0000ff', name: '宝蓝' });
+        // The manager's English name wins over the hue: brown is not called red, gold not yellow.
+        expect(hydroColor({ color: '#a52a2a', name: 'Brown' })?.name).toBe('棕');
+        expect(hydroColor({ color: '#ffd700', name: 'gold' })?.name).toBe('金');
+        expect(hydroColor({ color: '#87ceeb', name: 'Sky Blue' })?.name).toBe('天蓝');
+        expect(hydroColor({ color: '#ff8800', name: 'Team Orange' })?.name).toBe('Team Orange');
+        expect(hydroColor({ color: '#a52a2a', name: '' })?.name).toBe(nearestColorName('#a52a2a'));
         expect(hydroColor('nope')).toBeNull();
         expect(nearestColorName('#fffffe')).toBe('白');
         const settings = normalizeBalloonSettings({ colors: { 1002: { hex: '#ffd700', name: '金' } } }, tdoc.pids);

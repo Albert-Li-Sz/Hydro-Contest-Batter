@@ -24,10 +24,12 @@ export const ICPCColors = {
   SOLVED_COLOR: '#00e600',
   FIRST_TO_SOLVE_COLOR: '#006400',
   FAILED_COLOR: '#f00000',
-  GOLD2: 'rgba(205,127,50,0.376)',
+  // Gold medal rows: true gold (#ffd700). ICPC Tools' "gold" (205,127,50) is copper and, over the row
+  // background, nearly matches the bronze rows (rgb 115,85,56 against 100,84,60).
+  GOLD2: 'rgba(255,215,0,0.376)',
   SILVER2: 'rgba(230,232,250,0.376)',
   BRONZE2: 'rgba(166,125,61,0.376)',
-  GOLD: '#cd7f32',
+  GOLD: '#ffd700',
   SILVER: '#e6e8fa',
   BRONZE: '#a67d3d',
   SELECTION_COLOR: 'rgba(92,138,231,0.941176)',

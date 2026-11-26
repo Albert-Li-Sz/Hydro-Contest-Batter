@@ -86,7 +86,12 @@ function setup(webhookLookup?: (host: string) => Promise<string[]>) {
     const ctx: any = { db: memory.db, Route: vi.fn(), on: (name: string, fn: any) => { listeners.set(name, [...(listeners.get(name) || []), fn]); },
         effect: (fn: any) => dispose.push(fn()), broadcast: (name: string, ...args: any[]) => listeners.get(name)?.forEach(fn => fn(...args)) };
     const defaultLookup = async (host: string) => host === 'callback.example' ? ['93.184.216.34'] : [];
-    const app = applyCcs(ctx, { loadData: async () => state.source.full, loadSettings: async () => state.source.settings, loadJury: async () => ({ holds: [], credits: [] }), webhookLookup: webhookLookup ?? defaultLookup });
+    const app = applyCcs(ctx, { loadData: async () => state.source.full, loadSettings: async () => state.source.settings, loadJury: async () => ({ holds: [], credits: [] }), webhookLookup: webhookLookup ?? defaultLookup,
+        // Tests watch deliveries through a stubbed fetch; production connects through ssrf.ts postWebhook.
+        webhookPost: async (url: string, init: { headers: Record<string, string>; body: string }) => {
+            const response = await fetch(url, { method: 'POST', headers: init.headers, body: init.body });
+            return { ok: response.ok, status: response.status };
+        } });
     const key = `system/${state.source.contest.id}`;
     memory.tables.get('xcpcio.enhanced.settings')!.set(key, { _id: key, settings: { ccsApi: true } });
     // ccsStore cached the collection object at construction, so populate that same table.
@@ -344,5 +349,16 @@ describe('CCS writer and callbacks', () => {
             await app.writer.tick();
             expect(request).toHaveBeenCalledTimes(1);
         } finally { vi.unstubAllGlobals(); }
+    });
+});
+
+describe('webhook delivery connection', () => {
+    it('refuses a DNS answer that turns private between the check and the connection', async () => {
+        const { postWebhook } = await import('../lib/ccs/ssrf');
+        const answers = ['93.184.216.34', '127.0.0.1'];
+        const lookup = vi.fn(async () => [answers.shift() ?? '127.0.0.1']);
+        await expect(postWebhook('http://rebind.example/ccs', { headers: {}, body: '{}', timeoutMs: 2000 }, lookup)).rejects.toThrow('内网');
+        // Checked once before the request and again by the socket's own lookup.
+        expect(lookup).toHaveBeenCalledTimes(2);
     });
 });

@@ -189,7 +189,7 @@ function fillText(text, values) {
     const result = text.replace(/\{([a-zA-Z]+)\}/g, (match, name) => {
         if (!Object.hasOwn(runtime.placeholders, name)) return match;
         used++;
-        const value = name === 'awardEn' ? awardEnglish(values.award) : values[name] || '';
+        const value = name === 'awardEn' ? awardEnglish(values.award, values.awardId) : values[name] || '';
         if (value) filled++;
         return value;
     });
@@ -243,18 +243,19 @@ async function imageData(blob) {
     return btoa(binary);
 }
 
+/**
+ * Every image is drawn again before upload: the canvas turns it upright (EXIF), into sRGB (Display P3, Adobe RGB,
+ * CMYK) and within `longest`, so the PDF prints what the editor shows. A JPEG stays a JPEG instead of a large PNG.
+ */
 async function printableImage(blob, longest, type = 'image/png') {
     const bitmap = await createImageBitmap(blob);
     try {
-        if (bitmap.width * bitmap.height > 16_000_000) throw new Error('图片尺寸过大');
-        // Keep already-valid JPEG uploads that fit within bounds instead of re-encoding them as bloated PNGs.
-        if (blob.type === 'image/jpeg' && bitmap.width <= longest && bitmap.height <= longest && blob.size <= 6 * 1024 * 1024) {
-            return blob;
-        }
+        if (bitmap.width * bitmap.height > 40_000_000) throw new Error('图片超过 4000 万像素，请缩小后再上传');
         const scale = Math.min(1, longest / Math.max(bitmap.width, bitmap.height));
         const canvas = el('canvas', { width: Math.max(1, Math.round(bitmap.width * scale)), height: Math.max(1, Math.round(bitmap.height * scale)) });
         canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-        return await new Promise((resolve, reject) => canvas.toBlob((out) => out ? resolve(out) : reject(new Error('无法读取图片')), type, .96));
+        const output = blob.type === 'image/jpeg' ? 'image/jpeg' : type;
+        return await new Promise((resolve, reject) => canvas.toBlob((out) => out ? resolve(out) : reject(new Error('无法读取图片')), output, .96));
     } finally { bitmap.close(); }
 }
 
@@ -452,7 +453,7 @@ function stage(template, kind) {
                 node.style.fontSize = `${size * PT_MM * scale}px`;
                 const limit = item.width * scale;
                 if (limit && node.scrollWidth > limit) node.style.fontSize = `${Math.max(4, size * limit / node.scrollWidth) * PT_MM * scale}px`;
-                node.style.color = fieldInk(item, values.award);
+                node.style.color = fieldInk(item, values.award, values.awardId);
                 node.style.transform = `translate(${item.align === 'center' ? '-50%' : item.align === 'right' ? '-100%' : '0'}, -50%)`;
             }
         }
@@ -460,7 +461,7 @@ function stage(template, kind) {
     for (const item of template.fields) {
         const shown = !item.kinds.length || item.kinds.includes(kind);
         if (!shown) continue;
-        const content = item.type === 'qr' ? '' : isEvent ? eventText(item.text, values, kind, awardEnglish(values.award), template.frame) : fillText(item.text, values);
+        const content = item.type === 'qr' ? '' : isEvent ? eventText(item.text, values, kind, awardEnglish(values.award, values.awardId), template.frame) : fillText(item.text, values);
         if (!content && item.type === 'text' && selectedField !== item.id) continue;
         const lines = isEvent && item.type === 'text' ? eventLines(item, content, template.frame) : [{ text: content, y: item.y, size: item.size }];
         for (const line of lines) {
@@ -548,7 +549,7 @@ function renderProps() {
         update({ medalColor: event.target.checked }); renderProps();
     } });
     const sample = sampleValues(editing === 'participation' ? 'participation' : sampleKind);
-    const color = inkPicker('文字颜色', fieldInk(item, sample.award), (value) => {
+    const color = inkPicker('文字颜色', fieldInk(item, sample.award, sample.awardId), (value) => {
         autoColor.checked = false; update({ color: value, medalColor: false });
     });
     const kinds = el('div', { class: 'certificate-kinds' }, ...kindOrder.filter((kind) => (editing === 'participation') === (kind === 'participation')).map((kind) => {

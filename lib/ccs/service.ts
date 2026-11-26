@@ -20,16 +20,15 @@ import {
 } from './types';
 import { applyWriter } from './writer';
 import { openFeed } from './feed';
-import { type HostLookup, validateWebhookUrl } from './ssrf';
+import { type HostLookup, validateWebhookUrl, type WebhookPost } from './ssrf';
 import { readZip, writeZip, ZipError } from './zip';
+import { VERDICT_CHANGED } from '../verdict-event';
 
 const MAX_WEBHOOKS_PER_DOMAIN = 20;
 const MAX_WEBHOOKS_PER_USER = 10;
 
 const TYPE_CONTEST = 30;
 const TYPE_CONTEST_CLARIFICATION = 31;
-// Short shared TTL coalesces concurrent/burst endpoint polls; every write, Hydro record/contest event and writer commit invalidates it immediately.
-const SOURCE_TTL_MS = 1000;
 const AUTH_TTL_MS = 5 * 60_000;
 const logoKey = (name: string) => name.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
 
@@ -40,7 +39,7 @@ interface Caller {
     basic: boolean;
 }
 
-export function applyCcsApi(host: HydroApi, ctx: Context, dependencies: SourceDependencies & { webhookLookup?: HostLookup }) {
+export function applyCcsApi(host: HydroApi, ctx: Context, dependencies: SourceDependencies & { webhookLookup?: HostLookup; webhookPost?: WebhookPost }) {
     const { ContestModel, DocumentModel, DomainModel, Handler, ObjectId, PERM, PRIV, ProblemModel, RecordModel, SettingModel, StorageModel, SystemModel, UserModel } = host;
     const { loadCcsSource, problemLanguages } = createCcsSourceLoader(host);
     /** An ObjectId whose timestamp is `ms` (submissions and clarifications PUT with a time). */
@@ -48,7 +47,7 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
 
     const store = ccsStore(ctx);
     const sources = new Map<string, { expires: number; value: Promise<CcsSource> }>();
-    const writer = applyWriter(host, ctx, store, dependencies, loadCcsSource, dependencies.webhookLookup, (key) => {
+    const writer = applyWriter(host, ctx, store, dependencies, loadCcsSource, { lookup: dependencies.webhookLookup, post: dependencies.webhookPost }, (key) => {
         sources.delete(key);
         (ctx as unknown as { broadcast: (event: string, ...args: unknown[]) => void }).broadcast('xcpcio/ccs-invalidated', key);
     });
@@ -63,9 +62,11 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
     on('record/change', (rdoc: { domainId?: string; contest?: unknown }) => {
         if (rdoc?.domainId && rdoc?.contest) sources.delete(contestKey(String(rdoc.domainId), String(rdoc.contest)));
     });
-    on('record/judge', (rdoc: { domainId?: string; contest?: unknown }) => {
-        if (rdoc?.domainId && rdoc?.contest) sources.delete(contestKey(String(rdoc.domainId), String(rdoc.contest)));
-    });
+    for (const event of ['record/judge', VERDICT_CHANGED]) {
+        on(event, (rdoc: { domainId?: string; contest?: unknown }) => {
+            if (rdoc?.domainId && rdoc?.contest) sources.delete(contestKey(String(rdoc.domainId), String(rdoc.contest)));
+        });
+    }
     on('contest/edit', (tdoc: { domainId?: string; docId?: unknown }) => {
         if (tdoc?.domainId && tdoc?.docId) sources.delete(contestKey(String(tdoc.domainId), String(tdoc.docId)));
     });
@@ -88,15 +89,19 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
     // A verified password is remembered briefly: hashing it on every poll would be slow.
     const verified = new Map<string, { uid: number; expires: number; fingerprint: string }>();
 
+    /**
+     * Requests that arrive while a contest's source is loading share that load; a finished source is never
+     * reused, so a GET never lags an event already delivered to a client. Writes, Hydro record/contest events
+     * and writer commits also drop a load still running, so later requests read again.
+     */
     const sourceFor = (tdoc: Tdoc, fresh = false) => {
         const key = contestKey(tdoc.domainId, `${tdoc.docId}`);
-        const now = Date.now();
-        for (const [name, entry] of sources) if (entry.expires <= now) sources.delete(name);
         let entry = sources.get(key);
         if (!entry || fresh) {
             const value = loadCcsSource(ctx, store, dependencies, tdoc);
-            entry = { expires: now + SOURCE_TTL_MS, value };
-            value.catch(() => { if (sources.get(key)?.value === value) sources.delete(key); });
+            entry = { expires: Infinity, value };
+            const settle = () => { if (sources.get(key)?.value === value) sources.delete(key); };
+            value.then(settle, settle);
             sources.set(key, entry);
         }
         return entry.value;

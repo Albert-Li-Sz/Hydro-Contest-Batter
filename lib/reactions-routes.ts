@@ -12,6 +12,7 @@ import { updateArtwork, publicSettings, ReactionError, type ReactionLayout } fro
 import { contestKey, createReactionStore, reactionBase, runDetails, videoId, videoKey, type ReactionDependencies } from './reactions-store';
 import { serveRecordingMedia } from './recording-store';
 import { proxyReactionMedia } from './reaction-media';
+import { VERDICT_CHANGED, type VerdictChange } from './verdict-event';
 import { issueWorkerCode, workerApiPath, workerAuthorized, workerName, workerOrigin } from './reactions-connection';
 
 const maxVideo = 200 * 1024 ** 2;
@@ -63,14 +64,18 @@ export function applyReactions(ctx: Context, deps: ReactionDependencies & { link
         ]);
         for (const key of keys) await store.remove(key);
     });
-    ctx.on('record/judge', async (rdoc) => {
-        if (!rdoc?.contest || !rdoc.rejudged) return;
+    const reconcileFirstSolves = async (rdoc: { domainId: string; contest?: ObjectId | null; pid: number; rejudged?: boolean } | null, manual = false) => {
+        if (!rdoc?.contest || (!manual && !rdoc.rejudged)) return;
         const key = `${rdoc.domainId}/${rdoc.contest}`;
         // First-to-solve can move to a different submission of the same problem. Reconcile all ready clips.
         const tdoc = await ContestModel.get(rdoc.domainId, rdoc.contest);
         if (tdoc?.rule === 'acm' && (await store.videos.findOne({ contestKey: key, pid: rdoc.pid }, { projection: { _id: 1 } })))
             await store.sync(tdoc, true);
-    });
+    };
+    ctx.on('record/judge', (rdoc) => reconcileFirstSolves(rdoc));
+    (ctx.on as unknown as (event: string, listener: (change: VerdictChange) => unknown) => void)(VERDICT_CHANGED, (change) => reconcileFirstSolves({
+        domainId: change.domainId, contest: change.contest ? new ObjectId(String(change.contest)) : null, pid: change.pid,
+    }, true).catch((error) => console.warn('[xcpcio] 反应视频一血重算失败', error)));
     deps.links?.add({
         id: 'reaction-worker',
         label: '反应视频媒体机',

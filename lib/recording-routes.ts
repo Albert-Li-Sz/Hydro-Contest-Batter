@@ -2,7 +2,10 @@ import { createHash } from 'node:crypto';
 import { Context, ContestModel, Handler, ObjectId, param, RecordModel, Tdoc, Types } from 'hydrooj';
 import { captureSecretMatches, deviceRecording, isCaptureOnline, type CaptureDevice, type CaptureSettings } from './live/capture';
 import type { CaptureHelpers } from './live/capture-routes';
-import { clipPriority, clipWindow, estimateRecording, missingIntervals, inScope, normalizeRecording, presets, uploadedRecordingQuality, RecordingError, type Measured, type SourceName, type StreamName } from './recording';
+import {
+    clipPriority, clipWindow, estimateRecording, missingIntervals, inScope, normalizeRecording, presets, uploadedRecordingQuality, RecordingError,
+    STORAGE_RESERVE_BYTES, teamStorageLimit, type Measured, type SourceName, type StreamName,
+} from './recording';
 import { inspectSegment, RecordingStore, serveRecordingMedia, type Clip, type Segment } from './recording-store';
 import { probeRecordingStorage, recordingTests } from './recording-tests';
 
@@ -38,6 +41,16 @@ export function applyRecording(ctx: Context, hooks: Hooks) {
             seatCache.set(key, entry);
         }
         return entry.value;
+    }
+    // Free space of the recording disk (null on object storage), read at most every 5 s across uploads.
+    let freeCache: { expires: number; value: Promise<number | null> } | null = null;
+    function freeSpace() {
+        const now = Date.now();
+        if (!freeCache || freeCache.expires <= now) {
+            const value = store.freeBytes().catch(() => null);
+            freeCache = { expires: now + 5000, value };
+        }
+        return freeCache.value;
     }
     async function teamFor(tdoc: Tdoc, doc: CaptureDevice) {
         if (doc.teamUid !== null) return doc.teamUid;
@@ -179,21 +192,17 @@ export function applyRecording(ctx: Context, hooks: Hooks) {
             const file = this.request.files?.file;
             if (!file?.filepath) throw new RecordingError('请选择录像段');
             const { bytes, mime, extension } = await inspectSegment(file.filepath, file.mimetype || '');
-            // Enforce per-team and per-contest storage quotas for contestant uploads to prevent disk exhaustion.
-            if (kind !== 'test') {
-                const quotaMatch = teamUid !== null
-                    ? { contestKey, kind: { $ne: 'test' }, $or: [{ teamUid }, { contestKey }] }
-                    : { contestKey, kind: { $ne: 'test' } };
+            // A nearly full disk: the device keeps the segment and retries later (507 is not a permanent failure).
+            const free = await freeSpace();
+            if (free !== null && free - bytes < STORAGE_RESERVE_BYTES) throw new RecordingError('录像服务器磁盘空间不足，设备会稍后重试', 507);
+            // Per team, scaled to this contest's own settings and length: a full HD archive always fits.
+            if (kind !== 'test' && teamUid !== null) {
                 const totals = await store.segments.aggregate([
-                    { $match: quotaMatch },
-                    { $group: { _id: null, contestBytes: { $sum: '$bytes' }, teamBytes: { $sum: { $cond: [{ $eq: ['$teamUid', teamUid] }, '$bytes', 0] } } } },
-                ]).toArray() as { contestBytes: number; teamBytes: number }[];
-                const usedContest = totals[0]?.contestBytes ?? 0;
-                const usedTeam = totals[0]?.teamBytes ?? 0;
-                const MAX_TEAM_BYTES = 4 * 1024 ** 3;
-                const MAX_CONTEST_BYTES = 200 * 1024 ** 3;
-                if (teamUid !== null && usedTeam + bytes > MAX_TEAM_BYTES) throw new RecordingError('本队录像存储已达上限', 413);
-                if (usedContest + bytes > MAX_CONTEST_BYTES) throw new RecordingError('本场比赛录像存储已达上限', 413);
+                    { $match: { contestKey, teamUid, kind: { $in: ['clip', 'archive'] }, deleting: { $ne: true } } },
+                    { $group: { _id: null, bytes: { $sum: '$bytes' } } },
+                ]).toArray() as { bytes: number }[];
+                const limit = teamStorageLimit(settings.recording, (+tdoc.endAt - +tdoc.beginAt) / 1000, settings.webcam);
+                if ((totals[0]?.bytes ?? 0) + bytes > limit) throw new RecordingError('本队录像已超过本场录制设置预计用量的 3 倍', 413);
             }
             const quality = uploadedRecordingQuality(a.quality);
             const begin = performance.now();

@@ -87,8 +87,6 @@ def download(base, url, dest, limit=20 * 1024 * 1024, secret=""):
                             raise ValueError("Invalid storage redirect")
                         current_headers = {}
                         continue
-                    if (response.status_code >= 500 or response.status_code == 429) and attempt < 2:
-                        response.raise_for_status()
                     response.raise_for_status()
                     size = 0
                     with dest.open("wb") as output:
@@ -99,8 +97,11 @@ def download(base, url, dest, limit=20 * 1024 * 1024, secret=""):
                             output.write(block)
                     return dest
             raise ValueError("Too many storage redirects")
-        except requests.RequestException:
-            if attempt == 2:
+        except requests.RequestException as exc:
+            # Only a dropped connection, a timeout, 429 or a server error is worth trying again; 4xx is final.
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            retryable = status is None or status == 429 or status >= 500
+            if attempt == 2 or not retryable:
                 raise
             time.sleep(2**attempt)
 

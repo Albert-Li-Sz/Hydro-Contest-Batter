@@ -1,6 +1,7 @@
 // Hydro's displays that use contest data without the ICPC Tools presentation format.
 import { Color, ICPCColors } from './render/java-graphics.js';
 import { FONT_FAMILY, initFonts } from './render/text.js';
+import { inkOn } from './ink.js';
 
 const titles = {
     'rank-trend': ['排名走势图', 'Ranking over time'],
@@ -61,13 +62,6 @@ function table(headers, rows) {
         el('tbody', '', ...rows.map((cells) => el('tr', '', ...cells.map((cell) => el('td', '', cell))))));
 }
 
-/** Text that reads on a balloon of this colour. */
-function inkOn(color) {
-    const match = /^#([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(color || '');
-    if (!match) return '#000';
-    const [r, g, b] = match.slice(1).map((part) => parseInt(part, 16) / 255).map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.25 ? '#000' : '#fff';
-}
 
 /**
  * Columns and rows that make `count` cells (about `ratio` wide per unit high) as large as they can be in

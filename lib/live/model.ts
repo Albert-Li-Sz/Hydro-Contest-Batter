@@ -1,5 +1,5 @@
 import type { BoardData } from '../board';
-import { medalPool, problemColor, schoolGroup, schoolName, UNSET_PROBLEM_COLOR } from '../board';
+import { balloonUnset, medalPool, problemColorOrNull, schoolGroup, schoolName } from '../board';
 import type { BoardSettings } from '../settings';
 import { awardsFor, medalCounts, type MedalPool } from '../settings';
 import { resolverAssetBase } from '../resolver-data';
@@ -123,11 +123,11 @@ export function buildContestInfo(source: LiveSource, { fallbackOrganizationLogo 
     const problems: ProblemInfo[] = Array.from({ length: data.contest.problem_quantity }, (_, index) => {
         const anonymous = hiddenFrom !== undefined && index >= hiddenFrom;
         const letter = anonymous ? '' : (data.contest.problem_id as string[])[index];
-        const color = anonymous ? undefined : (data.contest.balloon_color as { background_color: string }[] | undefined)?.[index]?.background_color;
-        const normalized = color ? problemColor(color) : UNSET_PROBLEM_COLOR;
+        const balloon = anonymous ? undefined : (data.contest.balloon_color as { background_color?: string; hydro_unset?: boolean }[] | undefined)?.[index];
+        const color = !balloon || balloonUnset(balloon) ? null : problemColorOrNull(balloon.background_color);
         return {
             id: String(index), letter, name: letter, ordinal: index, minScore: null, maxScore: null,
-            color: normalized === UNSET_PROBLEM_COLOR ? null : normalized,
+            color,
             scoreMergeMode: null, isHidden: false, weight: 1,
             ftsMode: { type: !anonymous && awardsFor(source.settings, 'all').firstSolve ? 'auto' : 'hidden' },
         };

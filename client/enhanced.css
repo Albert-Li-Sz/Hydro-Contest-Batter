@@ -22,7 +22,7 @@
   /* Result cells on the board: saturated fills (as on ICPC scoreboards) with text that reads on them. */
   --xp-cell-ac: #43d17a;
   --xp-cell-ac-ink: #06301a;
-  --xp-cell-first: #0f8a3c;
+  --xp-cell-first: #0d7f37;
   --xp-cell-first-ink: #fff;
   --xp-cell-wa: #f56565;
   --xp-cell-wa-ink: #3d0808;
@@ -61,16 +61,16 @@
   --xp-frozen-bg: #594c2a;
   --xp-first-bg: #237d48;
   --xp-cell-ac: #26a55a;
-  --xp-cell-ac-ink: #fff;
+  --xp-cell-ac-ink: #04210f;
   --xp-cell-first: #0b6b2e;
   --xp-cell-first-ink: #fff;
   --xp-cell-wa: #cf3f3f;
   --xp-cell-wa-ink: #fff;
   --xp-cell-frozen: #d9a21b;
   --xp-cell-frozen-ink: #1f1500;
-  --xp-cell-pending: #3f7fd9;
+  --xp-cell-pending: #3570cc;
   --xp-cell-pending-ink: #fff;
-  --xp-medal-gold: #8a6d12;
+  --xp-medal-gold: #7a600f;
   --xp-medal-gold-ink: #ffe9a3;
   --xp-medal-gold-bar: #f5c518;
   --xp-medal-silver: #5a6675;
@@ -108,6 +108,10 @@
 .xp-gold { color: var(--xp-gold); }
 .xp-silver { color: var(--xp-silver); }
 .xp-bronze { color: var(--xp-bronze); }
+/* Legend dots show the medal rows' own stripe colour, in both themes. */
+.xp-dot.xp-gold { color: var(--xp-medal-gold-bar); }
+.xp-dot.xp-silver { color: var(--xp-medal-silver-bar); }
+.xp-dot.xp-bronze { color: var(--xp-medal-bronze-bar); }
 .xp-first { color: var(--xp-cell-first); }
 .xp-correct { color: var(--xp-cell-ac); }
 .xp-incorrect { color: var(--xp-cell-wa); }

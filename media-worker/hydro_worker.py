@@ -26,7 +26,7 @@ else:
     from hydro_connection import Connection, load_connection, safe_error
     from hydro_render import render
 
-VERSION = "1.27.0"
+VERSION = "1.27.1"
 SAFE_ID = re.compile(r"[a-zA-Z0-9_-]{1,100}")
 HERE = Path(__file__).resolve().parent
 

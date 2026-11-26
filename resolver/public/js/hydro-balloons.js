@@ -1,6 +1,7 @@
 // 气球配送: the balloons a contest owes, by room (seat prefix) and problem, for contest managers
 // (with the settings: colours, receipt tickets) and for volunteers on a no-login link.
 import { $, copyText, el, get, notify, openDialog, post, runtime } from './hydro-manage-common.js';
+import { inkOn } from './ink.js';
 
 const manager = runtime.mode === 'manager';
 const storageKey = `xcpcio-balloons:${runtime.mode}:${runtime.base.replace(/\/balloon-desk\/.*$/, '')}`;
@@ -34,12 +35,7 @@ const statusLabels = { pending: '待配送', delivered: '已送达', held: '封�
 const ticketLabels = { none: '—', pending: '待打印', printing: '打印中', printed: '已打印', failed: '打印失败' };
 const ticketTones = { pending: 'manage-tag--warn', printing: '', printed: 'manage-tag--ok', failed: 'manage-tag--bad' };
 
-function ink(hex) {
-    const match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex || '');
-    if (!match) return '#000';
-    const [r, g, b] = match.slice(1).map((part) => parseInt(part, 16) / 255).map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.3 ? '#111' : '#fff';
-}
+const ink = (hex) => inkOn(hex, '#111111');
 const clock = (at) => {
     const seconds = Math.max(0, Math.floor((new Date(at) - new Date(data.contest.beginAt)) / 1000));
     return `${Math.floor(seconds / 3600)}:${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;

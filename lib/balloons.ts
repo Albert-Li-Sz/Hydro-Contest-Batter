@@ -118,14 +118,27 @@ export function nearestColorName(hex: string) {
     return lightness > 0.6 ? '粉' : '紫';
 }
 
+/** Chinese names for the English colour names Hydro's balloon settings often carry (CSS names, spaces and case ignored). */
+const englishColorNames: Record<string, string> = {
+    red: '红', crimson: '深红', darkred: '深红', maroon: '栗色', orange: '橙', darkorange: '橙', coral: '珊瑚色',
+    yellow: '黄', gold: '金', khaki: '卡其色', green: '绿', darkgreen: '深绿', lightgreen: '浅绿', lime: '亮绿',
+    limegreen: '亮绿', olive: '橄榄绿', cyan: '青', aqua: '青', teal: '青', turquoise: '青', blue: '蓝', darkblue: '深蓝',
+    navy: '藏青', lightblue: '浅蓝', skyblue: '天蓝', purple: '紫', violet: '紫', indigo: '靛蓝', magenta: '品红',
+    fuchsia: '品红', pink: '粉', hotpink: '粉', white: '白', black: '黑', gray: '灰', grey: '灰', silver: '银',
+    brown: '棕', chocolate: '棕', sienna: '棕', tan: '浅棕', beige: '米色',
+};
+
 /** A problem's colour as Hydro stores it (`{ color, name }`, or a bare string in older data). */
 export function hydroColor(entry: unknown): BalloonColor | null {
     const raw = typeof entry === 'string' ? entry : (entry as { color?: unknown } | null | undefined)?.color;
     const hex = hexOf(raw);
     if (!hex) return null;
     const name = typeof entry === 'object' && entry ? String((entry as { name?: unknown }).name ?? '').trim() : '';
-    // Hydro's colour names are often English (`red`); a Chinese one is kept.
-    return { hex, name: /[一-鿿]/.test(name) ? name.slice(0, 12) : nearestColorName(hex) };
+    // The name the manager gave is what staff call the balloon: a Chinese one as it is, a common English one in
+    // Chinese (`brown` is 棕, not the red its hue suggests), any other as typed. Only a missing name is guessed.
+    if (!name) return { hex, name: nearestColorName(hex) };
+    if (/[一-鿿]/.test(name)) return { hex, name: name.slice(0, 12) };
+    return { hex, name: englishColorNames[name.toLowerCase().replace(/[\s_-]+/g, '')] ?? name.slice(0, 12) };
 }
 
 const list = (value: unknown) => (Array.isArray(value) ? value : typeof value === 'string' ? value.split(/[\s,，;；]+/) : []);

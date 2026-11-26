@@ -1,5 +1,26 @@
 # 验证记录
 
+## v1.27.1 录像配额、Webhook 连接校验与配色一致性
+
+2026 年 11 月 27 日，修复 v1.27.0 审查中发现的问题后，执行了全量构建与回归检查。
+
+### 修复与对应测试
+
+- 录像存储：新增 [test/recording.test.ts](../test/recording.test.ts) 断言。默认高清双路留档的 5 小时比赛每队约 5.7 GB，单队上限为该估算值的 3 倍；录制关闭时上限为 1 GiB。磁盘剩余不足 2 GiB 时返回 507，客户端保留录像段稍后重试。
+- Webhook：新增 [test/ccs-routes.test.ts](../test/ccs-routes.test.ts) 用例。第一次解析返回公网地址、建立连接时改为 `127.0.0.1`，请求被拒绝，同一主机共解析两次。
+- 证书：新增 [test/certificates.test.ts](../test/certificates.test.ts) 用例，覆盖反向代理下的二维码地址和 Hydro `server.xhost` 请求头；奖项改名（如“银牌奖”）后仍按奖牌等级取色并给出英文名。
+- 气球：[test/balloons.test.ts](../test/balloons.test.ts) 覆盖 Hydro 英文颜色名（brown 为“棕”、gold 为“金”）和自定义名称的保留。
+- 配色：[test/board.test.ts](../test/board.test.ts) 用 XCPCIO 0.98 构建产物中的原函数验证补丁，16 种预设气球色的文字颜色与插件其他页面一致，青色 `#00acc1` 由白字（2.74:1）改为黑字（7.67:1）。`pnpm build` 确认补丁在实际构建产物中恰好命中一处。
+- 媒体机：[media-worker/test_hydro_worker.py](../media-worker/test_hydro_worker.py) 用本地 HTTP 服务验证下载遇到 404 只请求一次，遇到 503 重试后成功。
+- 浏览器核对：演示比赛的榜单图例金银铜圆点分别为 `#d69e00`、`#8796a8`、`#c06f2e`，与奖牌行色条一致；暗色主题下“通过”格为 `#26a55a` 底深色字（5.38:1），金牌名次格为 `#7a600f`（4.97:1），图例金色为 `#f5c518`。蓝色题头 `#3b82f6` 显示黑字（5.71:1）。
+
+### 汇总结果
+
+- `pnpm test`：39 个测试文件共 478 项全部通过。`pnpm typecheck`（hydrooj 5.1.0）与 `pnpm build` 通过。
+- `pnpm build:print-client`：Go 测试通过并生成 6 平台可执行文件，本机 `darwin-arm64` 二进制 `--version` 返回 `1.27.1`。
+- 媒体机：`python3 -m unittest discover` 10 项通过（1 项按环境跳过）。
+- `pnpm test:ui`：180 个页面视图及主要交互全部通过，含 64 队 15 题滚榜观众屏（2592 步，首帧 58 ms）和双路 720p H.265 留档故障恢复（6 次上传 0 失败）。
+
 ## v1.27.0 安全加固、Live 支持 CCPC 模式、CCS 奖项对齐与 MIT 许可
 
 2026 年 11 月 26 日，在完成全仓库安全、并发、性能与合规整改后，执行了全量构建与自动化回归检查。

@@ -10,14 +10,27 @@ export function logoBox(width, slot) {
     return { x: slot === 0 ? 20 : width - 20 - w, y: 17, width: w, height: 22 };
 }
 
-const distinctions = new Map([
-    ...['金奖', '金牌'].map((name) => [name, ['Gold Medal', '#ab5800']]),
-    ...['银奖', '银牌'].map((name) => [name, ['Silver Medal', '#366f95']]),
-    ...['铜奖', '铜牌'].map((name) => [name, ['Bronze Medal', '#ae4622']]),
-    ['一等奖', ['First Prize']], ['二等奖', ['Second Prize']], ['三等奖', ['Third Prize']], ['冠军', ['Champion']],
+const medals = {
+    gold: { english: 'Gold Medal', ink: '#ab5800', names: ['金奖', '金牌'] },
+    silver: { english: 'Silver Medal', ink: '#366f95', names: ['银奖', '银牌'] },
+    bronze: { english: 'Bronze Medal', ink: '#ae4622', names: ['铜奖', '铜牌'] },
+};
+const namedEnglish = new Map([
+    ...Object.values(medals).flatMap(({ english, names }) => names.map((name) => [name, english])),
+    ['一等奖', 'First Prize'], ['二等奖', 'Second Prize'], ['三等奖', 'Third Prize'], ['冠军', 'Champion'],
 ]);
-export const awardEnglish = (award) => distinctions.get(award)?.[0] || '';
-export const fieldInk = (field, award) => (field.medalColor && distinctions.get(award)?.[1]) || field.color;
+/**
+ * The medal of an award: from the board's medal id (`gold-medal`), which keeps its tier whatever the contest
+ * calls it (金牌奖, Gold…), else from the usual Chinese names.
+ */
+export function medalTier(award, awardId) {
+    const fromId = /^(gold|silver|bronze)-medal$/.exec(awardId || '')?.[1];
+    if (fromId) return fromId;
+    return Object.keys(medals).find((tier) => medals[tier].names.includes(award)) || null;
+}
+/** The standard English name: a known Chinese name first (一等奖 stays First Prize), else the medal's own. */
+export const awardEnglish = (award, awardId) => namedEnglish.get(award) || (medals[medalTier(award, awardId)]?.english ?? '');
+export const fieldInk = (field, award, awardId) => (field.medalColor && medals[medalTier(award, awardId)]?.ink) || field.color;
 
 export function certificateFrame(width, height, design = 'engraved') {
     if (design !== 'engraved') return presetFrame(width, height, design);

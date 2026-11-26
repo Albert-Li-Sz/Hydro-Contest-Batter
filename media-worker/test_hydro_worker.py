@@ -168,6 +168,39 @@ class WorkerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             media.download("https://contest.test/d/a", "file:///tmp/a", Path("unused"))
 
+    def test_download_retries_only_transient_failures(self):
+        hits = {"missing": 0, "busy": 0}
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                name = "missing" if "missing" in self.path else "busy"
+                hits[name] += 1
+                if name == "missing" or hits[name] < 2:
+                    self.send_response(404 if name == "missing" else 503)
+                    self.end_headers()
+                    return
+                self.send_response(200)
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"ok")
+
+            def log_message(self, *args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        base = f"http://127.0.0.1:{server.server_address[1]}/d/system/contest/{CONTEST}"
+        try:
+            with tempfile.TemporaryDirectory() as root, patch.object(media.time, "sleep"):
+                with self.assertRaises(media.requests.HTTPError):
+                    media.download(base + "/a", base + "/files/assets/missing", Path(root) / "a")
+                self.assertEqual(hits["missing"], 1)
+                media.download(base + "/a", base + "/files/assets/busy", Path(root) / "b")
+                self.assertEqual(hits["busy"], 2)
+                self.assertEqual((Path(root) / "b").read_bytes(), b"ok")
+        finally:
+            server.shutdown()
+
     def test_render_upload_and_retry(self):
         with tempfile.TemporaryDirectory() as root:
             folder = Path(root)

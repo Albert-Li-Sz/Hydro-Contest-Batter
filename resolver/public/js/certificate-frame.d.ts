@@ -9,5 +9,6 @@ export function certificateFrame(width: number, height: number, design?: Certifi
 export interface DecorationPlacement { x: number; y: number; width: number; aspect: number }
 export function decorationBox(page: { width: number; height: number }, placement: DecorationPlacement): { x: number; y: number; width: number; height: number };
 export function logoBox(width: number, slot: number): { x: number; y: number; width: number; height: number };
-export function awardEnglish(value: string): string;
-export function fieldInk(field: { color: string; medalColor?: boolean }, award?: string): string;
+export function medalTier(award?: string, awardId?: string): 'gold' | 'silver' | 'bronze' | null;
+export function awardEnglish(value?: string, awardId?: string): string;
+export function fieldInk(field: { color: string; medalColor?: boolean }, award?: string, awardId?: string): string;

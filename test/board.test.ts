@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createContest, createSubmissions, createTeams, MedalType, Rank } from './engine';
-import { patchBoardEngine } from '../lib/patch-engine.mjs';
+import { patchBoardEngine, patchBoardInk } from '../lib/patch-engine.mjs';
+import { inkOn } from '../resolver/public/js/ink.js';
+import { colorPresets } from '../lib/balloons';
 import { enhanceBoard, schoolGroup } from '../lib/board';
 import { awardsFor, defaultSettings, medalCounts, normalizeSettings, pruneMembers, toScriptJson } from '../lib/settings';
 import { demoData } from './fixture';
@@ -269,5 +271,15 @@ describe('设置验证', () => {
     it('上游引擎入口不匹配时中断构建，避免静默授奖错误', () => {
         expect(() => patchBoardEngine('class Unsupported {}')).toThrow('无法扩展');
         expect(() => patchBoardEngine('buildRank(){} buildRank(){}')).toThrow('无法扩展');
+    });
+    it('XCPCIO 的气球文字颜色与插件其他页面使用同一对比度规则', () => {
+        // The pinned 0.98 build's function, as shipped (query-*.js).
+        const upstream = 'var er=(c)=>({rgb:()=>[1,3,5].map((i)=>parseInt(c.slice(i,i+2),16))});function tr(e){let[t,n,r]=er(e).rgb();return(t*299+n*587+r*114)/1e3<=148?`#fff`:`#000`}';
+        const { source, count } = patchBoardInk(upstream);
+        expect(count).toBe(1);
+        const board = new Function(`${source};return tr;`)() as (hex: string) => string;
+        for (const [, hex] of colorPresets) expect(board(hex), hex).toBe(inkOn(hex, '#000', '#fff'));
+        expect(board('#00acc1')).toBe('#000');
+        expect(patchBoardInk('function tr(e){return`#000`}').count).toBe(0);
     });
 });

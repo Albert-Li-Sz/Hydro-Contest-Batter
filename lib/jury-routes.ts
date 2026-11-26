@@ -8,6 +8,7 @@ import {
 import type { BoardData } from './board';
 import { emptyJury, JuryError, readCredit, readHold, readReason, verdictChoices, type JuryState, type ProblemHold, type TimeCredit } from './jury';
 import { resolverCodeBase } from './resolver-data';
+import { VERDICT_CHANGED, verdictChange } from './verdict-event';
 import { toScriptJson } from './settings';
 import pkg from '../package.json';
 
@@ -230,7 +231,7 @@ export function applyJuryRoutes(ctx: Context, dependencies: {
                 const judgeAt = rdoc.judgeAt || new Date();
                 await RecordModel.update(this.tdoc.domainId, rid, { status, score, judgeAt });
                 await ContestModel.updateStatus(this.tdoc.domainId, this.tdoc.docId, owner.uid, rid, rdoc.pid, { status, score, lang: rdoc.lang, subtasks: rdoc.subtasks });
-                (ctx.broadcast as (event: string, ...args: unknown[]) => void)('record/judge', { ...rdoc, status, score, judgeAt, rejudged: true });
+                (ctx.broadcast as (event: string, ...args: unknown[]) => void)(VERDICT_CHANGED, verdictChange(rdoc, status, score));
                 await record(this.tdoc, { action: 'verdict', text: `${this.label(rdoc.pid)} 题提交 ${payload.rid.slice(-6)}：${before} → ${choice[1]}`, reason, by: this.user._id, rid: payload.rid });
             });
             this.response.body = { ok: true };

@@ -142,6 +142,18 @@ export function estimateRecording(s: RecordingSettings, stats: PlanStats, measur
     const peakMbps = averageMbps * s.planning.peakFactor;
     return { sources, averageMbps, peakMbps, storageBytes: Math.ceil(total * 1.05), utilization: s.planning.uplinkMbps ? peakMbps / s.planning.uplinkMbps : null, real };
 }
+/** At least this much: a short contest with tiny presets still has room for reconnects and resends. */
+export const MIN_TEAM_STORAGE_BYTES = 1024 ** 3;
+/** Uploads stop (and retry later) once the recording disk has less than this left. */
+export const STORAGE_RESERVE_BYTES = 2 * 1024 ** 3;
+/**
+ * What one team may store for a contest: three times what its configured recording takes over the contest
+ * (encoder overshoot, a second device, resent segments), so a full HD archive is never cut short.
+ */
+export function teamStorageLimit(s: RecordingSettings, seconds: number, webcam = true) {
+    const expected = estimateRecording(s, { teams: 1, seconds: Math.max(1, seconds) }, {}, webcam).storageBytes;
+    return Math.max(MIN_TEAM_STORAGE_BYTES, Math.ceil(expected * 3));
+}
 export function gradeTest(dropRate: number | null, pressure: string, throughputMbps: number | null, peakMbps: number) {
     if ((dropRate !== null && dropRate >= .05) || ['serious', 'critical'].includes(pressure) || (throughputMbps !== null && throughputMbps <= peakMbps * 2)) return 'fail';
     if (dropRate === null || !['nominal', 'fair'].includes(pressure) || throughputMbps === null) return 'unknown';

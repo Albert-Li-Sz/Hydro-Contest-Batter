@@ -5,7 +5,7 @@ import {
     ContestModel, Context, ForbiddenError, getAlphabeticId, Handler, NotFoundError, ObjectId,
     param, PERM, PRIV, Schema, STATUS, Tdoc, Types, UserModel, ValidationError,
 } from 'hydrooj';
-import { BoardData, BoardTeam, automaticBoards, enhanceBoard, problemColor, reservedBoardNames, schoolName } from './lib/board';
+import { BoardData, BoardTeam, automaticBoards, boardBalloon, enhanceBoard, reservedBoardNames, schoolName } from './lib/board';
 import { BoardSettings, checkBoardNames, defaultSettings, normalizeSettings, pruneMembers, toScriptJson } from './lib/settings';
 import { buildRosterTeam, defaultProfileFields, FilterField, rosterFields } from './lib/roster';
 import { replacementRequest } from './lib/access';
@@ -141,7 +141,7 @@ export async function loadContestData(tdoc: Tdoc, realtime: boolean, identity = 
             problem_id: tdoc.pids.map((_pid, index) => getAlphabeticId(index)),
             // The contest's own balloon colours (Hydro: contest management → balloon → set colour).
             // The engine derives a readable text colour from each background itself.
-            balloon_color: tdoc.pids.map((pid) => ({ color: '#000', background_color: problemColor(tdoc.balloon?.[pid]) })),
+            balloon_color: tdoc.pids.map((pid) => boardBalloon(tdoc.balloon?.[pid])),
             organization: '学校',
             status_time_display: { correct: true, incorrect: true, pending: true },
             logo: { preset: 'ICPC' },

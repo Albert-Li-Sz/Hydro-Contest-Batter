@@ -11,6 +11,7 @@ import { ResultsStore, resultKey, type SnapshotReason } from './results-store';
 import { awardsCsv, boardOptions, resultBoard, restoreRejudge, settled, standingsCsv, type ResultsData } from './results';
 import { filterChanges, impactOf, lastChange, reviewChanges, staleSessions, verdictName, type ReviewChange, type ReviewFilter, type ReviewItem } from './rejudge-review';
 import { toScriptJson } from './settings';
+import { VERDICT_CHANGED, verdictChange } from './verdict-event';
 import { profileValues } from './roster';
 import type { BoardSettings } from './settings';
 import pkg from '../package.json';
@@ -364,7 +365,7 @@ export function applyResults(ctx: Context, dependencies: {
                 const judgeAt = rdoc.judgeAt || now;
                 await RecordModel.update(tdoc.domainId, rid, { status, score, judgeAt });
                 await ContestModel.updateStatus(tdoc.domainId, tdoc.docId, owner.uid, rid, owner.pid, { status, score, lang: rdoc.lang, subtasks: rdoc.subtasks });
-                (ctx.broadcast as any)('record/judge', { ...rdoc, status, score, judgeAt, rejudged: true });
+                (ctx.broadcast as (event: string, ...args: unknown[]) => void)(VERDICT_CHANGED, verdictChange(rdoc, status, score));
                 await items.updateOne({ _id: latest.get(change.rid) }, restore
                     ? { $set: { restored: { at: now, by: this.user._id }, reapplied: null } }
                     : { $set: { restored: null, reapplied: { at: now, by: this.user._id } } });

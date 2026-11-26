@@ -18,6 +18,7 @@ import { gbkAvailable, receiptJob, type ReceiptJob } from './escpos';
 import { ONLINE_MS, preferenceOf, seatOf, type PrinterPreference } from './print';
 import type { ContestLinks } from './links';
 import { heldProblems, type JuryState } from './jury';
+import { VERDICT_CHANGED } from './verdict-event';
 import { resolverCodeBase } from './resolver-data';
 import { awardsFor, toScriptJson, type BoardSettings } from './settings';
 import { describeTeam, isTeamEntry, loadSeats, memberIds, type TeamEntry } from './teams';
@@ -216,6 +217,8 @@ export function applyBalloons(ctx: Context, dependencies: {
         const now = Date.now();
         const minGap = soon ? 1500 : 4000;
         const leaseMs = 15_000;
+        // This run's own lease: released at the end only if no other process has taken it over meanwhile.
+        const leaseUntil = new Date(now + leaseMs);
         const lease = await settingsColl.findOneAndUpdate(
             {
                 _id: key, 'settings.enabled': true,
@@ -224,7 +227,7 @@ export function applyBalloons(ctx: Context, dependencies: {
                     { $or: [{ syncLeaseUntil: { $exists: false } }, { syncLeaseUntil: { $lt: new Date(now) } }] },
                 ],
             },
-            { $set: { syncedAt: new Date(now), syncLeaseUntil: new Date(now + leaseMs) } }, { returnDocument: 'after' },
+            { $set: { syncedAt: new Date(now), syncLeaseUntil: leaseUntil } }, { returnDocument: 'after' },
         ) as SettingsDoc | null;
         if (!lease) {
             const existing = await settingsColl.findOne({ _id: key }, { projection: { 'settings.enabled': 1 } }) as { settings?: { enabled?: boolean } } | null;
@@ -267,11 +270,12 @@ export function applyBalloons(ctx: Context, dependencies: {
                 }
                 // Guard ticket transitions so sync never clobbers a concurrently claimed/printed receipt.
                 if (ticket && typeof ticket === 'object') {
-                    const nextStatus = (ticket as { status?: string }).status;
-                    if (nextStatus === 'pending' || nextStatus === 'none') {
+                    const next = ticket as { status?: string; attempts?: number };
+                    if (next.status === 'pending' || next.status === 'none') {
                         await balloons.updateOne(
                             { _id: new ObjectId(update.id), 'ticket.status': { $nin: ['printing', 'printed'] } },
-                            { $set: { 'ticket.status': nextStatus } },
+                            // A restored balloon's ticket starts its attempts afresh (reconcile sets attempts: 0).
+                            { $set: { 'ticket.status': next.status, ...next.status === 'pending' && next.attempts === 0 ? { 'ticket.attempts': 0 } : {} } },
                         );
                     }
                 }
@@ -279,7 +283,7 @@ export function applyBalloons(ctx: Context, dependencies: {
             if (inserts.length || updates.length) await bump(key);
             return 'synced';
         } finally {
-            await settingsColl.updateOne({ _id: key }, { $unset: { syncLeaseUntil: '' } }).catch(() => null);
+            await settingsColl.updateOne({ _id: key, syncLeaseUntil: leaseUntil }, { $unset: { syncLeaseUntil: '' } }).catch(() => null);
         }
     }
 
@@ -307,11 +311,14 @@ export function applyBalloons(ctx: Context, dependencies: {
         timer.unref?.();
         scheduled.set(key, timer);
     }
-    on('record/judge', async (rdoc: { domainId?: string; contest?: unknown } | null) => {
+    const judged = async (rdoc: { domainId?: string; contest?: unknown } | null) => {
         if (!rdoc?.contest || !rdoc.domainId) return;
         const key = `${rdoc.domainId}/${rdoc.contest}`;
         if ((await enabledKeys().catch(() => new Set<string>())).has(key)) schedule(key);
-    });
+    };
+    on('record/judge', judged);
+    // A verdict changed by hand gives or takes a balloon too.
+    on(VERDICT_CHANGED, judged);
     // Everything else (events another process missed, the freeze and its end): every few seconds while it matters.
     const sweeper = setInterval(async () => {
         try {

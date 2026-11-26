@@ -12,20 +12,14 @@ import { toScriptJson } from '../settings';
 import { kindNames, placeholders } from './model';
 import { CertificateError, certificateService, type CertificateFile, type CertificateRequest } from './service';
 import pkg from '../../package.json';
+import { siteFrom } from './site';
 
 const baseFor = (tdoc: Pick<Tdoc, 'domainId' | 'docId'>) => `/d/${encodeURIComponent(tdoc.domainId)}/contest/${tdoc.docId}`;
 const scopeFor = (tdoc: Pick<Tdoc, 'domainId' | 'docId'>): SnapshotScope => ({ domainId: tdoc.domainId, contestId: String(tdoc.docId) });
 
-/** The configured site address, or the validated address the request came to. */
+/** The configured site address, or the address the request came to (lib/certificates/site.ts). */
 export function siteUrl(headers: Record<string, string | string[] | undefined>) {
-    const configured = SystemModel.get('server.url');
-    if (typeof configured === 'string' && /^https?:\/\//.test(configured) && !/\/\/(localhost|127\.0\.0\.1)[:/]/.test(configured)) return configured.replace(/\/?$/, '/');
-    const first = (value: string | string[] | undefined) => String(Array.isArray(value) ? value[0] : value || '').split(',')[0].trim();
-    const rawHost = first(headers.host) || first(headers['x-forwarded-host']);
-    const validHost = /^(?:[a-zA-Z0-9.-]+|\[[0-9a-fA-F:]+\])(?::\d{1,5})?$/.test(rawHost) ? rawHost : '';
-    const rawProto = first(headers['x-forwarded-proto']).toLowerCase();
-    const proto = rawProto === 'https' || rawProto === 'http' ? rawProto : 'http';
-    return validHost ? `${proto}://${validHost}/` : '/';
+    return siteFrom(headers, { url: SystemModel.get('server.url'), xhost: SystemModel.get('server.xhost') });
 }
 
 export function applyCertificates(ctx: Context, dependencies: {

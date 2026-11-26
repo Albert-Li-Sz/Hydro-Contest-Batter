@@ -609,3 +609,30 @@ describe('证书出具与核验', () => {
         expect((await service.verify('system', 'not a code')).found).toBe(false);
     });
 });
+
+describe('certificate verification links', () => {
+    it('follows the proxy host before a loopback Host header and honours Hydro\'s xhost header', async () => {
+        const { siteFrom } = await import('../lib/certificates/site');
+        expect(siteFrom({ host: '127.0.0.1:8888', 'x-forwarded-host': 'oj.example.edu', 'x-forwarded-proto': 'https' }, {})).toBe('https://oj.example.edu/');
+        expect(siteFrom({ host: 'oj.example.edu' }, { url: '/' })).toBe('http://oj.example.edu/');
+        expect(siteFrom({ host: '127.0.0.1:8888', 'x-real-host': 'contest.example.edu' }, { xhost: 'X-Real-Host' })).toBe('http://contest.example.edu/');
+        expect(siteFrom({ host: 'localhost:8888' }, {})).toBe('http://localhost:8888/');
+        expect(siteFrom({ host: 'evil.example/<script>' }, {})).toBe('/');
+        expect(siteFrom({ host: 'oj.example.edu' }, { url: 'https://acm.example.edu' })).toBe('https://acm.example.edu/');
+    });
+});
+
+describe('certificate medal inks', () => {
+    it('colours and names medals by tier when the contest renames them', async () => {
+        const { awardEnglish, fieldInk, medalTier } = await import('../resolver/public/js/certificate-frame.js');
+        const field = { color: '#a05605', medalColor: true };
+        expect(fieldInk(field, '银牌奖', 'silver-medal')).toBe('#366f95');
+        expect(fieldInk(field, '银奖')).toBe('#366f95');
+        expect(fieldInk(field, '优胜奖', 'special-x')).toBe('#a05605');
+        expect(fieldInk({ color: '#000000' }, '金奖', 'gold-medal')).toBe('#000000');
+        expect(awardEnglish('银牌奖', 'silver-medal')).toBe('Silver Medal');
+        expect(awardEnglish('一等奖', 'gold-medal')).toBe('First Prize');
+        expect(awardEnglish('优胜奖')).toBe('');
+        expect(medalTier('铜牌')).toBe('bronze');
+    });
+});
