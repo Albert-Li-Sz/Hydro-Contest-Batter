@@ -3,6 +3,10 @@
 // those whose values changed.
 import { awardEnglish, certificateFrame, fieldInk, logoBox } from './certificate-frame.js';
 import { designLabels, styledTemplate } from './certificate-designs.js';
+import { eventLines, eventPaper, eventText, isEventDesign } from './certificate-event.js';
+import { eventArtwork, signaturePanel } from './certificate-signatures.js';
+import { BLACK } from './certificate-colors.js';
+import { inkPicker } from './certificate-color-picker.js';
 import { artworkKey, artworkNode, artworkProps, showArtworkPosition } from './certificate-artwork.js';
 import { englishSchoolName, pinyinName } from './certificate-names.js';
 import { $, el, formatTime, get, notify, openDialog, post, runtime } from './hydro-manage-common.js';
@@ -21,7 +25,9 @@ let issuedFilter = 'valid';
 
 async function load() {
     try {
-        data = await get();
+        const next = await get();
+        if (!data && isEventDesign(next.config.templates.award.frame)) sampleKind = 'team';
+        data = next;
         draft = structuredClone(data.config.templates);
         render();
     } catch (error) { notify(status, error.message, true); }
@@ -175,7 +181,7 @@ function sheetGroup() {
 
 // ------------------------------------------------------------------ template editor
 
-const pageOf = (template) => (template.orientation === 'portrait' ? { width: 210, height: 297 } : { width: 297, height: 210 });
+const pageOf = (template) => isEventDesign(template.frame) ? eventPaper : template.orientation === 'portrait' ? { width: 210, height: 297 } : { width: 297, height: 210 };
 const PT_MM = 25.4 / 72;
 
 function fillText(text, values) {
@@ -248,6 +254,31 @@ async function printableImage(blob, longest, type = 'image/png') {
     } finally { bitmap.close(); }
 }
 
+function schoolPicker(side, caption, save) {
+    return el('button', { type: 'button', class: 'button', text: caption, 'aria-label': `${side}选择学校`, onclick: async () => {
+        try {
+            const names = await logoCatalog();
+            const listId = 'certificate-school-choices';
+            const list = el('datalist', { id: listId });
+            const input = el('input', { class: 'textbox', type: 'text', list: listId, autocomplete: 'off', 'aria-label': '学校名称' });
+            const update = () => {
+                const query = input.value.trim().toLowerCase();
+                list.replaceChildren(...Object.keys(names).filter((name) => query && name.includes(query)).slice(0, 35).map((value) => el('option', { value })));
+            };
+            input.addEventListener('input', update);
+            openDialog({ title: `${side} · 选择学校`, confirm: '使用校徽', body: [field('输入学校中文或英文名', input), list], submit: async () => {
+                const label = input.value.trim();
+                const id = names[label.toLowerCase()];
+                if (typeof id !== 'string' || !/^[a-f0-9]{12}$/.test(id)) throw new Error('请从校徽库选择学校，或上传学校的校徽图片');
+                const res = await fetch(`/hydro-resolver/logos/${id}.webp`);
+                if (!res.ok) throw new Error('无法读取这所学校的校徽');
+                await save(await res.blob(), label);
+            } });
+            input.focus();
+        } catch (error) { notify(status, error.message, true); }
+    } });
+}
+
 const savingLogos = new Set();
 function logoSlot(slot) {
     const side = slot === 0 ? '左侧校徽' : '右侧校徽';
@@ -277,28 +308,7 @@ function logoSlot(slot) {
         try { await save(file, file.name); } catch (error) { notify(status, error.message, true); }
         upload.value = '';
     } });
-    const choose = el('button', { type: 'button', class: 'button', text: '选学校', 'aria-label': `${side}选择学校`, onclick: async () => {
-        try {
-            const names = await logoCatalog();
-            const listId = `certificate-schools-${slot}`;
-            const list = el('datalist', { id: listId });
-            const input = el('input', { class: 'textbox', type: 'text', list: listId, autocomplete: 'off', 'aria-label': '学校名称' });
-            const update = () => {
-                const query = input.value.trim().toLowerCase();
-                list.replaceChildren(...Object.keys(names).filter((name) => query && name.includes(query)).slice(0, 35).map((value) => el('option', { value })));
-            };
-            input.addEventListener('input', update);
-            openDialog({ title: `${side} · 选择学校`, confirm: '使用校徽', body: [field('输入学校中文或英文名', input), list], submit: async () => {
-                const label = input.value.trim();
-                const id = names[label.toLowerCase()];
-                if (typeof id !== 'string' || !/^[a-f0-9]{12}$/.test(id)) throw new Error('请从校徽库选择学校，或上传学校的校徽图片');
-                const res = await fetch(`/hydro-resolver/logos/${id}.webp`);
-                if (!res.ok) throw new Error('无法读取这所学校的校徽');
-                await save(await res.blob(), label);
-            } });
-            input.focus();
-        } catch (error) { notify(status, error.message, true); }
-    } });
+    const choose = schoolPicker(side, '选学校', save);
     container.append(el('div', { class: 'certificate-logo-name' }, logo ? el('img', { src: logoSrc(logo), alt: '' }) : null,
         el('strong', { text: side }), logo ? el('span', { text: logo.label }) : null),
         el('div', { class: 'certificate-logo-actions' }, choose, el('button', { type: 'button', class: 'button', text: '上传图片', 'aria-label': `${side}上传图片`, onclick: () => upload.click() }),
@@ -306,6 +316,44 @@ function logoSlot(slot) {
                 try { await save(null, ''); } catch (error) { notify(status, error.message, true); }
             } }) : null));
     return container;
+}
+
+let savingEmblem = false;
+function emblemPanel() {
+    const emblem = data.eventEmblem || { mode: 'icpc', revision: 0 };
+    const panel = el('fieldset', { id: 'certificate-event-emblem', class: 'certificate-logos', disabled: savingEmblem });
+    const side = '赛事左侧标识';
+    const save = async (mode, file, label) => {
+        if (savingEmblem) throw new Error('左侧标识正在保存');
+        if (file && file.size > 6 * 1024 * 1024) throw new Error('标识图片最大 6 MB');
+        panel.disabled = savingEmblem = true;
+        try {
+            const upload = file ? { data: await imageData(await printableImage(file, 1400)), label } : {};
+            data.eventEmblem = await post('emblem', { mode, revision: emblem.revision, ...upload });
+            renderStage(); notify(status, '赛事左侧标识已保存');
+        } finally {
+            savingEmblem = false;
+            $('certificate-event-emblem')?.replaceWith(emblemPanel());
+        }
+    };
+    const custom = option('custom', emblem.label || '自定义标识', emblem.mode === 'custom');
+    custom.disabled = !emblem.id;
+    const mode = el('select', { class: 'select', 'aria-label': side, onchange: async () => {
+        try { await save(mode.value); } catch (error) { notify(status, error.message, true); }
+    } }, option('icpc', 'ICPC 原标', emblem.mode === 'icpc'), custom, option('none', '留白', emblem.mode === 'none'));
+    const file = el('input', { type: 'file', accept: 'image/png,image/jpeg', hidden: true, 'aria-label': '赛事标识文件', onchange: async () => {
+        const mark = file.files[0];
+        if (!mark) return;
+        try {
+            if (!['image/png', 'image/jpeg'].includes(mark.type)) throw new Error('请选择 PNG 或 JPEG 标识图片');
+            await save('custom', mark, mark.name);
+        } catch (error) { notify(status, error.message, true); }
+        file.value = '';
+    } });
+    panel.append(el('legend', { text: side }), el('div', { class: 'certificate-logo-actions' }, mode,
+        schoolPicker(side, '选择学校校徽', (blob, label) => save('custom', blob, label)),
+        el('button', { class: 'button', type: 'button', text: '上传赛事标识', onclick: () => file.click() }), file));
+    return panel;
 }
 
 // A drag writes once on release. Serialize edits to the same picture, including keyboard nudges and deletion.
@@ -364,10 +412,12 @@ function uploadArtwork(which) {
 let stageObserver;
 function stage(template, kind) {
     const page = pageOf(template);
-    const box = el('div', { class: `certificate-stage is-${template.font}`, style: `aspect-ratio: ${page.width} / ${page.height}` });
+    const isEvent = isEventDesign(template.frame);
+    const box = el('div', { class: `certificate-stage is-${template.font}${isEvent ? ' is-' + template.frame : ''}`, style: `aspect-ratio: ${page.width} / ${page.height}` });
     if (template.background) box.append(el('img', { class: 'certificate-background', src: `${runtime.assetUrl}/${template.background}`, alt: '' }));
-    else if (Object.hasOwn(designLabels, template.frame)) box.append(frameSvg(page, template.frame));
-    else box.append(el('div', { class: 'certificate-border' }));
+    if (isEvent) box.append(...eventArtwork(template, data.signatures || [], runtime.assetUrl, page, data.eventEmblem));
+    else if (!template.background) box.append(Object.hasOwn(designLabels, template.frame)
+        ? frameSvg(page, template.frame) : el('div', { class: 'certificate-border' }));
     const selectNode = (node) => {
         selectedField = node.dataset.id;
         for (const other of box.querySelectorAll('[data-id]')) other.classList.toggle('is-selected', other === node);
@@ -384,22 +434,20 @@ function stage(template, kind) {
         box.append(el('img', { class: 'certificate-school-logo', src: logoSrc(logo), alt: logo.label, style: position, draggable: 'false' }));
     }
     const values = sampleValues(kind);
-    const nodes = new Map();
+    const nodes = [];
     const place = () => {
         const scale = box.clientWidth / page.width;
         if (!scale) return;
-        for (const item of template.fields) {
-            const node = nodes.get(item.id);
-            if (!node) continue;
+        for (const { node, item, offset, size } of nodes) {
             node.style.left = `${item.x * scale}px`;
-            node.style.top = `${item.y * scale}px`;
+            node.style.top = `${(item.y + offset) * scale}px`;
             if (item.type === 'qr') {
                 node.style.width = node.style.height = `${item.size * scale}px`;
                 node.style.transform = 'translate(-50%, -50%)';
             } else {
-                node.style.fontSize = `${item.size * PT_MM * scale}px`;
+                node.style.fontSize = `${size * PT_MM * scale}px`;
                 const limit = item.width * scale;
-                if (limit && node.scrollWidth > limit) node.style.fontSize = `${Math.max(4, item.size * limit / node.scrollWidth) * PT_MM * scale}px`;
+                if (limit && node.scrollWidth > limit) node.style.fontSize = `${Math.max(4, size * limit / node.scrollWidth) * PT_MM * scale}px`;
                 node.style.color = fieldInk(item, values.award);
                 node.style.transform = `translate(${item.align === 'center' ? '-50%' : item.align === 'right' ? '-100%' : '0'}, -50%)`;
             }
@@ -408,28 +456,31 @@ function stage(template, kind) {
     for (const item of template.fields) {
         const shown = !item.kinds.length || item.kinds.includes(kind);
         if (!shown) continue;
-        const content = item.type === 'qr' ? '' : fillText(item.text, values);
+        const content = item.type === 'qr' ? '' : isEvent ? eventText(item.text, values, kind, awardEnglish(values.award), template.frame) : fillText(item.text, values);
         if (!content && item.type === 'text' && selectedField !== item.id) continue;
-        const node = el('div', { class: `certificate-field${item.type === 'qr' ? ' is-qr' : ''}${shown ? '' : ' is-hidden'}${selectedField === item.id ? ' is-selected' : ''}`,
-            text: content, title: item.text || '二维码', 'data-id': item.id });
-        node.addEventListener('pointerdown', (event) => {
-            event.preventDefault();
-            selectNode(node);
-            const scale = box.clientWidth / page.width;
-            const start = { x: event.clientX, y: event.clientY, fx: item.x, fy: item.y };
-            node.setPointerCapture(event.pointerId);
-            const move = (moved) => {
-                item.x = Math.min(page.width, Math.max(0, Math.round((start.fx + (moved.clientX - start.x) / scale) * 2) / 2));
-                item.y = Math.min(page.height, Math.max(0, Math.round((start.fy + (moved.clientY - start.y) / scale) * 2) / 2));
-                place();
-                renderProps();
-            };
-            const up = () => { node.removeEventListener('pointermove', move); node.removeEventListener('pointerup', up); };
-            node.addEventListener('pointermove', move);
-            node.addEventListener('pointerup', up);
-        });
-        nodes.set(item.id, node);
-        box.append(node);
+        const lines = isEvent && item.type === 'text' ? eventLines(item, content, template.frame) : [{ text: content, y: item.y, size: item.size }];
+        for (const line of lines) {
+            const node = el('div', { class: `certificate-field${item.type === 'qr' ? ' is-qr' : ''}${shown ? '' : ' is-hidden'}${selectedField === item.id ? ' is-selected' : ''}`,
+                text: line.text, title: item.text || '二维码', 'data-id': item.id, style: line.bold ? 'font-weight:700' : null });
+            node.addEventListener('pointerdown', (event) => {
+                event.preventDefault();
+                selectNode(node);
+                const scale = box.clientWidth / page.width;
+                const start = { x: event.clientX, y: event.clientY, fx: item.x, fy: item.y };
+                node.setPointerCapture(event.pointerId);
+                const move = (moved) => {
+                    item.x = Math.min(page.width, Math.max(0, Math.round((start.fx + (moved.clientX - start.x) / scale) * 2) / 2));
+                    item.y = Math.min(page.height, Math.max(0, Math.round((start.fy + (moved.clientY - start.y) / scale) * 2) / 2));
+                    place();
+                    renderProps();
+                };
+                const up = () => { node.removeEventListener('pointermove', move); node.removeEventListener('pointerup', up); };
+                node.addEventListener('pointermove', move);
+                node.addEventListener('pointerup', up);
+            });
+            nodes.push({ item, node, offset: line.y - item.y, size: line.size });
+            box.append(node);
+        }
     }
     stageObserver?.disconnect();
     stageObserver = new ResizeObserver(place);
@@ -477,10 +528,13 @@ function renderProps() {
     } })));
     const align = el('select', { class: 'select', 'aria-label': '对齐', onchange: (event) => update({ align: event.target.value }) },
         option('left', '左对齐', item.align === 'left'), option('center', '居中', item.align === 'center'), option('right', '右对齐', item.align === 'right'));
-    const autoColor = el('input', { type: 'checkbox', checked: item.medalColor, onchange: (event) => update({ medalColor: event.target.checked }) });
-    const color = el('input', { type: 'color', value: item.color, 'aria-label': '颜色', oninput: (event) => {
-        autoColor.checked = false; update({ color: event.target.value, medalColor: false });
+    const autoColor = el('input', { type: 'checkbox', checked: item.medalColor, onchange: (event) => {
+        update({ medalColor: event.target.checked }); renderProps();
     } });
+    const sample = sampleValues(editing === 'participation' ? 'participation' : sampleKind);
+    const color = inkPicker('文字颜色', fieldInk(item, sample.award), (value) => {
+        autoColor.checked = false; update({ color: value, medalColor: false });
+    });
     const kinds = el('div', { class: 'certificate-kinds' }, ...kindOrder.filter((kind) => (editing === 'participation') === (kind === 'participation')).map((kind) => {
         const box = el('input', { type: 'checkbox', checked: !item.kinds.length || item.kinds.includes(kind), onchange: () => {
             const chosen = [...kinds.querySelectorAll('input')].filter((input) => input.checked).map((input) => input.dataset.kind);
@@ -498,7 +552,7 @@ function renderProps() {
         el('div', { class: 'certificate-row' }, num('横向（mm）', 'x', 0, pageOf(template).width), num('纵向（mm）', 'y', 0, pageOf(template).height)),
         el('div', { class: 'certificate-row' }, item.type === 'qr' ? num('边长（mm）', 'size', 4, 80) : num('字号（pt）', 'size', 4, 120, 1),
             item.type === 'qr' ? null : num('最大宽度（mm）', 'width', 0, pageOf(template).width)),
-        item.type === 'qr' ? null : el('div', { class: 'certificate-row' }, field('对齐', align), field('颜色', color)),
+        item.type === 'qr' ? null : field('对齐', align), item.type === 'qr' ? null : color,
         item.type === 'text' && /\{award(?:En)?\}/.test(item.text) ? el('label', { class: 'checkbox' }, autoColor, '按金银铜奖着色') : null,
         editing === 'participation' ? null : field('印在', kinds), remove));
 }
@@ -509,7 +563,7 @@ function templateGroup() {
         type: 'button', role: 'tab', 'aria-selected': editing === id ? 'true' : 'false', text,
         onclick: () => { editing = id; selectedField = null; render(); },
     })));
-    const orientation = el('select', { class: 'select', 'aria-label': '方向', onchange: (event) => {
+    const orientation = el('select', { class: 'select', 'aria-label': '方向', disabled: isEventDesign(template.frame), onchange: (event) => {
         const before = pageOf(template);
         const known = Object.hasOwn(designLabels, template.frame);
         const prev = styledTemplate(data.recommended[template.orientation][editing], template.frame, editing);
@@ -529,9 +583,11 @@ function templateGroup() {
         }
         renderStage(); renderProps();
     } }, option('landscape', '横向 A4', template.orientation === 'landscape'), option('portrait', '纵向 A4', template.orientation === 'portrait'));
-    const font = el('select', { class: 'select', 'aria-label': '字体', onchange: (event) => { template.font = event.target.value; renderStage(); } },
-        option('serif', '宋体 / Times', template.font === 'serif'), option('sans', '黑体 / Helvetica', template.font === 'sans'));
-    const sample = editing === 'participation' ? null : el('select', { class: 'select', 'aria-label': '示例', onchange: (event) => { sampleKind = event.target.value; renderStage(); } },
+    const font = el('select', { class: 'select', 'aria-label': '字体', disabled: template.frame === 'event', onchange: (event) => { template.font = event.target.value; renderStage(); } },
+        option('serif', '宋体 / Times', template.font === 'serif'), option('sans', template.frame === 'event' ? 'Arial（原稿）' : '黑体 / Helvetica', template.font === 'sans'));
+    const sample = editing === 'participation' ? null : el('select', { class: 'select', 'aria-label': '示例', onchange: (event) => {
+        sampleKind = event.target.value; renderStage(); renderProps();
+    } },
         ...['member', 'team', 'coach'].map((kind) => option(kind, runtime.kindNames[kind], sampleKind === kind)));
     const upload = el('input', { type: 'file', accept: 'image/png,image/jpeg', hidden: true, onchange: async () => {
         const file = upload.files[0];
@@ -548,7 +604,7 @@ function templateGroup() {
         const page = pageOf(template);
         const id = `f-${Math.random().toString(36).slice(2, 8)}`;
         template.fields.push({ id, type, text: type === 'qr' ? '' : '{name}', x: page.width / 2, y: page.height / 2, size: type === 'qr' ? 24 : 16,
-            align: 'center', width: type === 'qr' ? 24 : 200, color: '#2b2118', kinds: [] });
+            align: 'center', width: type === 'qr' ? 24 : 200, color: BLACK, kinds: [] });
         selectedField = id; renderStage(); renderProps();
     };
     const save = el('button', { class: 'button primary', type: 'button', text: '保存模板', onclick: async () => {
@@ -562,6 +618,7 @@ function templateGroup() {
     renderStage(); renderProps();
     const setDesign = (id) => {
         draft[editing] = styledTemplate(data.recommended[template.orientation][editing], id, editing);
+        if (isEventDesign(id) && editing === 'award') sampleKind = 'team';
         selectedField = null; render(); notify(status, `已预览${designLabels[id]}，保存模板后生效`);
     };
     const design = el('select', { class: 'select', 'aria-label': '预设样式', onchange: (event) => setDesign(event.target.value) },
@@ -581,7 +638,12 @@ function templateGroup() {
             template.fields.some((item) => item.type === 'qr') ? null : el('button', { class: 'button', type: 'button', text: '＋ 二维码', onclick: () => add('qr') }),
             el('span', { class: 'manage-spacer' }),
             link('样张 PDF', fileUrl('sample', { template: editing, kind: editing === 'participation' ? '' : sampleKind }), { target: '_blank', rel: 'noopener' }), save),
-        view);
+        template.frame === 'event-zh' ? emblemPanel() : null,
+        isEventDesign(template.frame) ? signaturePanel(template.frame, data.signatures || [], runtime.assetUrl, imageData, (slot, item) => {
+            data.signatures = (data.signatures || []).filter((s) => s.slot !== slot || (s.design || 'event') !== template.frame);
+            if (item.id) data.signatures.push(item);
+            render(); notify(status, '签名已保存');
+        }, (message) => notify(status, message, true)) : null, view);
 }
 
 function issueGroup() {

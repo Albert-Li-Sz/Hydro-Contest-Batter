@@ -3,16 +3,19 @@
  *
  * Chinese text uses the PDF reader's own Adobe-GB1 fonts (STSong-Light for 宋体, STHeiti-Regular for 黑体, UTF-16
  * CMap), which Acrobat, Preview, Chrome and pdf.js provide without embedding; Latin text uses the standard Times
- * and Helvetica fonts. Nothing is embedded, so a page of text is a few kilobytes and the text stays selectable.
+ * and Helvetica fonts. The event certificate also embeds the two Arial subsets from its reference PDF.
  */
 import { deflateSync, inflateSync } from 'node:zlib';
+import { addEventFont, eventAdvances, eventGlyphs, eventString, type EventWeight } from './event-fonts';
 import { certificateFrame } from '../../resolver/public/js/certificate-frame.js';
 import type { CertificateDesign } from '../../resolver/public/js/certificate-designs.js';
 
 export type FontStyle = 'serif' | 'sans';
 export type Align = 'left' | 'center' | 'right';
 export interface PdfImage { width: number; height: number; colors: 1 | 3; filter: 'DCTDecode' | 'FlateDecode'; data: Buffer; alpha?: Buffer }
-export interface PlacedImage { image: PdfImage; x: number; y: number; width: number; height: number }
+interface ImageBox { x: number; y: number; width: number; height: number }
+export interface PlacedImage extends ImageBox { image: PdfImage; clip?: ImageBox }
+export interface NativeSignature { image: PdfImage; drawing: Buffer }
 export interface PdfText {
     text: string;
     /** Millimetres from the left edge to the anchor given by `align`. */
@@ -23,6 +26,8 @@ export interface PdfText {
     size: number;
     align: Align;
     font: FontStyle;
+    eventWeight?: EventWeight;
+    bold?: boolean;
     /** Longest line in millimetres; longer text is set smaller. 0: no limit. */
     width: number;
     color: [number, number, number];
@@ -35,6 +40,8 @@ export interface PdfPage {
     border?: boolean;
     engraved?: boolean;
     design?: CertificateDesign;
+    master?: PlacedImage[];
+    originalSignature?: NativeSignature;
     logos?: PlacedImage[];
     decorations?: PlacedImage[];
     texts: PdfText[];
@@ -183,12 +190,41 @@ function parsePng(buffer: Buffer, preserveAlpha: boolean): PdfImage {
         ...(mask?.some((alpha) => alpha !== 255) ? { alpha: deflateSync(mask) } : {}) };
 }
 
-/** Each page's text lines, one per field, with the size reduced until the line fits its width. */
-function fitted(text: PdfText) {
+/** Choose a font and its actual advance for each run, including fallback characters outside the event subsets. */
+function encodedRuns(item: PdfText) {
+    const weight = item.eventWeight;
+    if (!weight) return runs(item.text).map((run) => ({
+        font: run.latin ? (item.font === 'serif' ? 'F1' : 'F2') : (item.font === 'serif' ? 'F3' : 'F4'),
+        width: runWidth(run, item.font), encoded: run.latin ? latinString(run.text) : utf16Hex(run.text),
+    }));
+    const glyphs = eventGlyphs(weight);
+    const advances = eventAdvances(weight, item.size);
+    const parts: { font: string; text: string; width: number }[] = [];
+    const tokens = item.text.match(/ +|[^ ]/gu) || [];
+    for (const [index, token] of tokens.entries()) {
+        const char = token[0];
+        const glyph = glyphs[char];
+        const ascii = latin(char.codePointAt(0)!);
+        const font = glyph ? (weight === 'bold' ? 'EB' : 'ER') : ascii ? (weight === 'bold' ? 'FB' : 'F2') : 'F4';
+        const next = tokens[index + 1] || '';
+        const measured = next ? advances?.width[token] ?? (char === ' ' && advances?.width[' '] ? advances.width[' '] * token.length : undefined) : undefined;
+        const pair = token + next + (next.startsWith(' ') ? tokens[index + 2] || '' : '');
+        const kern = advances?.kern[pair] || 0;
+        const advance = measured !== undefined ? measured * 1000 / item.size
+            : (glyph ? glyph[1] : ascii ? HELVETICA[char.charCodeAt(0) - 32] : 1000) * [...token].length;
+        const width = advance + kern * 1000 / item.size;
+        const last = parts.at(-1);
+        if (!advances && last?.font === font) { last.text += token; last.width += width; }
+        else parts.push({ font, text: token, width });
+    }
+    return parts.map((part) => ({ ...part, encoded: part.font === 'EB' || part.font === 'ER'
+        ? eventString(part.text, weight) : part.font === 'F4' ? utf16Hex(part.text) : latinString(part.text) }));
+}
+
+function fitted(text: PdfText, width: number) {
     let size = text.size;
     if (text.width > 0) {
         const limit = text.width * PT;
-        const width = textWidth(text.text, size, text.font);
         if (width > limit) size = Math.max(4, size * limit / width);
     }
     return size;
@@ -218,18 +254,22 @@ function pageContent(page: PdfPage, paint: string[]) {
     const ops = [...paint];
     for (const item of page.texts) {
         if (!item.text) continue;
-        const size = fitted(item);
-        const total = textWidth(item.text, size, item.font);
+        const parts = encodedRuns(item);
+        const em = parts.reduce((sum, part) => sum + part.width, 0) / 1000;
+        const size = fitted(item, em * item.size);
+        const total = em * size;
         let x = item.x * PT - (item.align === 'center' ? total / 2 : item.align === 'right' ? total : 0);
         // The middle of a CJK line sits about 0.35 em above its baseline.
         const y = height - item.y * PT - size * 0.35;
-        const [r, g, b] = item.color;
-        ops.push(`${num(r / 255)} ${num(g / 255)} ${num(b / 255)} rg`);
-        for (const run of runs(item.text)) {
-            const font = run.latin ? (item.font === 'serif' ? 'F1' : 'F2') : (item.font === 'serif' ? 'F3' : 'F4');
-            ops.push(`BT /${font} ${num(size)} Tf 1 0 0 1 ${num(x)} ${num(y)} Tm ${run.latin ? latinString(run.text) : utf16Hex(run.text)} Tj ET`);
-            x += runWidth(run, item.font) * size / 1000;
+        // Coordinate rounding would collapse adjacent 8-bit colors (e.g. #010101 and black).
+        const color = item.color.map((channel) => Number((channel / 255).toFixed(6))).join(' ');
+        if (item.bold) ops.push(`q ${color} RG ${num(size * .017)} w 1 j`);
+        ops.push(`${color} rg`);
+        for (const run of parts) {
+            ops.push(`BT ${item.bold ? '2 Tr ' : ''}/${run.font} ${num(size)} Tf 1 0 0 1 ${num(x)} ${num(y)} Tm ${run.encoded} Tj ET`);
+            x += run.width * size / 1000;
         }
+        if (item.bold) ops.push('Q');
     }
     if (page.qr) {
         const count = page.qr.matrix.length + 8;
@@ -263,12 +303,17 @@ export function buildPdf(pages: PdfPage[], title = '证书'): Buffer {
         const descendant = add(`<< /Type /Font /Subtype /CIDFontType0 /BaseFont /${name} /CIDSystemInfo << /Registry (Adobe) /Ordering (GB1) /Supplement 4 >> /FontDescriptor ${descriptor} 0 R /DW 1000 >>`);
         return add(`<< /Type /Font /Subtype /Type0 /BaseFont /${name}-UniGB-UTF16-H /Encoding /UniGB-UTF16-H /DescendantFonts [${descendant} 0 R] >>`);
     };
-    const fonts = {
+    const fonts: Record<string, number> = {
         F1: add('<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding >>'),
         F2: add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>'),
         F3: cjk('STSong-Light', 6),
         F4: cjk('STHeiti-Regular', 4),
     };
+    if (pages.some((page) => page.originalSignature || page.texts.some((item) => item.eventWeight))) {
+        fonts.ER = addEventFont('regular', add, stream);
+        fonts.EB = addEventFont('bold', add, stream);
+        fonts.FB = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+    }
     const fontDict = Object.entries(fonts).map(([name, id]) => `/${name} ${id} 0 R`).join(' ');
     const images = new Map<PdfImage, number>();
     const imageId = (image: PdfImage) => {
@@ -281,6 +326,7 @@ export function buildPdf(pages: PdfPage[], title = '证书'): Buffer {
         return id;
     };
     const frames = new Map<string, number>();
+    let signatureForm: number | undefined;
     const kids: number[] = [];
     for (const page of pages) {
         const resources = [`/Font << ${fontDict} >>`];
@@ -296,15 +342,26 @@ export function buildPdf(pages: PdfPage[], title = '证书'): Buffer {
             objects.set('Frame', frames.get(key)!);
             paint.push('q /Frame Do Q');
         }
-        const draw = ({ image, x, y, width, height }: PlacedImage) => {
+        const draw = ({ image, x, y, width, height, clip }: PlacedImage) => {
             const id = imageId(image);
             objects.set(`Im${id}`, id);
-            paint.push(`q ${num(width * PT)} 0 0 ${num(height * PT)} ${num(x * PT)} ${num((page.height - y - height) * PT)} cm /Im${id} Do Q`);
+            const mask = clip ? `${num(clip.x * PT)} ${num((page.height - clip.y - clip.height) * PT)} ${num(clip.width * PT)} ${num(clip.height * PT)} re W n ` : '';
+            paint.push(`q ${mask}${num(width * PT)} 0 0 ${num(height * PT)} ${num(x * PT)} ${num((page.height - y - height) * PT)} cm /Im${id} Do Q`);
         };
         if (page.background) draw({ image: page.background, x: 0, y: 0, width: page.width, height: page.height });
         if (page.border) {
             const rect = (d: number) => `${num(d * PT)} ${num(d * PT)} ${num((page.width - 2*d) * PT)} ${num((page.height - 2*d) * PT)} re S`;
             paint.push('q 0.55 0.42 0.18 RG 2 w', rect(10), '0.6 w', rect(13), 'Q');
+        }
+        for (const image of page.master || []) draw(image);
+        if (page.originalSignature) {
+            if (!signatureForm) {
+                const image = imageId(page.originalSignature.image);
+                const resources = `/Resources << /Font << /FT10 ${fonts.ER} 0 R /FT15 ${fonts.EB} 0 R >> /XObject << /IM20 ${image} 0 R >> >>`;
+                signatureForm = add(stream(`/Type /XObject /Subtype /Form /BBox [0 0 841.9 595.3] ${resources} /Filter /FlateDecode`, page.originalSignature.drawing));
+            }
+            objects.set('Signature', signatureForm);
+            paint.push('q /Signature Do Q');
         }
         for (const decoration of page.decorations || []) draw(decoration);
         for (const logo of page.logos || []) draw(logo);

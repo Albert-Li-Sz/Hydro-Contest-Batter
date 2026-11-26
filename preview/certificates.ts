@@ -60,7 +60,7 @@ export function createCertificatesPreview(env: Environment, version: string, db:
             }
             const asset = /^\/asset\/([a-f0-9]{24})$/.exec(url.pathname.slice(base.length));
             if (asset) {
-                const image = await service.asset(scope, asset[1]);
+                const image = await service.asset(scope, asset[1], url.searchParams.get('part') || '');
                 response.writeHead(200, { 'Content-Type': image.type }).end(image.data);
                 return true;
             }

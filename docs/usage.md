@@ -108,12 +108,12 @@ Schema 测试固定使用官方 2026-01 分支文件；上游 schema 对 runs �
 
 需要 Node.js 22 或以上版本及 Hydro 5.x。使用运行 Hydro 的系统用户操作；命令中的 `$HOME` 对应这个用户。自 0.8.1 起，安装包包含供 Hydro 直接加载的源码和完整预构建资源。
 
-从发布页下载 `hydro-scoreboard-xcpcio-plus-1.25.0.tgz` 和同名 `.sha256` 文件，放入同一个目录。首次安装按以下步骤校验、解压、注册 addon 并重启服务。[v1.25.0 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.25.0)
+从发布页下载 `hydro-scoreboard-xcpcio-plus-1.26.0.tgz` 和同名 `.sha256` 文件，放入同一个目录。首次安装按以下步骤校验、解压、注册 addon 并重启服务。[v1.26.0 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.26.0)
 
 ```bash
-sha256sum -c hydro-scoreboard-xcpcio-plus-1.25.0.tgz.sha256
+sha256sum -c hydro-scoreboard-xcpcio-plus-1.26.0.tgz.sha256
 mkdir -p "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
-tar -xzf hydro-scoreboard-xcpcio-plus-1.25.0.tgz \
+tar -xzf hydro-scoreboard-xcpcio-plus-1.26.0.tgz \
   -C "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus" --strip-components=1
 hydrooj addon add "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 pm2 restart hydrooj
@@ -126,9 +126,9 @@ pm2 restart hydrooj
 在新的临时目录中校验并解压安装包。
 
 ```bash
-sha256sum -c hydro-scoreboard-xcpcio-plus-1.25.0.tgz.sha256
+sha256sum -c hydro-scoreboard-xcpcio-plus-1.26.0.tgz.sha256
 mkdir -p xcpcio-update
-tar -xzf hydro-scoreboard-xcpcio-plus-1.25.0.tgz -C xcpcio-update
+tar -xzf hydro-scoreboard-xcpcio-plus-1.26.0.tgz -C xcpcio-update
 ```
 
 首次安装运行 `bash xcpcio-update/package/install.sh install`。升级已有安装运行 `bash xcpcio-update/package/install.sh upgrade`。
@@ -351,6 +351,17 @@ Honors 使用单独的获奖位次（place）。Highest Honors 分界以内使�
 
    在「编辑」或 CSV 里可补写未收录的校名，或指定多音字、护照拼写和惯用英文名。手填值优先，清空英文栏可恢复自动匹配。核对后点「核对完毕，锁定信息表」。切换快照或分榜后需要重新核对并锁定。旧版已锁定的信息表可解锁、核对英文后再锁定出证。
 3. **选择版式。** 在「模板」里分别设置「获奖证书」和「参赛证明」。从「预设样式」选择典雅雕花、ICPC、CCPC、天梯赛或蓝桥杯风格，现场预览横向或纵向 A4，再拖动文字和二维码，点「保存模板」。切换预设会换用该样式的底纹、字体和字段布局。默认获奖证书为横向、参赛证明为纵向，团队、个人和教练共用获奖证书模板。
+
+   **赛事模板**按照 ICPC 沈阳区域赛队伍证书的横向 A4 原稿排版。页首为奖章与英文标题，左侧为 ICPC 标识。正文优先使用英文校名、队员、教练和赛事名，奖项居中。默认使用原稿的三处签名。需要印核验码时可点「＋ 二维码」再保存模板。
+
+   **中文赛事模板**沿用同一横向版式。获奖证书和参赛证明分别使用中文标题，正文优先取中文校名、姓名和赛事名，团队名单按行排列，教练姓名旁标出「教练」。颁发单位取自「出证依据」，日期可填 `2026-11-26`，打印为「2026年11月26日」。在画布或字段列表选中标题、正文或落款后，可直接修改内容，再点「保存模板」。
+
+   在「赛事左侧标识」可选「ICPC 原标」或「留白」，也可点「选择学校校徽」按校名查找，或点「上传赛事标识」使用自己的 PNG、JPEG 图片（最大 6 MB）。新图按原比例放入左侧位置。切换到原标或留白后，仍可从下拉框选回上一次使用的图片。标识立即保存，同场比赛的中文获奖证书和中文参赛证明共用，页首两个校徽位可另外设置。[查看原标、校徽和留白的三页样张](examples/certificate-event-zh.pdf)
+
+   **设置文字颜色。** 在画布上选中一段文字，点「文字颜色」里的标准色，或输入六位 RGB 色值。纯黑为 `#000000`，纯白为 `#FFFFFF`。中文赛事模板默认使用纯黑文字。要把某个奖项固定为指定颜色，选好颜色后点「保存模板」，该字段会自动关闭「按金银铜奖着色」。
+
+   **替换签名。** 在当前模板的签名区选择左、中、右任意一处，点「编辑签名」。上传手写签名的 PNG 或 JPEG（最大 6 MB），填写下方两行文字，例如姓名和职务，在「署名颜色」选好文字颜色，再点「生成并使用」。系统自动裁掉白边，将笔迹、签名线和文字合成一张透明 PNG。已有签名可以沿用笔迹，修改署名或颜色后重新点「生成并使用」。每一处均可单独下载、留白或恢复原样。中英文赛事模板各保存三处签名，同一语言的获奖证书和参赛证明共用签名。[查看原稿签名与三处替换签名的两页样张](examples/certificate-event.pdf)
+
 4. **设置学校校徽。** 在「模板 → 学校校徽」的左侧或右侧点「选学校」，输入中文或英文校名并确认。也可点「上传图片」，选择每张不超过 6 MB 的 PNG 或 JPEG。校徽按原比例显示，透明 PNG 可透出纸色或自定义底图。两个位置可分别替换或移除，也可全部留空。校徽操作立即保存，对本场的获奖证书和参赛证明同时生效。
 5. **添加装饰图片。** 在所选模板点「添加装饰图」，可多选 PNG 或 JPEG，每张最大 6 MB。拖动图片可移动，拖右下角可等比缩放。选中图片后也可输入毫米数精确设置左边距、上边距和宽度，或点「移除装饰图」。图片彼此重叠时，可在右侧列表选中指定图片。装饰图显示在正文和二维码下方，透明 PNG 保留透明区域。上传、移动、缩放和移除会自动保存到当前模板，切换预设仍可使用这些图片。
 6. **核对样张并发放。** 用「样张 PDF」核对所选方向、图片和长姓名在实际打印用阅读器中的效果。PDF 中文采用阅读器提供的宋体或黑体。比赛已结束、已解除封榜或未设封榜且已无待评测提交时，点击「出证」核对新增、更正和撤销数量。管理员可下载合并 PDF 或按学校分目录的 ZIP。获发证书的账号可在比赛详情点「我的证书」领取。

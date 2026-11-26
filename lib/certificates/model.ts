@@ -8,9 +8,11 @@
  * the results: unofficial teams receive what their awards allow them (最快解题奖, 顽强拼搏奖…), never a medal.
  */
 import { createHash, randomBytes } from 'node:crypto';
+import { BLACK, isInkColor } from '../../resolver/public/js/certificate-colors.js';
 import { awardEnglish } from '../../resolver/public/js/certificate-frame.js';
 import { designLabels, styledTemplate, type CertificateDesign } from '../../resolver/public/js/certificate-designs.js';
 import { englishSchoolName, pinyinName } from '../../resolver/public/js/certificate-names.js';
+import { eventPaper, eventText, isEventDesign } from '../../resolver/public/js/certificate-event.js';
 import type { ResultBoard } from '../results';
 
 export type CertificateKind = 'team' | 'member' | 'coach' | 'participation';
@@ -60,6 +62,7 @@ export interface CertificateTemplate {
     font: 'serif' | 'sans';
     /** Older saved layouts use the original double rule. */
     frame?: CertificateDesign | 'classic';
+    textColorVersion?: 1;
     /** Asset id of the background image; without one a border is drawn. */
     background: string | null;
     fields: TemplateField[];
@@ -98,47 +101,72 @@ export function competitionTemplate(kind: 'award' | 'participation', orientation
     const award = kind === 'award';
     const w = landscape ? 297 : 210;
     const mid = w / 2;
-    const ink = '#164779';
     const gold = '#a05605';
-    const muted = '#315b71';
     const field = (id: string, text: string, x: number, y: number, size: number, width: number, other: Partial<TemplateField> = {}): TemplateField =>
-        ({ id, text, x, y, size, width, type: 'text', align: 'center', color: ink, kinds: [], ...other });
+        ({ id, text, x, y, size, width, type: 'text', align: 'center', color: BLACK, kinds: [], ...other });
     const left = (id: string, text: string, y: number, size: number, options: Partial<TemplateField> = {}) =>
         field(id, text, 28, y, size, landscape ? 133 : 154, { align: 'left', ...options });
     const team: CertificateKind[] = ['team'];
     const honor = landscape ? 219 : mid;
     const footer = landscape ? 181 : 264;
-    const base: CertificateTemplate = { orientation, font: 'serif', frame: 'engraved', background: null, fields: [
+    const base: CertificateTemplate = { orientation, font: 'serif', frame: 'engraved', textColorVersion: 1, background: null, fields: [
         field('title', award ? '获奖证书' : '参赛证明', mid, landscape ? 29 : 33, landscape ? 38 : 32, landscape ? 145 : 94, { color: '#114d94' }),
         field('title-en', award ? 'Certificate of Achievement' : 'Certificate of Participation', mid, landscape ? 43 : 47, 15, landscape ? 145 : 98, { color: gold }),
-        left('recipient-label', award ? '颁予  /  AWARDED TO' : '参赛者  /  PARTICIPANT', landscape ? 69 : 78, 10, { color: muted }),
+        left('recipient-label', award ? '颁予  /  AWARDED TO' : '参赛者  /  PARTICIPANT', landscape ? 69 : 78, 10),
         left('name', '{name}', landscape ? 83 : 93, 28),
-        left('name-en', '{nameEn}', landscape ? 94 : 105, 14, { color: muted }),
+        left('name-en', '{nameEn}', landscape ? 94 : 105, 14),
         left('school', '{school}', landscape ? 104 : 119, 16),
-        left('school-en', '{schoolEn}', landscape ? 111 : 127, 11, { color: muted }),
+        left('school-en', '{schoolEn}', landscape ? 111 : 127, 11),
         ...(award ? [
             left('members', '队员　{members}', landscape ? 119 : 137, 13, { kinds: team }),
-            left('members-en', '{membersEn}', landscape ? 125 : 144, 10, { kinds: team, color: muted }),
+            left('members-en', '{membersEn}', landscape ? 125 : 144, 10, { kinds: team }),
             left('coach', '教练　{coach}', landscape ? 131 : 151, 12, { kinds: team }),
-            left('coach-en', '{coachEn}', landscape ? 137 : 158, 10, { kinds: team, color: muted }),
+            left('coach-en', '{coachEn}', landscape ? 137 : 158, 10, { kinds: team }),
             left('team', '所属队伍　{team}', landscape ? 123 : 142, 12, { kinds: ['member', 'coach'] }),
         ] : []),
-        field('distinction-label', award ? '奖项  /  DISTINCTION' : '参赛队伍  /  TEAM', honor, landscape ? 77 : 169, 10, landscape ? 82 : 156, { color: muted }),
+        field('distinction-label', award ? '奖项  /  DISTINCTION' : '参赛队伍  /  TEAM', honor, landscape ? 77 : 169, 10, landscape ? 82 : 156),
         field(award ? 'award' : 'team', award ? '{award}' : '{team}', honor, landscape ? 99 : 189, award ? 38 : 27, landscape ? 84 : 154, { color: gold, medalColor: award }),
         field('distinction-en', award ? '{awardEn}' : '{teamEn}', honor, landscape ? 119 : 210, 16, landscape ? 85 : 156, { color: gold, medalColor: award }),
         field('contest', '{contest}', mid, landscape ? 149 : 221, 17, w - 56),
-        field('contest-en', '{contestEn}', mid, landscape ? 158 : 232, 11, w - 56, { color: muted }),
+        field('contest-en', '{contestEn}', mid, landscape ? 158 : 232, 11, w - 56),
         field('qr', '', 37, footer + 2, 21, 21, { type: 'qr' }),
-        field('serial-label', '证书编号  /  CERTIFICATE NO.', 52, footer - 2, 8, 68, { align: 'left', color: muted }),
+        field('serial-label', '证书编号  /  CERTIFICATE NO.', 52, footer - 2, 8, 68, { align: 'left' }),
         field('number', '{number}', 52, footer + 5, 12, 64, { align: 'left' }),
         field('issuer', '{issuer}', w - 27, footer - 1, 14, landscape ? 111 : 73, { align: 'right' }),
-        field('date', '{date}', w - 27, footer + 8, 11, landscape ? 111 : 73, { align: 'right', color: muted }),
+        field('date', '{date}', w - 27, footer + 8, 11, landscape ? 111 : 73, { align: 'right' }),
     ] };
     return design === 'engraved' ? base : styledTemplate(base, design, kind);
 }
 
 export function defaultTemplates(): CertificateConfig['templates'] {
     return { award: competitionTemplate('award', 'landscape'), participation: competitionTemplate('participation', 'portrait') };
+}
+
+// Match the former defaults by both preset and field; an organizer's custom shades are exact RGB values.
+const rosterFields = ['name', 'name-en', 'school', 'school-en', 'members', 'members-en', 'coach', 'coach-en', 'team'];
+const footerFields = ['serial-label', 'number', 'issuer', 'date'];
+const engravedBody = ['name', 'school', 'members', 'coach', 'team', 'contest', 'number', 'issuer'];
+const engravedSecondary = ['recipient-label', 'name-en', 'school-en', 'members-en', 'coach-en', 'distinction-label', 'contest-en', 'serial-label', 'date'];
+const oldTextInks: Partial<Record<CertificateDesign, Record<string, string[]>>> = {
+    'event-zh': { '#183e65': ['title-zh', 'award'] },
+    engraved: { '#164779': engravedBody, '#233e53': [...engravedBody, 'title'], '#315b71': engravedSecondary, '#4b6268': engravedSecondary },
+    icpc: { '#173c61': [...rosterFields, ...footerFields, 'contest'] },
+    ccpc: { '#412a2e': [...rosterFields, ...footerFields, 'recipient-label', 'contest', 'contest-en'] },
+    gplt: { '#1c3445': rosterFields, '#075f9e': footerFields },
+    lanqiao: { '#23384b': [...rosterFields, ...footerFields] },
+};
+export function restoreTextColors(template: CertificateTemplate, kind: 'award' | 'participation'): CertificateTemplate {
+    if (template.textColorVersion === 1) return template;
+    const legacy = template.frame && template.frame !== 'classic' ? oldTextInks[template.frame] : undefined;
+    const fields = template.fields.map((field) => {
+        if (field.type !== 'text') return field;
+        if (!isInkColor(field.color)) return { ...field, color: BLACK };
+        const rgb = field.color.toLowerCase();
+        const oldAddedField = !template.frame || template.frame === 'classic' || /^f(?:-|\d)/.test(field.id);
+        const match = legacy?.[rgb]?.includes(field.id) && !(field.id === 'team' && kind === 'participation');
+        return (rgb === '#2b2118' && oldAddedField) || match ? { ...field, color: BLACK } : field;
+    });
+    return { ...template, fields, textColorVersion: 1 };
 }
 
 export function defaultConfig(contest: string): CertificateConfig {
@@ -148,7 +176,8 @@ export function defaultConfig(contest: string): CertificateConfig {
     };
 }
 
-export const pageSize = (template: CertificateTemplate) => (template.orientation === 'portrait' ? { width: 210, height: 297 } : { width: 297, height: 210 });
+export const pageSize = (template: CertificateTemplate) => isEventDesign(template.frame) ? eventPaper
+    : template.orientation === 'portrait' ? { width: 210, height: 297 } : { width: 297, height: 210 };
 
 function object(value: unknown, label: string): Record<string, unknown> {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label}格式无效`);
@@ -159,16 +188,18 @@ const text = (value: unknown, label: string, max: number) => {
     if (typeof value !== 'string' || value.length > max) throw new Error(`${label}最多 ${max} 个字符`);
     return value.trim();
 };
-const number = (value: unknown, label: string, min: number, max: number) => {
+const number = (value: unknown, label: string, min: number, max: number, precision = 10) => {
     if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) throw new Error(`${label}应在 ${min} 至 ${max} 之间`);
-    return Math.round(value * 10) / 10;
+    return Math.round(value * precision) / precision;
 };
 
 export function normalizeTemplate(value: unknown, fallback: CertificateTemplate): CertificateTemplate {
     if (value === undefined) return fallback;
     const input = object(value, '证书模板');
-    const orientation = input.orientation === 'portrait' ? 'portrait' : 'landscape';
-    const { width, height } = pageSize({ orientation } as CertificateTemplate);
+    const frame = typeof input.frame === 'string' && Object.hasOwn(designLabels, input.frame) ? input.frame as CertificateDesign : 'classic';
+    const orientation = !isEventDesign(frame) && input.orientation === 'portrait' ? 'portrait' : 'landscape';
+    const { width, height } = pageSize({ orientation, frame } as CertificateTemplate);
+    const precision = isEventDesign(frame) ? 1e6 : 10;
     if (!Array.isArray(input.fields) || input.fields.length > 40) throw new Error('证书模板最多 40 个字段');
     const ids = new Set<string>();
     const fields = input.fields.map((raw, index): TemplateField => {
@@ -176,19 +207,18 @@ export function normalizeTemplate(value: unknown, fallback: CertificateTemplate)
         const id = typeof item.id === 'string' && /^[a-z0-9][a-z0-9_-]{0,31}$/.test(item.id) && !ids.has(item.id) ? item.id : `f${index + 1}`;
         ids.add(id);
         const kinds = Array.isArray(item.kinds) ? certificateKinds.filter((kind) => (item.kinds as unknown[]).includes(kind)) : [];
-        const color = typeof item.color === 'string' && /^#[0-9a-f]{6}$/i.test(item.color) ? item.color.toLowerCase() : '#2b2118';
+        const color = isInkColor(item.color) ? item.color.toLowerCase() : BLACK;
         return {
             id, type: item.type === 'qr' ? 'qr' : 'text', text: text(item.text, '字段内容', 200),
-            x: number(item.x, '字段横向位置', 0, width), y: number(item.y, '字段纵向位置', 0, height),
-            size: number(item.size, item.type === 'qr' ? '二维码边长' : '字号', 4, item.type === 'qr' ? 80 : 120),
+            x: number(item.x, '字段横向位置', 0, width, precision), y: number(item.y, '字段纵向位置', 0, height, precision),
+            size: number(item.size, item.type === 'qr' ? '二维码边长' : '字号', 4, item.type === 'qr' ? 80 : 120, precision),
             align: item.align === 'left' || item.align === 'right' ? item.align : 'center',
             width: number(item.width ?? 0, '最大宽度', 0, width), color, kinds, ...(item.medalColor === true ? { medalColor: true } : {}),
         };
     });
     const background = input.background === null || input.background === undefined ? null
         : typeof input.background === 'string' && /^[a-f0-9]{24}$/.test(input.background) ? input.background : null;
-    const frame = typeof input.frame === 'string' && Object.hasOwn(designLabels, input.frame) ? input.frame as CertificateDesign : 'classic';
-    return { orientation, font: input.font === 'sans' ? 'sans' : 'serif', frame, background, fields };
+    return { orientation, font: frame === 'event' || input.font === 'sans' ? 'sans' : 'serif', frame, textColorVersion: 1, background, fields };
 }
 
 function people(value: unknown, label: string): Partial<Person>[] | undefined {
@@ -344,7 +374,8 @@ export function missingFields(template: CertificateTemplate, entry: Pick<Certifi
     const missing = new Set<Placeholder>();
     for (const item of template.fields) {
         if (item.type !== 'text' || (item.kinds.length && !item.kinds.includes(entry.kind))) continue;
-        for (const [, name] of item.text.matchAll(FIELD)) {
+        for (const [token, name] of item.text.matchAll(FIELD)) {
+            if (isEventDesign(template.frame) && eventText(token, entry.values, entry.kind, awardEnglish(entry.values.award), template.frame)) continue;
             if (Object.hasOwn(placeholders, name) && name !== 'number' && name !== 'awardEn' && !entry.values[name as Placeholder]) missing.add(name as Placeholder);
         }
     }

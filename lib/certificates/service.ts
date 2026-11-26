@@ -11,11 +11,13 @@ import { snapshotOption } from '../results-page';
 import { ResultsStore, type SnapshotScope } from '../results-store';
 import {
     certificateCode, certificateEntries, certificateSheet, competitionTemplate, defaultConfig, fingerprint, freezeEnglish, kindNames, missingFields, normalizeConfig, normalizeOverride,
-    overridesFromCsv, placeholders, planIssue, safeName, sheetOf, sheetRows, templateFor, type CertificateConfig, type CertificateKind, type Placeholder,
+    overridesFromCsv, placeholders, planIssue, restoreTextColors, safeName, sheetOf, sheetRows, templateFor, type CertificateConfig, type CertificateKind, type Placeholder,
 } from './model';
 import { buildPdf, parseImage, type PdfImage } from './pdf';
 import { certificatePage } from './render';
 import type { DecorationPlacement } from '../../resolver/public/js/certificate-frame.js';
+import { eventSignatures, isEventDesign, type EventDesign } from '../../resolver/public/js/certificate-event.js';
+import { isInkColor } from '../../resolver/public/js/certificate-colors.js';
 
 interface ConfigDoc extends CertificateConfig { _id: string; domainId: string; contestId: string; updatedAt: Date; updatedBy: number }
 export type IssuedStatus = 'valid' | 'corrected' | 'revoked' | 'pending';
@@ -42,9 +44,12 @@ export interface IssuedDoc {
     changedAt?: Date;
 }
 type TemplateKind = 'award' | 'participation';
+type EmblemMode = 'icpc' | 'custom' | 'none';
 interface AssetDoc {
     _id: string; domainId: string; contestId: string; data: Buffer; type: string; createdAt: Date; slot?: 0 | 1; label?: string;
     decoration?: TemplateKind; placement?: DecorationPlacement; revision?: number;
+    signatureSlot?: number; signatureDesign?: 'event-zh'; signatureInk?: Buffer; signer?: string; role?: string; captionColor?: string | null; hidden?: boolean;
+    emblemMode?: EmblemMode;
 }
 declare module 'hydrooj' {
     interface Collections {
@@ -105,7 +110,10 @@ export function certificateService(db: Context['db'], dependencies: {
         const fallback = defaultConfig(request.title);
         if (!doc) return fallback;
         const { _id, domainId: _domain, contestId: _contest, updatedAt: _at, updatedBy: _by, ...saved } = doc;
-        return { ...fallback, ...saved, kinds: { ...fallback.kinds, ...saved.kinds }, templates: { ...fallback.templates, ...saved.templates }, sheet: saved.sheet || {} };
+        const templates = { ...fallback.templates, ...saved.templates };
+        return { ...fallback, ...saved, kinds: { ...fallback.kinds, ...saved.kinds }, templates: {
+            award: restoreTextColors(templates.award, 'award'), participation: restoreTextColors(templates.participation, 'participation'),
+        }, sheet: saved.sheet || {} };
     }
     async function writeConfig(request: CertificateRequest, config: CertificateConfig) {
         await configs.updateOne({ _id: configId(request.scope) },
@@ -124,7 +132,7 @@ export function certificateService(db: Context['db'], dependencies: {
     async function background(scope: SnapshotScope, id: string | null, cache: Map<string, PdfImage | null>) {
         if (!id) return null;
         if (!cache.has(id)) {
-            const doc = await assets.findOne({ _id: id, ...scope, slot: { $exists: false }, decoration: { $exists: false } });
+            const doc = await assets.findOne({ _id: id, ...scope, slot: { $exists: false }, decoration: { $exists: false }, signatureSlot: { $exists: false }, emblemMode: { $exists: false } });
             cache.set(id, doc ? parseImage(bytes(doc.data)) : null);
         }
         return cache.get(id)!;
@@ -143,6 +151,82 @@ export function certificateService(db: Context['db'], dependencies: {
         return { data: raw, type: parsed.filter === 'DCTDecode' ? 'image/jpeg' : 'image/png', aspect: parsed.width / parsed.height };
     }
     const decorationInfo = (doc: AssetDoc) => ({ id: doc._id, template: doc.decoration!, label: doc.label || '装饰图片', revision: doc.revision!, ...doc.placement! });
+    const emblemFilter = (scope: SnapshotScope) => ({ ...scope, _id: createHash('sha256')
+        .update(JSON.stringify(['certificate-emblem', scope.domainId, scope.contestId])).digest('hex').slice(0, 24) });
+    const emblemInfo = (doc: AssetDoc | null) => ({ mode: doc?.emblemMode ?? 'icpc', id: doc?.label ? doc._id : null,
+        label: doc?.label || '', revision: doc?.revision ?? 0 });
+    async function editEmblem(scope: SnapshotScope, input: Record<string, unknown>) {
+        const mode = input.mode;
+        if (mode !== 'icpc' && mode !== 'custom' && mode !== 'none') throw new CertificateError('左侧标识类型无效');
+        const filter = emblemFilter(scope);
+        const old = await assets.findOne(filter, { projection: { data: 0 } });
+        const revision = input.revision ?? 0;
+        const conflict = () => new CertificateError('左侧标识已被修改，请刷新后重试', 409);
+        if (revision !== (old?.revision ?? 0)) throw conflict();
+        if (input.data !== undefined && mode !== 'custom') throw new CertificateError('请选择自定义标识再上传图片');
+        const image = input.data === undefined ? null : uploadedImage(input.data);
+        if (mode === 'custom' && !image && !old?.label) throw new CertificateError('请先选择学校校徽或上传标识');
+        if (!image && mode === (old?.emblemMode ?? 'icpc')) return emblemInfo(old);
+        const changes = { emblemMode: mode as EmblemMode, revision: (old?.revision ?? 0) + 1, createdAt: new Date(),
+            ...(image ? { data: image.data, type: image.type, label: String(input.label || '自定义标识').trim().slice(0, 100) || '自定义标识' } : {}) };
+        if (old) {
+            if (!(await assets.updateOne({ ...filter, revision: old.revision }, { $set: changes })).matchedCount) throw conflict();
+            return emblemInfo({ ...old, ...changes });
+        }
+        const doc = { ...filter, data: Buffer.alloc(0), type: 'image/png', ...changes };
+        try { await assets.insertOne(doc); } catch (error) {
+            if ((error as { code?: number }).code === 11000) throw conflict();
+            throw error;
+        }
+        return emblemInfo(doc);
+    }
+    const signatureInfo = (doc: AssetDoc) => ({ id: doc._id, slot: doc.signatureSlot!, design: doc.signatureDesign ?? 'event' as const,
+        name: doc.signer || '', role: doc.role || '', captionColor: doc.captionColor ?? null, hidden: !!doc.hidden, revision: doc.revision! });
+    async function editSignature(scope: SnapshotScope, input: Record<string, unknown>) {
+        const slot = input.slot;
+        if (typeof slot !== 'number' || !Number.isInteger(slot) || !eventSignatures[slot]) throw new CertificateError('请选择左、中、右三个签名位之一');
+        const revision = input.revision ?? 0;
+        if (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0) throw new CertificateError('签名版本无效');
+        const design = input.design ?? 'event';
+        if (!isEventDesign(design)) throw new CertificateError('请选择赛事模板');
+        const key = ['certificate-signature', scope.domainId, scope.contestId, slot];
+        if (design === 'event-zh') key.push(design);
+        const id = createHash('sha256').update(JSON.stringify(key)).digest('hex').slice(0, 24);
+        const filter = { _id: id, ...scope, signatureSlot: slot, ...(design === 'event-zh' ? { signatureDesign: design } : {}) };
+        const conflict = () => new CertificateError('这个签名已被修改，请刷新后重试', 409);
+        if (input.action === 'reset') {
+            if (!revision || !(await assets.deleteOne({ ...filter, revision })).deletedCount) {
+                if (await assets.findOne(filter, { projection: { _id: 1 } })) throw conflict();
+            }
+            return { slot };
+        }
+        if (input.action !== 'save' && input.action !== 'clear') throw new CertificateError('签名操作无效');
+        const hidden = input.action === 'clear';
+        if (!hidden && input.captionColor !== undefined && !isInkColor(input.captionColor)) throw new CertificateError('署名颜色应为六位十六进制 RGB 色值');
+        const caption = (value: unknown) => {
+            if (typeof value !== 'string' || value.length > 120 || /[\r\n]/.test(value)) throw new CertificateError('每行署名最多 120 个字符');
+            return value.trim();
+        };
+        const png = (value: unknown) => {
+            const image = uploadedImage(value);
+            if (image.type !== 'image/png') throw new CertificateError('请使用生成的 PNG 签名图片');
+            return image.data;
+        };
+        const data = hidden ? Buffer.alloc(0) : png(input.data);
+        const signatureInk = hidden ? Buffer.alloc(0) : png(input.ink);
+        const changes = { data, type: 'image/png', signatureInk, hidden, signer: hidden ? '' : caption(input.name), role: hidden ? '' : caption(input.role),
+            captionColor: !hidden && isInkColor(input.captionColor) ? input.captionColor.toLowerCase() : null,
+            revision: Math.max(Date.now(), revision + 1), createdAt: new Date() };
+        if (revision) {
+            if (!(await assets.updateOne({ ...filter, revision }, { $set: changes })).matchedCount) throw conflict();
+        } else {
+            try { await assets.insertOne({ ...filter, ...changes }); } catch (error) {
+                if ((error as { code?: number }).code === 11000) throw conflict();
+                throw error;
+            }
+        }
+        return signatureInfo({ ...filter, ...changes });
+    }
     async function editDecoration(scope: SnapshotScope, input: Record<string, unknown>) {
         if (input.template !== 'award' && input.template !== 'participation') throw new CertificateError('请选择证书模板');
         if (typeof input.id !== 'string' || !/^[a-f0-9]{24}$/.test(input.id)) throw new CertificateError('装饰图片编号无效');
@@ -177,15 +261,26 @@ export function certificateService(db: Context['db'], dependencies: {
     async function pages(request: CertificateRequest, config: CertificateConfig, docs: Pick<IssuedDoc, '_id' | 'kind' | 'values'>[]) {
         const cache = new Map<string, PdfImage | null>();
         const kinds = [...new Set(docs.map((doc): TemplateKind => doc.kind === 'participation' ? 'participation' : 'award'))];
-        const [logoDocs, artwork] = await Promise.all([assets.find(logoFilter(request.scope)).toArray(),
-            assets.find({ ...request.scope, decoration: { $in: kinds } }).sort({ createdAt: 1, _id: 1 }).toArray()]);
+        const designs = kinds.map((kind) => config.templates[kind].frame);
+        const [logoDocs, artwork, signatureDocs, emblemDoc] = await Promise.all([assets.find(logoFilter(request.scope)).toArray(),
+            assets.find({ ...request.scope, decoration: { $in: kinds } }).sort({ createdAt: 1, _id: 1 }).toArray(),
+            designs.some(isEventDesign)
+                ? assets.find({ ...request.scope, signatureSlot: { $exists: true } }, { projection: { signatureInk: 0 } }).toArray() : [],
+            designs.includes('event-zh') ? assets.findOne(emblemFilter(request.scope)) : null]);
+        const signatures: Record<EventDesign, Map<number, PdfImage | null>> = { event: new Map(), 'event-zh': new Map() };
+        for (const doc of signatureDocs) {
+            const design = doc.signatureDesign ?? 'event';
+            if (designs.includes(design)) signatures[design].set(doc.signatureSlot!, doc.hidden ? null : parseImage(bytes(doc.data), true));
+        }
+        const emblem = emblemDoc?.emblemMode === 'custom' ? parseImage(bytes(emblemDoc.data), true) : emblemDoc?.emblemMode ?? 'icpc';
         const logos = logoDocs.map((doc) => ({ slot: doc.slot!, image: parseImage(bytes(doc.data), true) }));
         const decorations = artwork.map((doc) => ({ template: doc.decoration, ...doc.placement!, image: parseImage(bytes(doc.data), true) }));
         const result = [];
         for (const doc of docs) {
             const template = templateFor(config, doc.kind);
             result.push(certificatePage(template, doc.kind, doc.values, verifyUrl(request.site, request.scope.domainId, doc._id),
-                await background(request.scope, template.background, cache), logos, decorations.filter((d) => d.template === (doc.kind === 'participation' ? 'participation' : 'award'))));
+                await background(request.scope, template.background, cache), logos, decorations.filter((d) => d.template === (doc.kind === 'participation' ? 'participation' : 'award')),
+                isEventDesign(template.frame) ? signatures[template.frame] : undefined, emblem));
         }
         return result;
     }
@@ -211,10 +306,12 @@ export function certificateService(db: Context['db'], dependencies: {
     async function data(request: CertificateRequest) {
         const { scope } = request;
         await finishPending(scope);
-        const [config, snapshots, docs, showIdentity, logoDocs, artwork] = await Promise.all([
+        const [config, snapshots, docs, showIdentity, logoDocs, artwork, signatureDocs, emblemDoc] = await Promise.all([
             readConfig(request), store.list(scope), issued.find(scope).sort({ issuedAt: 1 }).toArray(), dependencies.showIdentity(scope),
             assets.find(logoFilter(scope), { projection: { data: 0 } }).sort({ slot: 1 }).toArray(),
             assets.find({ ...scope, decoration: { $exists: true } }, { projection: { data: 0 } }).sort({ createdAt: 1, _id: 1 }).toArray(),
+            assets.find({ ...scope, signatureSlot: { $exists: true } }, { projection: { data: 0, signatureInk: 0 } }).sort({ signatureSlot: 1 }).toArray(),
+            assets.findOne(emblemFilter(scope), { projection: { data: 0 } }),
         ]);
         let preview: unknown = null;
         let error = '';
@@ -252,6 +349,8 @@ export function certificateService(db: Context['db'], dependencies: {
         return {
             config: settings, error, preview, showIdentity, recommended,
             decorations: artwork.map(decorationInfo),
+            signatures: signatureDocs.map(signatureInfo),
+            eventEmblem: emblemInfo(emblemDoc),
             logos: logoDocs.map((doc) => ({ id: doc._id, slot: doc.slot!, label: doc.label || '学校校徽', revision: doc.createdAt.getTime() })),
             snapshots: snapshots.map((snapshot) => ({ ...snapshotOption(snapshot), final: snapshot.final })),
             issued: docs.map((doc) => ({
@@ -320,6 +419,8 @@ export function certificateService(db: Context['db'], dependencies: {
     async function operate(request: CertificateRequest, operation: string, payload: Record<string, unknown>) {
         if (operation === 'issue') return issue(request);
         if (operation === 'decoration') return editDecoration(request.scope, payload);
+        if (operation === 'signature') return editSignature(request.scope, payload);
+        if (operation === 'emblem') return editEmblem(request.scope, payload);
         const config = await readConfig(request);
         if (operation === 'config') {
             const next = normalizeConfig(payload, config);
@@ -377,7 +478,7 @@ export function certificateService(db: Context['db'], dependencies: {
             config.templates = { ...config.templates, [which]: { ...config.templates[which], background: id } };
             await writeConfig(request, config);
             const other = which === 'award' ? config.templates.participation.background : config.templates.award.background;
-            if (previous && previous !== other) await assets.deleteOne({ _id: previous, ...request.scope, slot: { $exists: false }, decoration: { $exists: false } });
+            if (previous && previous !== other) await assets.deleteOne({ _id: previous, ...request.scope, slot: { $exists: false }, decoration: { $exists: false }, signatureSlot: { $exists: false }, emblemMode: { $exists: false } });
             return { id };
         }
         if (operation === 'snapshot') {
@@ -431,10 +532,10 @@ export function certificateService(db: Context['db'], dependencies: {
         throw new CertificateError('未知的下载格式', 404);
     }
 
-    async function asset(scope: SnapshotScope, id: string) {
+    async function asset(scope: SnapshotScope, id: string, part = '') {
         const doc = /^[a-f0-9]{24}$/.test(id) ? await assets.findOne({ _id: id, ...scope }) : null;
-        if (!doc) throw new CertificateError('证书图片不存在', 404);
-        return { data: bytes(doc.data), type: doc.type };
+        if (!doc || doc.hidden || (doc.emblemMode && !doc.label) || (part && (part !== 'ink' || !doc.signatureInk))) throw new CertificateError('证书图片不存在', 404);
+        return { data: bytes(part ? doc.signatureInk : doc.data), type: doc.type };
     }
 
     /** A participant's certificates, or one of them as a PDF. */

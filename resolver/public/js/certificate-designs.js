@@ -1,7 +1,10 @@
-// Each preset uses the organizer's actual fields, including their bilingual names and verification number.
-export const designLabels = { engraved: '典雅雕花', icpc: 'ICPC 风格', ccpc: 'CCPC 风格', gplt: '天梯赛风格', lanqiao: '蓝桥杯风格' };
+import { eventTemplate, isEventDesign } from './certificate-event.js';
+import { BLACK, WHITE } from './certificate-colors.js';
+
+export const designLabels = { engraved: '典雅雕花', event: '赛事模板', 'event-zh': '中文赛事模板', icpc: 'ICPC 风格', ccpc: 'CCPC 风格', gplt: '天梯赛风格', lanqiao: '蓝桥杯风格' };
 
 export function styledTemplate(base, design, kind) {
+    if (isEventDesign(design)) return eventTemplate(kind, design);
     const template = structuredClone(base);
     if (design === 'engraved' || !Object.hasOwn(designLabels, design)) return template;
     template.frame = design;
@@ -31,7 +34,7 @@ export function styledTemplate(base, design, kind) {
     };
     if (design === 'icpc') {
         template.font = 'sans';
-        const ink = '#173c61'; const soft = '#245b8b';
+        const ink = BLACK; const soft = '#245b8b';
         const center = wide ? 190 : mid;
         put('title-en', mid, wide ? 26 : 32, wide ? 34 : 22, w - (wide ? 138 : 106), 'center', '#0752ac');
         put('title', mid, wide ? 40 : 46, 17, w - 90, 'center', soft);
@@ -45,7 +48,7 @@ export function styledTemplate(base, design, kind) {
         put('contest-en', mid, wide ? 160 : 234, 13, w - 52, 'center', soft);
         footer(ink);
     } else if (design === 'ccpc') {
-        const ink = '#412a2e'; const red = '#b82139';
+        const ink = BLACK; const red = '#b82139';
         put('title', mid, wide ? 28 : 34, 32, w - 116, 'center', red);
         put('title-en', mid, wide ? 41 : 48, 20, w - 110, 'center', red);
         put('recipient-label', 30, wide ? 58 : 69, 11, w - 60, 'left', ink);
@@ -61,17 +64,17 @@ export function styledTemplate(base, design, kind) {
         const blue = '#075f9e'; const gold = '#a45b02';
         put('title', mid, wide ? 27 : 31, 33, w - 115, 'center', gold);
         put('title-en', mid, wide ? 39 : 46, 13, w - 104, 'center', blue);
-        put('contest', mid, wide ? 55 : 67, 17, w - 63, 'center', '#ffffff');
+        put('contest', mid, wide ? 55 : 67, 17, w - 63, 'center', WHITE);
         put('contest-en', mid, wide ? 67 : 81, 10, w - 55, 'center', blue);
         fields.delete('recipient-label');
         roster(mid, wide ? [83, 93, 104, 112, 121, 127, 135, 141] : [101, 114, 130, 141, 154, 163, 175, 184],
-            [25, 14, 16, 12, 13, 10, 12, 10], w - 65, 'center', '#1c3445');
+            [25, 14, 16, 12, 13, 10, 12, 10], w - 65, 'center', BLACK);
         fields.delete('distinction-label');
         distinction(mid, wide ? 155 : 210, 32, w - 70, '#095b8f');
         put('distinction-en', mid, wide ? 166 : 226, 14, w - 70, 'center', blue);
-        footer(blue);
+        footer(BLACK);
     } else {
-        const ink = '#23384b'; const blue = '#075f9c'; const red = '#c52739';
+        const ink = BLACK; const blue = '#075f9c'; const red = '#c52739';
         put('contest', mid, wide ? 27 : 34, 22, w - (wide ? 136 : 108), 'center', blue);
         put('contest-en', mid, wide ? 39 : 47, 11, w - 105, 'center', blue);
         put('title', mid, wide ? 58 : 69, 35, w - 62, 'center', red);
@@ -95,6 +98,7 @@ export function styledTemplate(base, design, kind) {
 
 // The same original vector artwork is painted by the SVG editor and the PDF writer.
 export function presetFrame(w, h, design) {
+    if (isEventDesign(design)) return [];
     const wide = w > h; const mid = w / 2;
     const paths = [];
     const stroke = (color, weight, commands) => paths.push({ stroke: color, weight, commands });

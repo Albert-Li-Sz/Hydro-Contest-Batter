@@ -87,3 +87,11 @@ display spelling in registry.tsv at ad02e4750755c82ddb27eca105761f11cb60df98.
 https://github.com/hydro-dev/avatar-registry
 
 Reaction video templates use the ICPC Live mark from icpc/reactions-generator (5d42acb), Hydro branding from hydro-dev/Hydro, and the decorative skyline from the supplied contest layout. The bundled demonstrations use synthetic video sources.
+
+赛事模板 uses the static letterhead, signature blocks and embedded Arial font
+subsets from the organizer-provided 2026 ICPC Asia Shenyang Regional Contest
+team certificate. ICPC and ICPC Foundation artwork, original signatures and
+typefaces belong to their respective owners. The recipient roster is generated
+from the contest's own certificate data.
+The Chinese event preset uses separate crops of the medal and optional ICPC
+mark, and Chinese captions for the three signature blocks from the same source.

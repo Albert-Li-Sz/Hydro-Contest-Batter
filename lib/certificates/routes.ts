@@ -114,6 +114,12 @@ export function applyCertificates(ctx: Context, dependencies: {
         async postLogo(_domainId: string, input?: string) { await this.operate('logo', input); }
 
         @param('payload', Types.String, true)
+        async postEmblem(_domainId: string, input?: string) { await this.operate('emblem', input); }
+
+        @param('payload', Types.String, true)
+        async postSignature(_domainId: string, input?: string) { await this.operate('signature', input); }
+
+        @param('payload', Types.String, true)
         async postDecoration(_domainId: string, input?: string) { await this.operate('decoration', input); }
 
         @param('payload', Types.String, true)
@@ -143,8 +149,9 @@ export function applyCertificates(ctx: Context, dependencies: {
 
     class CertificateAssetHandler extends CertificateBase {
         @param('id', Types.String)
-        async get(_domainId: string, id: string) {
-            const image = await run(() => service.asset(scopeFor(this.tdoc), id));
+        @param('part', Types.String, true)
+        async get(_domainId: string, id: string, part = '') {
+            const image = await run(() => service.asset(scopeFor(this.tdoc), id, part));
             this.binary(image.data);
             this.response.type = image.type;
             this.response.addHeader('X-Content-Type-Options', 'nosniff');
