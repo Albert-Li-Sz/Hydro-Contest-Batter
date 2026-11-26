@@ -100,9 +100,14 @@ export function adminChannel(name: string) {
     return name === 'contestInfo' ? 'admin:contestInfo' : name;
 }
 
+const shellCache = new Map<string, string>();
 /** A built ICPC Live page, told where its backend lives. */
 export function shell(app: 'overlay' | 'admin', runtime: LiveUrls, title: string, serverNow = Date.now()) {
-    const html = fs.readFileSync(path.join(liveAssets, app, 'index.html'), 'utf8');
+    let html = shellCache.get(app);
+    if (!html) {
+        html = fs.readFileSync(path.join(liveAssets, app, 'index.html'), 'utf8');
+        shellCache.set(app, html);
+    }
     const injected = '<meta name="referrer" content="no-referrer"><meta name="robots" content="noindex">'
         // WebSocket addresses follow the page's own scheme and host (also behind an HTTPS proxy).
         + `<script>window.__HYDRO_LIVE__=${toScriptJson(runtime)};(function(c){var o=(location.protocol==='https:'?'wss://':'ws://')+location.host;`
@@ -118,11 +123,12 @@ export function shell(app: 'overlay' | 'admin', runtime: LiveUrls, title: string
         + '(function(){var N=window.WebSocket;function W(u,p){var s=p===undefined?new N(u):new N(u,p);'
         + "s.addEventListener('message',function(e){if(e.data==='ping'){e.stopImmediatePropagation();try{s.send('pong');}catch(x){}}});return s;}"
         + 'W.prototype=N.prototype;W.CONNECTING=0;W.OPEN=1;W.CLOSING=2;W.CLOSED=3;window.WebSocket=W;})();</script>';
+    const escapedTitle = `<title>${title.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`)}</title>`;
     return html
         .replace(/<link rel="manifest"[^>]*>/g, '')
         .replace(/<link\s+rel="icon"[^>]*>/gs, '')
-        .replace(/<title>[^<]*<\/title>/, `<title>${title.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`)}</title>`)
-        .replace('<head>', `<head>${injected}`);
+        .replace(/<title>[^<]*<\/title>/, () => escapedTitle)
+        .replace('<head>', () => `<head>${injected}`);
 }
 
 export interface LiveStore {
@@ -169,7 +175,9 @@ const teamViewGroups: Record<string, readonly TeamViewPosition[]> = {
 
 /** /api/admin/* — `null` when nothing matches (404). */
 export async function adminApi(hub: LiveHub, store: LiveStore, request: ApiRequest): Promise<ApiResponse | null> {
-    const parts = request.subpath.split('/').filter(Boolean).map(decodeURIComponent);
+    let parts: string[];
+    try { parts = request.subpath.split('/').filter(Boolean).map(decodeURIComponent); }
+    catch { return json({ status: 'error', message: 'Invalid URL encoding' }, 400); }
     const method = request.method.toUpperCase();
     const { body } = request;
     const action = async (run: () => unknown): Promise<ApiResponse> => {
@@ -418,7 +426,9 @@ export async function adminApi(hub: LiveHub, store: LiveStore, request: ApiReque
 
 /** Websocket and HTTP flow endpoints of /api/overlay. */
 export function overlayChannel(subpath: string) {
-    const parts = subpath.split('/').filter(Boolean).map(decodeURIComponent);
+    let parts: string[];
+    try { parts = subpath.split('/').filter(Boolean).map(decodeURIComponent); }
+    catch { return null; }
     if (parts.length === 1 && ['mainScreen', 'contestInfo', 'runs', 'queue', 'statistics', 'ticker', 'overview'].includes(parts[0])) return parts[0];
     if (parts.length === 2 && parts[0] === 'scoreboard' && ['normal', 'optimistic', 'pessimistic'].includes(parts[1])) return `scoreboard:${parts[1]}`;
     if (parts.length === 2 && parts[0] === 'teamRuns' && /^[\w-]{1,64}$/.test(parts[1])) return `teamRuns:${parts[1]}`;

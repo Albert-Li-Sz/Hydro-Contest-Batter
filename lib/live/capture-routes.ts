@@ -50,7 +50,23 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
     const configs = raw('xcpcio.live.capture.config');
     const on = ctx.on.bind(ctx) as unknown as (name: string, listener: (...args: any[]) => unknown) => () => void;
     on('app/started', async () => {
-        await devices.createIndex({ contestKey: 1, seat: 1 }).catch(() => null);
+        await Promise.all([
+            devices.createIndex({ contestKey: 1, seat: 1 }),
+            devices.createIndex({ contestKey: 1, teamUid: 1 }),
+        ]).catch(() => null);
+    });
+    on('contest/del', (domainId: string, tid: ObjectId) => {
+        const contestKey = `${domainId}/${tid}`;
+        mediaCache.delete(contestKey);
+        promptCache.delete(contestKey);
+        void Promise.all([devices.deleteMany({ contestKey }), configs.deleteOne({ _id: contestKey })]).catch(() => null);
+    });
+    on('domain/delete', (domainId: string) => {
+        const prefix = `${domainId}/`;
+        for (const k of mediaCache.keys()) if (k.startsWith(prefix)) mediaCache.delete(k);
+        for (const k of promptCache.keys()) if (k.startsWith(prefix)) promptCache.delete(k);
+        const pattern = new RegExp(`^${domainId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`);
+        void Promise.all([devices.deleteMany({ contestKey: pattern }), configs.deleteMany({ _id: pattern })]).catch(() => null);
     });
     const broadcast = (envelope: CaptureEnvelope) => (ctx as unknown as { broadcast: (event: string, ...args: unknown[]) => void })
         .broadcast('xcpcio/live-capture', envelope);
@@ -134,7 +150,7 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
         const { previous, settings } = await updateSettings(contestKey, input, uid);
         const now = Date.now();
         if (!settings.enabled) {
-            for (const doc of await devices.find({ contestKey }).project({ _id: 1 }).toArray()) relay.kickDevice(doc._id, '本场比赛已停用画面采集，重新启用后会自动连接', 4005);
+            for (const doc of await devices.find({ contestKey }).project({ _id: 1 }).toArray()) relay.kickDevice(doc._id, '本场比赛已停用画面采集，重新启用后会自动连接', 4005, contestKey);
         } else {
             // Capture pages already open take the new quality settings at once.
             if (JSON.stringify(captureProfile(settings)) !== JSON.stringify(captureProfile(previous))) relay.configureDevices(contestKey, { ...captureProfile(settings), stunPort });
@@ -142,6 +158,7 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
             if (streamAllowed('screen', 'overlay', previous, tdoc, now) && !streamAllowed('screen', 'overlay', settings, tdoc, now)) relay.endOverlayScreens(contestKey);
         }
         mediaCache.delete(contestKey);
+        promptCache.delete(contestKey);
         return settings;
     }
 
@@ -217,7 +234,9 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
         async postCreate(_domainId: string, input: string) {
             const item = normalizeDeviceInput(this.payload(input));
             const contestKey = helpers.key(this.tdoc);
-            if (item.seat && await devices.findOne({ contestKey, seat: item.seat })) throw new CaptureError(`座位 ${item.seat} 已有采集设备`);
+            if (item.seat && await devices.findOne({ contestKey, seat: new RegExp(`^${item.seat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') })) {
+                throw new CaptureError(`座位 ${item.seat} 已有采集设备`);
+            }
             this.response.body = { created: await this.create([item]) };
         }
 
@@ -236,11 +255,12 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
             const body = this.payload(input);
             const doc = await device(helpers.key(this.tdoc), body.id);
             const item = normalizeDeviceInput(body.device, doc);
-            if (item.seat && item.seat !== doc.seat && await devices.findOne({ contestKey: doc.contestKey, seat: item.seat, _id: { $ne: doc._id } })) {
+            if (item.seat && item.seat.toLowerCase() !== doc.seat.toLowerCase()
+                && await devices.findOne({ contestKey: doc.contestKey, seat: new RegExp(`^${item.seat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'), _id: { $ne: doc._id } })) {
                 throw new CaptureError(`座位 ${item.seat} 已有采集设备`);
             }
             await devices.updateOne({ _id: doc._id }, { $set: item });
-            if (doc.teamUid !== item.teamUid || doc.seat !== item.seat) relay.kickDevice(doc._id, '机位绑定已更改，重新连接后生效', 4005);
+            if (doc.teamUid !== item.teamUid || doc.seat !== item.seat) relay.kickDevice(doc._id, '机位绑定已更改，重新连接后生效', 4005, doc.contestKey);
             mediaCache.delete(doc.contestKey);
             this.response.body = { ok: true };
         }
@@ -250,8 +270,10 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
             const ids = (this.payload(input).ids || []).map(String).filter((id: string) => /^[a-f\d]{24}$/i.test(id));
             if (!ids.length) throw new CaptureError('请选择采集设备');
             const contestKey = helpers.key(this.tdoc);
-            const result = await devices.deleteMany({ contestKey, _id: { $in: ids } });
-            for (const id of ids) relay.kickDevice(id, '采集设备已被删除');
+            const owned = await devices.find({ contestKey, _id: { $in: ids } }).project({ _id: 1 }).toArray() as { _id: string }[];
+            const ownedIds = owned.map((item) => item._id);
+            const result = ownedIds.length ? await devices.deleteMany({ contestKey, _id: { $in: ownedIds } }) : { deletedCount: 0 };
+            for (const id of ownedIds) relay.kickDevice(id, '采集设备已被删除', 4004, contestKey);
             mediaCache.delete(contestKey);
             this.response.body = { deleted: result.deletedCount };
         }
@@ -262,7 +284,7 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
             const doc = await device(helpers.key(this.tdoc), this.payload(input).id);
             const secret = newCaptureSecret();
             await devices.updateOne({ _id: doc._id }, { $set: { secret, secretAt: new Date() } });
-            relay.kickDevice(doc._id, '采集链接已重新生成');
+            relay.kickDevice(doc._id, '采集链接已重新生成', 4004, doc.contestKey);
             this.response.body = { url: captureUrl(this.tdoc, { _id: doc._id, secret }) };
         }
 
@@ -333,6 +355,9 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
         recordingTeam: number | null = null;
         closingReason = 'offline';
         lastMetrics = 0;
+        lastStatusWrite = 0;
+        lastSignalWrite = 0;
+        closed = false;
         endpoint?: Parameters<CaptureRelay['attachDevice']>[1];
         recheck?: NodeJS.Timeout;
         statusTimer?: NodeJS.Timeout;
@@ -345,11 +370,13 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
         async start(tdoc: Tdoc, doc: CaptureDevice) {
             const contestKey = helpers.key(tdoc);
             const settings = await loadSettings(contestKey);
+            if (this.closed) return;
             // The capture page shows the reason (the socket closes with it) and tries again later.
             if (!settings.enabled) throw new CaptureError('本场比赛尚未启用画面采集，启用后会自动连接', 403);
             this.deviceId = doc._id;
             this.recordingContest = tdoc;
             this.recordingTeam = await recording.teamFor(tdoc, doc);
+            if (this.closed) return;
             const connection = `${relay.instance}/${randomUUID()}`;
             this.endpoint = {
                 contestKey, connection,
@@ -359,9 +386,11 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
             relay.attachDevice(doc._id, this.endpoint);
             const agent = String(this.request.headers['user-agent'] || '').slice(0, 200);
             await devices.updateOne({ _id: doc._id }, { $set: { connection, lastSeen: new Date(), recordingTeam: this.recordingTeam, streams: [], client: { agent, ip: String(this.request.ip || ''), screen: '' } } });
+            if (this.closed) { await this.cleanup(); return; }
             relay.devicesChanged(contestKey);
             this.send({ type: 'config', name: doc.name, seat: doc.seat, ...captureProfile(settings), stunPort, serverTime: Date.now(), beginAt: +tdoc.beginAt, endAt: +tdoc.endAt, deviceId: doc._id, teamUid: this.recordingTeam });
             if (this.recordingTeam !== null) await recording.resume(tdoc, doc, this.recordingTeam, settings);
+            if (this.closed) { await this.cleanup(); return; }
             // An incoming socket event also works while the browser throttles background timers.
             this.statusTimer = setInterval(() => this.send({ type: 'requestStatus' }), 15_000);
             this.statusTimer.unref?.();
@@ -392,20 +421,26 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
                 return;
             }
             if (message?.type === 'status') {
+                const now = Date.now();
                 const streams = (Array.isArray(message.streams) ? message.streams : []).filter((stream): stream is CaptureStream => captureStreams.includes(stream as CaptureStream));
                 const screen = typeof message.screen === 'string' ? message.screen.slice(0, 40) : '';
                 const current = [...new Set(streams)].sort();
                 const extended = typeof message.extended === 'boolean' ? message.extended : undefined;
+                const key = `${current.join(',')}|${screen}`;
+                const changed = key !== this.reported;
+                // Throttle unchanged periodic heartbeats to at most once every 2s per device.
+                if (!changed && extended === undefined && now - this.lastStatusWrite < 2000) return;
+                this.lastStatusWrite = now;
                 const before = extended === undefined ? null : await devices.findOne({ _id: this.deviceId }, { projection: { 'client.extended': 1, name: 1 } }) as { client?: { extended?: boolean }; name?: string } | null;
                 await devices.updateOne({ _id: this.deviceId, connection: this.endpoint?.connection },
                     { $set: { lastSeen: new Date(), streams: current, 'client.screen': screen, ...extended === undefined ? {} : { 'client.extended': extended } } });
-                if (extended !== undefined && before && before.client?.extended !== extended && this.endpoint) {
+                if (extended !== undefined && before && before.client?.extended !== extended && this.endpoint && now - this.lastSignalWrite >= 2000) {
+                    this.lastSignalWrite = now;
                     await signals.insertOne({ _id: String(new ObjectId()), contestKey: this.endpoint.contestKey, teamUid: this.recordingTeam, device: this.deviceId,
-                        deviceName: before.name || '', kind: 'extended', value: extended, at: Date.now() });
+                        deviceName: before.name || '', kind: 'extended', value: extended, at: now });
                 }
                 // Reports come every few seconds; staff hear only about a change.
-                const key = `${current.join(',')}|${screen}`;
-                if (key !== this.reported && this.endpoint) relay.devicesChanged(this.endpoint.contestKey);
+                if (changed && this.endpoint) relay.devicesChanged(this.endpoint.contestKey);
                 this.reported = key;
                 return;
             }
@@ -413,13 +448,16 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
         }
 
         async cleanup() {
-            if (this.recheck) clearInterval(this.recheck);
-            if (this.statusTimer) clearInterval(this.statusTimer);
+            this.closed = true;
+            if (this.recheck) { clearInterval(this.recheck); this.recheck = undefined; }
+            if (this.statusTimer) { clearInterval(this.statusTimer); this.statusTimer = undefined; }
             if (!this.endpoint) return;
-            relay.detachDevice(this.deviceId, this.endpoint);
-            const left = await devices.updateOne({ _id: this.deviceId, connection: this.endpoint.connection }, { $set: { connection: null, streams: [], offlineReason: this.closingReason, offlineAt: Date.now(), offlineTeam: this.recordingTeam } }).catch(() => null);
+            const ep = this.endpoint;
+            this.endpoint = undefined;
+            relay.detachDevice(this.deviceId, ep);
+            const left = await devices.updateOne({ _id: this.deviceId, connection: ep.connection }, { $set: { connection: null, streams: [], offlineReason: this.closingReason, offlineAt: Date.now(), offlineTeam: this.recordingTeam } }).catch(() => null);
             if (left?.matchedCount && this.recordingContest && this.recordingTeam !== null) await recording.disconnect(this.recordingContest, this.deviceId, this.recordingTeam, this.closingReason);
-            relay.devicesChanged(this.endpoint.contestKey);
+            relay.devicesChanged(ep.contestKey);
         }
     }
 
@@ -457,9 +495,13 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
     /** The device for a contestant's team: one covering its seat or bound to it, else one made for it. */
     async function participantDevice(tdoc: Tdoc, teamUid: number): Promise<CaptureDevice> {
         const contestKey = helpers.key(tdoc);
-        const seat = (await teamSeats(tdoc)).get(teamUid) || '';
         const bound = await devices.findOne({ contestKey, teamUid }) as CaptureDevice | null;
         if (bound) return bound;
+        // Load only this single team's seat instead of scanning every participant in the contest.
+        const entry = await ContestModel.getStatus(tdoc.domainId, tdoc.docId, teamUid) as TeamEntry | null;
+        const memberUids = entry && isTeamEntry(entry) ? entry.members : [];
+        const seatMap = await loadSeats(ctx.db, [teamUid, ...memberUids]);
+        const seat = seatOf(seatMap, teamUid, memberUids);
         if (seat) {
             const bySeat = await devices.findOne({ contestKey, teamUid: null, seat: new RegExp(`^${seat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }) as CaptureDevice | null;
             if (bySeat) return bySeat;
@@ -545,8 +587,13 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
         try {
             const contestKey = helpers.key(tdoc);
             const now = Date.now();
+            for (const [k, entry] of promptCache) if (entry.expires <= now) promptCache.delete(k);
             let cached = promptCache.get(contestKey);
-            if (!cached || cached.expires <= now) promptCache.set(contestKey, cached = { expires: now + 5000, value: loadSettings(contestKey) });
+            if (!cached || cached.expires <= now) {
+                const value = loadSettings(contestKey);
+                value.catch(() => { if (promptCache.get(contestKey)?.value === value) promptCache.delete(contestKey); });
+                promptCache.set(contestKey, cached = { expires: now + 5000, value });
+            }
             const settings = await cached.value;
             if (!settings.enabled || !settings.prompt) return;
             if (await participation(tdoc, handler.user._id) === null) return;
@@ -565,9 +612,11 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
     abstract class ViewerConnectionHandler extends ConnectionHandler {
         viewerId = '';
         recheck?: NodeJS.Timeout;
+        closed = false;
 
         async start(tdoc: Tdoc, viewer: 'staff' | 'overlay', token = '') {
             const settings = await loadSettings(helpers.key(tdoc));
+            if (this.closed) return;
             this.viewerId = relay.attachViewer({
                 contestKey: helpers.key(tdoc), allow: allowFor(tdoc, viewer), kind: viewer, token,
                 send: (message) => this.send(message),
@@ -581,8 +630,9 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
         }
 
         async cleanup() {
-            if (this.recheck) clearInterval(this.recheck);
-            if (this.viewerId) relay.detachViewer(this.viewerId);
+            this.closed = true;
+            if (this.recheck) { clearInterval(this.recheck); this.recheck = undefined; }
+            if (this.viewerId) { relay.detachViewer(this.viewerId); this.viewerId = ''; }
         }
     }
 
@@ -594,7 +644,9 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
         @param('token', Types.String)
         async prepare(_domainId: string, tid: ObjectId, token: string) {
             const { tdoc } = await helpers.checkToken(this.domain._id, tid, token);
+            if (this.closed) return;
             await this.start(tdoc, 'overlay', token);
+            if (this.closed) { await this.cleanup(); return; }
             const contestKey = helpers.key(tdoc);
             this.recheck = setInterval(async () => {
                 const current = await helpers.currentToken(contestKey).catch(() => null);
@@ -609,7 +661,9 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
         @param('tid', Types.ObjectId)
         async prepare(_domainId: string, tid: ObjectId) {
             const tdoc = await helpers.checkAdmin(this, tid);
+            if (this.closed) return;
             await this.start(tdoc, 'staff');
+            if (this.closed) { await this.cleanup(); return; }
             const { domainId, docId } = tdoc;
             const uid = this.user._id;
             this.recheck = setInterval(async () => {
@@ -668,10 +722,11 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
         },
         /** New links for every device of the contest; capture pages open with the old ones stop. */
         async revokeDevices(tdoc: Tdoc) {
-            const list: { _id: string }[] = await devices.find({ contestKey: helpers.key(tdoc) }).project({ _id: 1 }).toArray();
+            const contestKey = helpers.key(tdoc);
+            const list: { _id: string }[] = await devices.find({ contestKey }).project({ _id: 1 }).toArray();
             for (const doc of list) {
                 await devices.updateOne({ _id: doc._id }, { $set: { secret: newCaptureSecret(), secretAt: new Date() } });
-                relay.kickDevice(doc._id, '采集链接已作废');
+                relay.kickDevice(doc._id, '采集链接已作废', 4004, contestKey);
             }
             return list.length;
         },

@@ -12,7 +12,11 @@ import { isPending } from './judgement-types';
 import { buildObjects, type CcsSource, contestTimes, type View } from './model';
 import type { SourceDependencies, HydroApi, createCcsSourceLoader } from './source';
 import { type CcsStore, contestKey, type EventDoc, type WebhookDoc } from './store';
+import { assertSafeWebhookTarget, type HostLookup } from './ssrf';
 import { type Endpoint } from './types';
+
+const WEBHOOK_CONCURRENCY = 4;
+const FEED_TEAM_IDLE_MS = 5 * 60_000;
 
 const LEASE = 'ccs-writer';
 const LEASE_MS = 15_000;
@@ -25,7 +29,7 @@ const VIEWS: View[] = ['full', 'public'];
 export { diffNotifications, eventLine, notificationsOf } from './events';
 import { diffNotifications, notificationsOf, eventLine } from './events';
 
-export function applyWriter(host: HydroApi, ctx: Context, store: CcsStore, dependencies: SourceDependencies, loadCcsSource: ReturnType<typeof createCcsSourceLoader>['loadCcsSource']) {
+export function applyWriter(host: HydroApi, ctx: Context, store: CcsStore, dependencies: SourceDependencies, loadCcsSource: ReturnType<typeof createCcsSourceLoader>['loadCcsSource'], webhookLookup?: HostLookup, onCommit?: (key: string) => void) {
     const { ContestModel, ObjectId, UserModel, PERM, PRIV } = host;
     const owner = randomUUID();
     const settings = ctx.db.collection('xcpcio.enhanced.settings' as never) as unknown as {
@@ -104,6 +108,7 @@ export function applyWriter(host: HydroApi, ctx: Context, store: CcsStore, depen
         if (quiet.get(key)?.signature !== signature) quiet.set(key, { signature, since: source.now });
         const autoReady = boardSettings.ccsAutoFinalize && source.now - quiet.get(key)!.since >= 30_000;
         if (!source.meta.endOfUpdatesAt && canFinalize && (source.meta.finalizeRequested || autoReady)) {
+            if (!await store.ownsLease(LEASE, owner)) { leader = false; hashes.clear(); built.clear(); return; }
             source.meta.finalizedAt = Math.max(source.now, source.contest.endAt + 1);
             source.meta.endOfUpdatesAt = Math.max(source.meta.finalizedAt, times.thawedAt ?? 0) + 1;
             // All timestamps must describe changes that already happened.
@@ -112,23 +117,35 @@ export function applyWriter(host: HydroApi, ctx: Context, store: CcsStore, depen
             await store.freezeSource(key, source);
         }
         const stored = await store.contest(domainId, tid);
-        const views: View[] = [...VIEWS, ...(stored.feedTeams || []).map(team => `team-${team}` as View)];
+        const now = Date.now();
+        const feedTeams = stored.feedTeams || [];
+        const seen = stored.feedTeamSeen || {};
+        const staleTeams = feedTeams.filter((team) => typeof seen[team] === 'number' && now - seen[team] > FEED_TEAM_IDLE_MS);
+        if (staleTeams.length && await store.ownsLease(LEASE, owner)) {
+            await store.pruneTeamViews(key, staleTeams);
+            for (const team of staleTeams) hashes.delete(`${key}:team-${team}`);
+        }
+        const activeTeams = staleTeams.length ? feedTeams.filter((team) => !staleTeams.includes(team)) : feedTeams;
+        const views: View[] = [...VIEWS, ...activeTeams.map(team => `team-${team}` as View)];
         const fingerprint = JSON.stringify([signature, source.public, source.publicVisible, source.meta, contestTimes(source), views]);
         const active = source.now >= source.contest.beginAt - 10 * 60_000 && !source.meta.endOfUpdatesAt;
         if (built.get(key) === fingerprint) {
             nextTick.set(key, Date.now() + (active ? FAST_MS : SLOW_MS));
             return;
         }
+        let committedAny = false;
         for (const view of views) {
             const previous = await viewHashes(key, view);
             const { changed, removed, notifications } = diffNotifications(notificationsOf(buildObjects(source, view)), previous);
             if (!notifications.length) continue;
             if (!await store.ownsLease(LEASE, owner)) { leader = false; hashes.clear(); built.clear(); return; }
-            await store.append(key, view, notifications);
-            await store.updateHashes(key, view, Object.fromEntries(changed.map((item) => [item.key, item.hash])), removed);
+            const changedMap = new Map(changed.map((item) => [item.key, item.hash]));
+            await store.append(key, view, notifications, changedMap);
             for (const item of changed) previous.set(item.key, item.hash);
             for (const name of removed) previous.delete(name);
+            committedAny = true;
         }
+        if (committedAny) onCommit?.(key);
         built.set(key, fingerprint);
         const state = buildObjects(source, 'full').state;
         if (state.end_of_updates) finished.add(key);
@@ -149,7 +166,10 @@ export function applyWriter(host: HydroApi, ctx: Context, store: CcsStore, depen
     async function deliverWebhooks() {
         const hooks = await store.activeWebhooks();
         const adminProps = endpointProperties({ role: 'admin', identity: true, teamContest: false });
-        for (const hook of hooks) await deliver(hook, adminProps);
+        // Bounded concurrency prevents a single unresponsive endpoint from stalling all other hooks.
+        for (let i = 0; i < hooks.length; i += WEBHOOK_CONCURRENCY) {
+            await Promise.all(hooks.slice(i, i + WEBHOOK_CONCURRENCY).map((hook) => deliver(hook, adminProps)));
+        }
     }
 
     async function deliver(hook: WebhookDoc, props: Partial<Record<Endpoint, string[]>>) {
@@ -179,6 +199,7 @@ export function applyWriter(host: HydroApi, ctx: Context, store: CcsStore, depen
             let error: string | null = null;
             if (notifications.length) {
                 try {
+                    await assertSafeWebhookTarget(hook.url, webhookLookup);
                     const response = await fetch(hook.url, {
                         method: 'POST', redirect: 'error',
                         headers: { 'Content-Type': 'application/json', 'Webhook-Token': hook.token },

@@ -4,7 +4,7 @@
  */
 import { FirstSolveBulletin, medalCutoff, problemFocus } from './broadcast';
 import { awardsFor } from '../settings';
-import { buildContestInfo, buildRuns, firstSolveRuns, type LiveSource } from './model';
+import { buildContestInfo, buildRuns, firstSolveRuns, hiddenFromOf, type LiveSource } from './model';
 import { liveOverview, overviewKey, type LiveOverview } from './overview';
 import {
     computeScoreboard, runsByTeam, scoreboardDiff, standingsAtRuns, statistics, timeline, type ScoreboardState,
@@ -118,7 +118,7 @@ export class LiveHub {
     private versions = new Map<string, number>();
     private remote = new Map<string, { revision: number; value: LiveStatePatch[string] }>();
     private applyingRemote: Promise<void> | null = null;
-    private lastActivity = 0;
+    private lastActivity = Date.now();
     private refreshing: Promise<void> | null = null;
     private disposed = false;
     readonly ready: Promise<void>;
@@ -676,7 +676,7 @@ export class LiveHub {
         }
         const normal = this.scoreboards.get('normal')!;
         const field = group === 'all' ? info.teams : info.teams.filter((team) => team.groups.includes(group));
-        this.firstSolves.update(info, firstSolveRuns(runs, field, rules), this.controllers.firstSolve.shown, newScope, Date.now());
+        this.firstSolves.update(info, firstSolveRuns(runs, field, rules, hiddenFromOf(info)), this.controllers.firstSolve.shown, newScope, Date.now());
         if (!infoChanged) for (const id of ['firstSolve', 'medalCutoff', 'problemFocus']) this.controllers[id].sync();
         if (removed.length) this.analytics.remove(removed.map((run) => run.id));
         const history = standingsAtRuns(info, runs, new Set(changed.map((run) => run.id)));

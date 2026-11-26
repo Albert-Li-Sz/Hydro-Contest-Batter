@@ -108,18 +108,28 @@ function medalChain(settings: BoardSettings, pool: MedalPool, group?: string): A
 
 const logoKey = (name: string) => name.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
 
+export function hiddenFromOf(info: Pick<ContestInfo, 'customFields'>): number | undefined {
+    const raw = info.customFields?.hydroHiddenFrom;
+    if (raw === undefined) return undefined;
+    const parsed = Number(raw);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
 export function buildContestInfo(source: LiveSource, { fallbackOrganizationLogo = true } = {}): ContestInfo {
     const { data, contest, identity } = source;
     const durationMs = contest.endAt.getTime() - contest.beginAt.getTime();
+    const hiddenFrom = typeof data.hiddenFrom === 'number' && Number.isInteger(data.hiddenFrom) && data.hiddenFrom >= 0
+        ? data.hiddenFrom : undefined;
     const problems: ProblemInfo[] = Array.from({ length: data.contest.problem_quantity }, (_, index) => {
-        const letter = (data.contest.problem_id as string[])[index];
-        const color = (data.contest.balloon_color as { background_color: string }[] | undefined)?.[index]?.background_color;
+        const anonymous = hiddenFrom !== undefined && index >= hiddenFrom;
+        const letter = anonymous ? '' : (data.contest.problem_id as string[])[index];
+        const color = anonymous ? undefined : (data.contest.balloon_color as { background_color: string }[] | undefined)?.[index]?.background_color;
         const normalized = color ? problemColor(color) : UNSET_PROBLEM_COLOR;
         return {
             id: String(index), letter, name: letter, ordinal: index, minScore: null, maxScore: null,
             color: normalized === UNSET_PROBLEM_COLOR ? null : normalized,
             scoreMergeMode: null, isHidden: false, weight: 1,
-            ftsMode: { type: awardsFor(source.settings, 'all').firstSolve ? 'auto' : 'hidden' },
+            ftsMode: { type: !anonymous && awardsFor(source.settings, 'all').firstSolve ? 'auto' : 'hidden' },
         };
     });
     const membership = new Map<string, string[]>();
@@ -178,7 +188,10 @@ export function buildContestInfo(source: LiveSource, { fallbackOrganizationLogo 
         showTeamsWithoutSubmissions: true,
         problemColorPolicy: { type: 'always' },
         // The ranking rule's name: CCPC times by the minute as ICPC, but equal teams share the rank.
-        customFields: { hydroTieBreak: source.settings.tieBreak ?? 'hydro' }, persons: [], accounts: [], mainScoreboardGroupId: null,
+        customFields: {
+            hydroTieBreak: source.settings.tieBreak ?? 'hydro',
+            ...(hiddenFrom !== undefined ? { hydroHiddenFrom: String(hiddenFrom) } : {}),
+        }, persons: [], accounts: [], mainScoreboardGroupId: null,
     };
 }
 
@@ -211,18 +224,19 @@ export function buildRuns(source: LiveSource, info: ContestInfo): RunInfo[] {
         else if (run.result.type === 'ICPC' && run.result.verdict.isAccepted) solved.add(key);
     }
     const rules = awardsFor(source.settings, 'all');
-    for (const list of firstSolveRuns(runs, info.teams, rules).values()) {
+    for (const list of firstSolveRuns(runs, info.teams, rules, hiddenFromOf(info)).values()) {
         for (const run of list) if (run.result.type === 'ICPC') run.result.isFirstToSolveRun = true;
     }
     return runs;
 }
 
 /** Runs are in contest-time order. Include every eligible team tied at the first accepted time. */
-export function firstSolveRuns(runs: RunInfo[], teams: TeamInfo[], rules: { firstSolve: boolean; unofficialFirstSolve: boolean }) {
+export function firstSolveRuns(runs: RunInfo[], teams: TeamInfo[], rules: { firstSolve: boolean; unofficialFirstSolve: boolean }, hiddenFrom?: number) {
     const winners = new Map<string, RunInfo[]>();
     if (!rules.firstSolve) return winners;
     const eligible = new Set(teams.filter((team) => !team.isOutOfContest || rules.unofficialFirstSolve).map((team) => team.id));
     for (const run of runs) {
+        if (hiddenFrom !== undefined && Number(run.problemId) >= hiddenFrom) continue;
         if (!eligible.has(run.teamId) || run.result.type !== 'ICPC' || !run.result.verdict.isAccepted || run.result.isAfterFirstOk) continue;
         const list = winners.get(run.problemId);
         if (!list) winners.set(run.problemId, [run]);

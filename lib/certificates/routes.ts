@@ -16,13 +16,16 @@ import pkg from '../../package.json';
 const baseFor = (tdoc: Pick<Tdoc, 'domainId' | 'docId'>) => `/d/${encodeURIComponent(tdoc.domainId)}/contest/${tdoc.docId}`;
 const scopeFor = (tdoc: Pick<Tdoc, 'domainId' | 'docId'>): SnapshotScope => ({ domainId: tdoc.domainId, contestId: String(tdoc.docId) });
 
-/** The configured site address, or the address the request came to. */
+/** The configured site address, or the validated address the request came to. */
 export function siteUrl(headers: Record<string, string | string[] | undefined>) {
     const configured = SystemModel.get('server.url');
     if (typeof configured === 'string' && /^https?:\/\//.test(configured) && !/\/\/(localhost|127\.0\.0\.1)[:/]/.test(configured)) return configured.replace(/\/?$/, '/');
     const first = (value: string | string[] | undefined) => String(Array.isArray(value) ? value[0] : value || '').split(',')[0].trim();
-    const host = first(headers['x-forwarded-host']) || first(headers.host);
-    return host ? `${first(headers['x-forwarded-proto']) || 'http'}://${host}/` : '/';
+    const rawHost = first(headers.host) || first(headers['x-forwarded-host']);
+    const validHost = /^(?:[a-zA-Z0-9.-]+|\[[0-9a-fA-F:]+\])(?::\d{1,5})?$/.test(rawHost) ? rawHost : '';
+    const rawProto = first(headers['x-forwarded-proto']).toLowerCase();
+    const proto = rawProto === 'https' || rawProto === 'http' ? rawProto : 'http';
+    return validHost ? `${proto}://${validHost}/` : '/';
 }
 
 export function applyCertificates(ctx: Context, dependencies: {
@@ -45,6 +48,21 @@ export function applyCertificates(ctx: Context, dependencies: {
         showIdentity: async (scope) => (await dependencies.loadSettings(await contestOf(scope))).showIdentity,
     });
     ctx.on('app/started', () => service.ensureIndexes().catch((error) => console.warn('[xcpcio] 证书索引创建失败', error)));
+    ctx.on('contest/del', (domainId, tid) => {
+        const scope = { domainId, contestId: String(tid) };
+        void Promise.all([
+            ctx.db.collection('xcpcio.certificates').deleteOne({ _id: `${domainId}/${tid}` }),
+            ctx.db.collection('xcpcio.certificates.issued').deleteMany(scope),
+            ctx.db.collection('xcpcio.certificates.assets').deleteMany(scope),
+        ]).catch(() => null);
+    });
+    ctx.on('domain/delete', (domainId) => {
+        void Promise.all([
+            ctx.db.collection('xcpcio.certificates').deleteMany({ domainId }),
+            ctx.db.collection('xcpcio.certificates.issued').deleteMany({ domainId }),
+            ctx.db.collection('xcpcio.certificates.assets').deleteMany({ domainId }),
+        ]).catch(() => null);
+    });
 
     const send = (handler: Handler, file: CertificateFile) => {
         handler.binary(file.data);

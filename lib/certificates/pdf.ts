@@ -93,26 +93,36 @@ function utf16Hex(text: string) {
 }
 const num = (value: number) => (Math.round(value * 100) / 100).toString();
 
+const MAX_IMAGE_PIXELS = 16_000_000;
+
 /** A JPEG (baseline or progressive, grey or RGB) or a non-interlaced 8-bit PNG, ready to embed. */
 export function parseImage(buffer: Buffer, preserveAlpha = false): PdfImage {
-    if (buffer[0] === 0xff && buffer[1] === 0xd8) {
+    if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xd8) {
         let offset = 2;
-        while (offset + 9 < buffer.length) {
+        while (offset < buffer.length) {
             if (buffer[offset] !== 0xff) throw new Error('JPEG 图片已损坏');
-            const marker = buffer[offset + 1];
-            const length = buffer.readUInt16BE(offset + 2);
+            while (offset < buffer.length && buffer[offset] === 0xff) offset++;
+            if (offset >= buffer.length) break;
+            const marker = buffer[offset++];
+            // Standalone markers have no length payload; SOS (0xDA) starts entropy-coded scan data.
+            if (marker === 0x00 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8)) continue;
+            if (marker === 0xd9 || marker === 0xda) break;
+            if (offset + 2 > buffer.length) throw new Error('JPEG 图片已损坏');
+            const length = buffer.readUInt16BE(offset);
+            if (length < 2 || offset + length > buffer.length) throw new Error('JPEG 图片已损坏');
             if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
-                const components = buffer[offset + 9];
+                if (length < 8) throw new Error('JPEG 图片已损坏');
+                const components = buffer[offset + 7];
                 if (components !== 1 && components !== 3) throw new Error('请使用 RGB 或灰度 JPEG（不支持 CMYK）');
-                const height = buffer.readUInt16BE(offset + 5); const width = buffer.readUInt16BE(offset + 7);
-                if (!height || !width || width * height > 40_000_000) throw new Error('JPEG 图片尺寸无效');
+                const height = buffer.readUInt16BE(offset + 3); const width = buffer.readUInt16BE(offset + 5);
+                if (!height || !width || width * height > MAX_IMAGE_PIXELS) throw new Error('JPEG 图片尺寸无效');
                 return { height, width, colors: components, filter: 'DCTDecode', data: buffer };
             }
-            offset += 2 + length;
+            offset += length;
         }
         throw new Error('JPEG 图片已损坏');
     }
-    if (buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return parsePng(buffer, preserveAlpha);
+    if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return parsePng(buffer, preserveAlpha);
     throw new Error('请上传 JPEG 或 PNG 图片');
 }
 
@@ -122,19 +132,22 @@ function parsePng(buffer: Buffer, preserveAlpha: boolean): PdfImage {
     let palette: Buffer | null = null;
     let transparency: Buffer | null = null;
     const data: Buffer[] = [];
-    while (offset + 8 <= buffer.length) {
+    while (offset + 12 <= buffer.length) {
         const length = buffer.readUInt32BE(offset);
+        if (offset + 12 + length > buffer.length) throw new Error('PNG 图片已损坏');
         const name = buffer.toString('latin1', offset + 4, offset + 8);
         const body = buffer.subarray(offset + 8, offset + 8 + length);
-        if (name === 'IHDR') { width = body.readUInt32BE(0); height = body.readUInt32BE(4); depth = body[8]; type = body[9]; interlace = body[12]; }
-        else if (name === 'PLTE') palette = body;
+        if (name === 'IHDR') {
+            if (body.length < 13) throw new Error('PNG 图片已损坏');
+            width = body.readUInt32BE(0); height = body.readUInt32BE(4); depth = body[8]; type = body[9]; interlace = body[12];
+        } else if (name === 'PLTE') palette = body;
         else if (name === 'tRNS') transparency = body;
         else if (name === 'IDAT') data.push(body);
         else if (name === 'IEND') break;
         offset += 12 + length;
     }
     if (depth !== 8 || interlace !== 0 || ![0, 2, 3, 4, 6].includes(type)) throw new Error('请使用 8 位、非隔行扫描的 PNG');
-    if (!width || !height || width * height > 40_000_000) throw new Error('PNG 图片尺寸无效');
+    if (!width || !height || width * height > MAX_IMAGE_PIXELS) throw new Error('PNG 图片尺寸无效');
     const channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[type]!;
     const stride = width * channels;
     const expected = (stride + 1) * height;

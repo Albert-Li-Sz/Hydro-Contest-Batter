@@ -58,8 +58,8 @@ jobs:
         run: |
           set -euo pipefail
           cd source
-          # Keep the upstream license, adapter license and operator instructions in the image.
-          printf '\nCOPY LICENSE LICENSE-Hydro-AGPL.txt HYDRO.md /usr/share/doc/reactions-generator-hydro/\n' >> Dockerfile
+          # Keep the upstream license, adapter license, notices and operator instructions in the image.
+          printf '\nCOPY LICENSE LICENSE-Hydro-MIT.txt NOTICE HYDRO.md /usr/share/doc/reactions-generator-hydro/\n' >> Dockerfile
           docker build --pull \
             --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             --label "org.opencontainers.image.revision=$REVISION" \

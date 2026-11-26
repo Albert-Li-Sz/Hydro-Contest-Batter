@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { balloonLook, defaultBalloonSettings, firstNumbers, normalizeBalloonSettings, teamPalette } from '../lib/balloons';
 import type { BoardData } from '../lib/board';
 import { applyBoardRules, dropAfterAccept, hideProblemLabels, labelsHidden, revealThreshold } from '../lib/ccpc-board';
+import { buildContestInfo, buildRuns } from '../lib/live/model';
+import { computeScoreboard, runsByTeam, statistics } from '../lib/live/scoreboard';
+import { FirstSolveBulletin, problemFocus } from '../lib/live/broadcast';
 import { contestPhase, patchBoard, presetOf, presets } from '../lib/control';
 import { boardSealed, defaultCaptureSettings, streamAllowed } from '../lib/live/capture';
 import { filterChanges, lastChange, reviewChanges, staleSessions, type ReviewItem } from '../lib/rejudge-review';
@@ -122,6 +125,43 @@ describe('CCPC 新榜单模式', () => {
         expect(applyBoardRules(data, settings, contest, 3600_000, true).hiddenFrom).toBeUndefined();
         expect(applyBoardRules(data, settings, contest, 3600_000, false).hiddenFrom).toBe(1);
         expect(applyBoardRules(data, { ...settings, ignoreAfterAccept: false }, contest, 3600_000, true)).toBe(data);
+    });
+
+    it('supports CCPC hidden-label board mode in ICPC Live without leaking hidden problem identities or fake FTS', () => {
+        const hidden = hideProblemLabels(data, { enabled: true, revealBasis: 'count', reveal: 2 });
+        const settings = normalizeSettings({ ...defaultSettings, firstSolve: true, ccpcBoard: { enabled: true, revealBasis: 'count', reveal: 2 } });
+        const liveSource = {
+            contest: { title: 'C', beginAt: new Date(0), endAt: new Date(18000_000), lockAt: new Date(14400_000) },
+            data: hidden, settings, identity: true, logoNames: {}, now: 3600_000, boards: resolverBoards(hidden, settings, true),
+        };
+        const info = buildContestInfo(liveSource);
+        // Column 0 (A) is revealed; columns 1..3 remain visible with blank labels and hidden FTS mode.
+        expect(info.problems.map((p) => p.letter)).toEqual(['A', '', '', '']);
+        expect(info.problems.every((p) => !p.isHidden)).toBe(true);
+        expect(info.problems[1].ftsMode).toEqual({ type: 'hidden' });
+        expect(info.customFields?.hydroHiddenFrom).toBe('1');
+        const runs = buildRuns(liveSource, info);
+        // Solved count & penalty still include Team 1's anonymous slot solve (2 solved total).
+        const boardState = computeScoreboard(info, runsByTeam(runs), 'normal');
+        expect(boardState.rows.get('1')?.totalScore).toBe(2);
+        // FTS is only marked for revealed column A, never for anonymous slot 1.
+        const fts = runs.filter((r) => r.result.type === 'ICPC' && r.result.isFirstToSolveRun);
+        expect(fts.map((r) => r.problemId)).toEqual(['0']);
+        // Statistics zero out anonymous columns instead of aggregating unrelated problems across teams.
+        const stats = statistics(info, boardState, runs);
+        expect(stats.stats[0].success).toBe(2);
+        expect(stats.stats.slice(1)).toEqual([{ success: 0, wrong: 0, pending: 0 }, { success: 0, wrong: 0, pending: 0 }, { success: 0, wrong: 0, pending: 0 }]);
+        // ProblemFocus ignores hidden slots and works on revealed column A.
+        expect(problemFocus(info, runs, '1', 'all')).toBeNull();
+        expect(problemFocus(info, runs, '0', 'all')?.solved).toBe(2);
+        // FirstSolveBulletin only announces revealed columns and clears stale FTS when rejudged away.
+        const bulletin = new FirstSolveBulletin();
+        bulletin.update(info, new Map(), true, false, 3500_000);
+        const winners = new Map<string, typeof runs>([['0', [runs[0]]], ['1', [runs[2]]]]);
+        bulletin.update(info, winners, true, false, 3600_000);
+        expect(bulletin.items(3600_000).map((item) => item.problem)).toEqual(['A']);
+        bulletin.update(info, new Map(), true, false, 3601_000);
+        expect(bulletin.items(3601_000)).toEqual([]);
     });
 });
 

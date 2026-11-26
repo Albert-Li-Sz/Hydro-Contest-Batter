@@ -141,6 +141,14 @@ export class CaptureRecorder {
         this.display();
     }
 
+    destroy() {
+        clearInterval(this.timer);
+        clearInterval(this.clockTimer);
+        this.timer = null;
+        this.clockTimer = null;
+        this.reset();
+    }
+
     async message(message) {
         if (message.type === 'clock' && Number.isFinite(message.serverTime)) {
             const now = Date.now();
@@ -365,7 +373,8 @@ export class CaptureRecorder {
             const response = await postSegment(this.uploadUrl, form, blob.size, abort.signal);
             permanent = [400, 401, 403, 404, 410, 413, 415, 422].includes(response.status);
             const result = response.body;
-            if (!response.ok || !result?.id) throw new Error(result?.error?.message || '录像上传失败（' + response.status + '）');
+            const errMessage = typeof result?.error === 'string' ? result.error : result?.error?.message;
+            if (!response.ok || !result?.id) throw new Error(errMessage || '录像上传失败（' + response.status + '）');
             // Clip segments stay cached for later windows; mark them so no other request resends them.
             await db.write(job.rid ? [...await this.delivered(db, job, row), ['segments', row.id, { ...row, uploaded: true }]]
                 : [['jobs', job.id], ['segments', row.id], ['blobs', row.id]]);

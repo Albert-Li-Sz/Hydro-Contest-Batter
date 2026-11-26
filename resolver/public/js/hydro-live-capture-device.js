@@ -47,7 +47,13 @@ function setStatus(text, tone = '') {
 function announce() {
     channel?.postMessage({ type: 'alive', streams: [...state.screen ? ['screen'] : [], ...state.webcam ? ['webcam'] : []], connected: state.connected });
 }
-channel?.addEventListener('message', (event) => { if (event.data?.type === 'ping') announce(); });
+channel?.addEventListener('message', (event) => {
+    if (event.data?.type === 'ping') announce();
+    else if (event.data?.type === 'focus') {
+        window.focus();
+        channel.postMessage({ type: 'focused' });
+    }
+});
 if (channel) setInterval(announce, 2000);
 
 function render() {
@@ -163,6 +169,21 @@ function acquire(kind, request) {
     return pendingCapture.get(kind);
 }
 
+let wakeLock = null;
+function keepAwake() {
+    if (state.stopped || !state.screen || wakeLock || document.visibilityState !== 'visible') return;
+    navigator.wakeLock?.request('screen').then((lock) => {
+        wakeLock = lock;
+        lock.addEventListener('release', () => { if (wakeLock === lock) wakeLock = null; });
+    }).catch(() => {});
+}
+function releaseWakeLock() {
+    const lock = wakeLock;
+    wakeLock = null;
+    lock?.release?.().catch(() => {});
+}
+document.addEventListener?.('visibilitychange', () => { if (document.visibilityState === 'visible') keepAwake(); });
+
 // Let each permitted source start recording as soon as its picker returns.
 async function capture(fromClick = false) {
     if (!state.profile) return;
@@ -172,7 +193,7 @@ async function capture(fromClick = false) {
     render();
     reportStatus();
     setStatus(problems.join('；'), problems.length ? 'warn' : '');
-    navigator.wakeLock?.request('screen').catch(() => {});
+    keepAwake();
 }
 
 /** New quality settings for what is already being captured; the webcam is opened again when its sound is turned on or off. */
@@ -195,21 +216,36 @@ async function answer(message) {
         return;
     }
     const pc = new RTCPeerConnection({ iceServers: iceServers() });
+    let stallTimer = null;
     const session = {
         stream: message.stream, pc, incomingIce: [],
         end: (reason) => {
+            clearTimeout(stallTimer);
             if (!state.sessions.has(message.session)) return;
             state.sessions.delete(message.session);
             pc.close();
             send({ type: 'ended', session: message.session, reason });
             render();
         },
+        close: () => {
+            clearTimeout(stallTimer);
+            pc.close();
+        },
     };
     state.sessions.set(message.session, session);
     render();
+    const armStall = (reason, ms) => {
+        clearTimeout(stallTimer);
+        stallTimer = setTimeout(() => {
+            if (pc.connectionState !== 'connected') session.end(reason);
+        }, ms);
+    };
+    armStall('点对点连接超时', 20_000);
     pc.onicecandidate = (event) => send({ type: 'ice', session: message.session, candidate: event.candidate ? event.candidate.toJSON() : null });
     pc.onconnectionstatechange = () => {
-        if (pc.connectionState === 'failed' || pc.connectionState === 'closed') session.end('点对点连接失败');
+        if (pc.connectionState === 'connected') clearTimeout(stallTimer);
+        else if (pc.connectionState === 'disconnected') armStall('点对点连接中断', 15_000);
+        else if (pc.connectionState === 'failed' || pc.connectionState === 'closed') session.end('点对点连接失败');
     };
     try {
         await pc.setRemoteDescription({ type: 'offer', sdp: message.sdp });
@@ -273,18 +309,19 @@ function connect() {
             else if (peer && peer.incomingIce.length < 64) peer.incomingIce.push(message.candidate);
         } else if (message.type === 'stop') {
             const session = state.sessions.get(message.session);
-            if (session) { state.sessions.delete(message.session); session.pc.close(); render(); }
+            if (session) { state.sessions.delete(message.session); session.close(); render(); }
         }
     };
     socket.onclose = (event) => {
         state.connected = false;
-        for (const session of state.sessions.values()) session.pc.close();
+        for (const session of state.sessions.values()) session.close();
         state.sessions.clear();
         render();
         const reason = String(event.reason || '').replace(/^\w*Error:\s*/, '');
         // 4004: the link was regenerated, the device deleted or capture turned off; 4009: opened elsewhere.
         if ([4000, 4004, 4005, 4009].includes(event.code)) {
             recorder.reset();
+            releaseWakeLock();
             state.profile = null;
             for (const kind of ['screen', 'webcam']) {
                 for (const track of state[kind]?.getTracks() || []) track.stop();
@@ -294,6 +331,7 @@ function connect() {
         }
         if (event.code === 4004 || event.code === 4009) {
             state.stopped = true;
+            recorder?.destroy();
             setStatus(reason || '采集链接已失效，请向管理员获取新的链接', 'bad');
             return;
         }
@@ -327,6 +365,7 @@ if (blocked) {
     });
     window.addEventListener('pagehide', () => {
         send({ type: 'record-status', closed: true });
+        recorder?.destroy();
         channel?.postMessage({ type: 'closed' });
     });
     import('./hydro-capture-recorder.js').then(({ CaptureRecorder }) => {

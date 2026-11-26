@@ -110,7 +110,8 @@ def build(output, checkout):
                 + entry,
             )
         )
-        shutil.copy2(HERE.parent / "LICENSE", source / "LICENSE-Hydro-AGPL.txt")
+        shutil.copy2(HERE.parent / "LICENSE", source / "LICENSE-Hydro-MIT.txt")
+        shutil.copy2(HERE.parent / "NOTICE", source / "NOTICE")
         shutil.copy2(HERE / "README.md", source / "HYDRO.md")
         (source / "README.md").write_text(
             (source / "README.md").read_text()

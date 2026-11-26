@@ -1,6 +1,6 @@
 {
   "name": "hydro-scoreboard-xcpcio-plus",
-  "version": "1.26.0",
+  "version": "1.27.0",
   "description": "Hydro XCPCIO 榜单增强、Resolver 滚榜、大屏、ICPC Live 直播与 CCS Contest API 2026-01",
   "repository": {
     "type": "git",
@@ -9,7 +9,7 @@
   "homepage": "https://github.com/Albert-Li-Sz/Hydro-Contest-Better#readme",
   "bugs": "https://github.com/Albert-Li-Sz/Hydro-Contest-Better/issues",
   "main": "index.ts",
-  "license": "AGPL-3.0-or-later",
+  "license": "MIT",
   "packageManager": "pnpm@11.25.0",
   "engines": {
     "node": ">=22"

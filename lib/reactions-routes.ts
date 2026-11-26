@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { ContestModel, type Context, Handler, NotFoundError, ObjectId, param, PERM, SystemModel, type Tdoc, Types } from 'hydrooj';
+import { ContestModel, type Context, Handler, NotFoundError, ObjectId, param, PERM, PRIV, SystemModel, type Tdoc, Types } from 'hydrooj';
 import type { ContestLinks } from './links';
 import { resolverCodeBase } from './resolver-data';
 import { toScriptJson } from './settings';
@@ -44,8 +44,10 @@ export function applyReactions(ctx: Context, deps: ReactionDependencies & { link
             store.assets.createIndex({ path: 1 }),
             store.connections.createIndex({ contestKey: 1, issuedAt: -1 }),
             store.videos.createIndex({ path: 1 }, { sparse: true }),
+            store.videos.createIndex({ contestKey: 1, pid: 1 }),
+            store.videos.createIndex({ contestKey: 1, rid: 1 }),
             ctx.db.collection('xcpcio.recording.clips' as never).createIndex({ contestKey: 1, state: 1, readyAt: 1 }),
-        ]);
+        ]).catch((error) => console.warn('[xcpcio] 反应视频索引创建失败', error));
     });
     const on = ctx.on.bind(ctx) as unknown as (event: string, listener: (key: string) => void) => void;
     on('xcpcio/recording-clip', (key) => store.invalidate(key));
@@ -149,6 +151,7 @@ export function applyReactions(ctx: Context, deps: ReactionDependencies & { link
         async prepare(d: string, tid: ObjectId) {
             await super.prepare(d, tid);
             if (!this.user._id) throw new ReactionError('请先登录比赛管理账号', 403);
+            this.checkPriv(PRIV.PRIV_USER_PROFILE);
             if (!this.user.own(this.tdoc)) this.checkPerm(PERM.PERM_EDIT_CONTEST);
         }
         input() {
@@ -241,6 +244,12 @@ export function applyReactions(ctx: Context, deps: ReactionDependencies & { link
                         path: undefined,
                         bytes: 0,
                         attempts: 0,
+                        error: undefined,
+                        worker: undefined,
+                        workerOwner: undefined,
+                        leaseAt: undefined,
+                        readyAt: undefined,
+                        durationMs: undefined,
                         hidden: { at: Date.now(), by: this.user._id },
                         createdAt: Date.now(),
                         updatedAt: Date.now(),

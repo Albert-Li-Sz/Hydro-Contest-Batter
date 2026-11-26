@@ -17,10 +17,17 @@ export interface ContestDoc {
     seq: Partial<Record<View, number>>;
     committed?: Partial<Record<View, number>>;
     ended?: Partial<Record<View, boolean>>;
-    pending?: Partial<Record<View, { first: number; notifications: { type: EventType; id: string | null; data: unknown }[]; at: Date }>>;
+    pending?: Partial<Record<View, {
+        first: number;
+        notifications: { type: EventType; id: string | null; data: unknown }[];
+        changed?: Record<string, string>;
+        removed?: string[];
+        at: Date;
+    }>>;
     /** Hash of every object as last notified, per view (`type/id` → hash). */
     hashes?: Partial<Record<View, Record<string, string>>>;
     feedTeams?: string[];
+    feedTeamSeen?: Record<string, number>;
     snapshotId?: string;
 }
 
@@ -82,12 +89,51 @@ export function ccsStore(ctx: Context) {
     const clarifications = collection<Clarification & { _id: string; key: string }>('xcpcio.ccs.clarifications');
     const objectHashes = collection<{ _id: string; key: string; view: View; name: string; hash: string }>('xcpcio.ccs.hashes');
 
+    async function updateHashes(key: string, view: View, changed: Record<string, string>, removed: string[]) {
+        const entries = Object.entries(changed);
+        for (let i = 0; i < entries.length; i += 500) {
+            const batch = entries.slice(i, i + 500).map(([name, hash]) => ({ updateOne: {
+                filter: { _id: `${key}:${view}:${name}` }, update: { $set: { key, view, name, hash } }, upsert: true,
+            } }));
+            if (objectHashes.bulkWrite) await objectHashes.bulkWrite(batch);
+            else for (const { updateOne: op } of batch) await objectHashes.updateOne(op.filter, op.update, { upsert: true });
+        }
+        if (removed.length) await objectHashes.deleteMany({ key, view, name: { $in: removed } });
+    }
+
+    async function recoverPending(key: string, view: View) {
+        const doc = await contests.findOne({ _id: key });
+        const pending = doc?.pending?.[view];
+        if (!pending) return;
+        const operations = pending.notifications.map((notification, i) => {
+            const seq = pending.first + i;
+            const event = { _id: `${key}:${view}:${seq}`, key, view, seq, ...notification, at: pending.at };
+            return { updateOne: { filter: { _id: event._id }, update: { $setOnInsert: event }, upsert: true } };
+        });
+        if (events.bulkWrite) await events.bulkWrite(operations);
+        else for (const { updateOne: op } of operations) await events.updateOne(op.filter, op.update, { upsert: true });
+        if (pending.changed || pending.removed?.length) {
+            await updateHashes(key, view, pending.changed || {}, pending.removed || []);
+        }
+        const ended = pending.notifications.some(event => event.type === 'state' && (event.data as any)?.end_of_updates);
+        await contests.updateOne({ _id: key, [`pending.${view}.first`]: pending.first }, {
+            $set: { [`committed.${view}`]: pending.first + pending.notifications.length - 1, ...(ended ? { [`ended.${view}`]: true } : {}) }, $unset: { [`pending.${view}`]: '' },
+        });
+    }
+
     return {
         async ensureIndexes() {
-            await events.createIndex?.({ key: 1, view: 1, seq: 1 }, { unique: true });
-            await ids.createIndex?.({ key: 1, type: 1, ref: 1 });
-            await comments.createIndex?.({ key: 1, seq: 1 });
-            await objectHashes.createIndex?.({ key: 1, view: 1 });
+            await Promise.all([
+                events.createIndex?.({ key: 1, view: 1, seq: 1 }, { unique: true }),
+                ids.createIndex?.({ key: 1, type: 1, ref: 1 }),
+                comments.createIndex?.({ key: 1, seq: 1 }),
+                objectHashes.createIndex?.({ key: 1, view: 1 }),
+                snapshots.createIndex?.({ key: 1, generation: 1, part: 1 }),
+                clarifications.createIndex?.({ key: 1 }),
+                awards.createIndex?.({ key: 1 }),
+                webhooks.createIndex?.({ active: 1 }),
+                webhooks.createIndex?.({ domainId: 1, owner: 1 }),
+            ]);
         },
 
         async contest(domainId: string, tid: string): Promise<ContestDoc> {
@@ -101,55 +147,47 @@ export function ccsStore(ctx: Context) {
             await contests.updateOne({ _id: key }, { $set }, { upsert: true });
         },
         /** Separate documents avoid MongoDB's 16 MB limit on a contest with many test-case runs. */
-        async updateHashes(key: string, view: View, changed: Record<string, string>, removed: string[]) {
-            const entries = Object.entries(changed);
-            for (let i = 0; i < entries.length; i += 500) {
-                const batch = entries.slice(i, i + 500).map(([name, hash]) => ({ updateOne: {
-                    filter: { _id: `${key}:${view}:${name}` }, update: { $set: { key, view, name, hash } }, upsert: true,
-                } }));
-                if (objectHashes.bulkWrite) await objectHashes.bulkWrite(batch);
-                else for (const { updateOne: op } of batch) await objectHashes.updateOne(op.filter, op.update, { upsert: true });
-            }
-            if (removed.length) await objectHashes.deleteMany({ key, view, name: { $in: removed } });
-        },
+        updateHashes,
+        recoverPending,
         async hashes(key: string, view: View) {
+            await recoverPending(key, view);
             return new Map((await objectHashes.find({ key, view }).toArray()).map(row => [row.name, row.hash]));
         },
 
-        /** A pending batch is committed before being exposed, and recovered idempotently after a crash. */
-        async append(key: string, view: View, notifications: { type: EventType; id: string | null; data: unknown }[]) {
-            const recover = async () => {
-                const doc = await contests.findOne({ _id: key });
-                const pending = doc?.pending?.[view];
-                if (!pending) return;
-                const operations = pending.notifications.map((notification, i) => {
-                    const seq = pending.first + i;
-                    const event = { _id: `${key}:${view}:${seq}`, key, view, seq, ...notification, at: pending.at };
-                    return { updateOne: { filter: { _id: event._id }, update: { $setOnInsert: event }, upsert: true } };
-                });
-                if (events.bulkWrite) await events.bulkWrite(operations);
-                else for (const { updateOne: op } of operations) await events.updateOne(op.filter, op.update, { upsert: true });
-                const ended = pending.notifications.some(event => event.type === 'state' && (event.data as any)?.end_of_updates);
-                await contests.updateOne({ _id: key, [`pending.${view}.first`]: pending.first }, {
-                    $set: { [`committed.${view}`]: pending.first + pending.notifications.length - 1, ...(ended ? { [`ended.${view}`]: true } : {}) }, $unset: { [`pending.${view}`]: '' },
-                });
-            };
+        /** A pending batch is committed (with its object hash delta) before being exposed, and recovered idempotently after a crash. */
+        async append(key: string, view: View, notifications: { type: EventType; id: string | null; data: unknown }[], changedHashes?: Map<string, string>) {
             await contests.updateOne({ _id: key }, { $setOnInsert: { seq: {} } }, { upsert: true });
-            await recover();
+            await recoverPending(key, view);
             for (let offset = 0; offset < notifications.length; offset += 250) {
                 const batch = notifications.slice(offset, offset + 250);
                 const doc = (await contests.findOne({ _id: key }))!;
                 if (doc.ended?.[view]) break;
                 const first = (doc.seq?.[view] ?? 0) + 1;
+                const batchChanged: Record<string, string> = {};
+                const batchRemoved: string[] = [];
+                if (changedHashes) {
+                    for (const item of batch) {
+                        const name = `${item.type}/${item.id ?? ''}`;
+                        if (item.data === null) batchRemoved.push(name);
+                        else {
+                            const hash = changedHashes.get(name);
+                            if (hash !== undefined) batchChanged[name] = hash;
+                        }
+                    }
+                }
                 const claimed = await contests.findOneAndUpdate({ _id: key,
                     [`seq.${view}`]: doc.seq?.[view] ?? { $exists: false },
                     [`pending.${view}`]: { $exists: false }, [`ended.${view}`]: { $ne: true },
                 }, { $set: {
                     [`seq.${view}`]: first + batch.length - 1,
-                    [`pending.${view}`]: { first, notifications: batch, at: new Date() },
+                    [`pending.${view}`]: {
+                        first, notifications: batch, at: new Date(),
+                        ...(Object.keys(batchChanged).length ? { changed: batchChanged } : {}),
+                        ...(batchRemoved.length ? { removed: batchRemoved } : {}),
+                    },
                 } }, { returnDocument: 'after' });
                 if (!claimed) throw new Error('CCS event append lost its writer claim; retry from the committed log');
-                await recover();
+                await recoverPending(key, view);
             }
             return (await contests.findOne({ _id: key }))?.committed?.[view] ?? 0;
         },
@@ -183,7 +221,40 @@ export function ccsStore(ctx: Context) {
         },
 
         async registerTeamView(key: string, team: string) {
-            await contests.updateOne({ _id: key }, { $addToSet: { feedTeams: team } }, { upsert: true });
+            await contests.updateOne({ _id: key }, { $addToSet: { feedTeams: team }, $set: { [`feedTeamSeen.${team}`]: Date.now() } }, { upsert: true });
+        },
+        async pruneTeamViews(key: string, staleTeams: string[]) {
+            if (!staleTeams.length) return;
+            const $unset = Object.fromEntries(staleTeams.map((team) => [`feedTeamSeen.${team}`, '']));
+            await contests.updateOne({ _id: key }, { $pull: { feedTeams: { $in: staleTeams } }, $unset });
+            await objectHashes.deleteMany({ key, view: { $in: staleTeams.map((team) => `team-${team}`) } });
+        },
+        async deleteContest(domainId: string, tid: string) {
+            const key = contestKey(domainId, tid);
+            await Promise.all([
+                contests.deleteOne({ _id: key }),
+                events.deleteMany({ key }),
+                ids.deleteMany({ key }),
+                awards.deleteMany({ key }),
+                comments.deleteMany({ key }),
+                snapshots.deleteMany({ key }),
+                clarifications.deleteMany({ key }),
+                objectHashes.deleteMany({ key }),
+            ]);
+        },
+        async deleteDomain(domainId: string) {
+            const pattern = new RegExp(`^${domainId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`);
+            await Promise.all([
+                contests.deleteMany({ _id: pattern }),
+                events.deleteMany({ key: pattern }),
+                ids.deleteMany({ key: pattern }),
+                awards.deleteMany({ key: pattern }),
+                comments.deleteMany({ key: pattern }),
+                snapshots.deleteMany({ key: pattern }),
+                clarifications.deleteMany({ key: pattern }),
+                objectHashes.deleteMany({ key: pattern }),
+                webhooks.deleteMany({ domainId }),
+            ]);
         },
         async clarifications(key: string): Promise<Clarification[]> {
             return (await clarifications.find({ key }).toArray()).map(({ _id, key: _key, ...clar }) => clar);

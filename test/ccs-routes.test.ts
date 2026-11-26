@@ -80,12 +80,13 @@ const user = (uid: number, role: string) => ({ _id: uid, uname: `${role}${uid}`,
     own: () => false, hasPriv: () => true, hasPerm: (p: bigint) => role === 'admin' || role === 'judge' && p === 2n,
     checkPassword: vi.fn(async (pw: string) => { if (pw !== 'secret') throw new Error('Invalid password'); }),
 });
-function setup() {
+function setup(webhookLookup?: (host: string) => Promise<string[]>) {
     const memory = previewDatabase();
     const listeners = new Map<string, ((...args: any[]) => void)[]>();
     const ctx: any = { db: memory.db, Route: vi.fn(), on: (name: string, fn: any) => { listeners.set(name, [...(listeners.get(name) || []), fn]); },
         effect: (fn: any) => dispose.push(fn()), broadcast: (name: string, ...args: any[]) => listeners.get(name)?.forEach(fn => fn(...args)) };
-    const app = applyCcs(ctx, { loadData: async () => state.source.full, loadSettings: async () => state.source.settings, loadJury: async () => ({ holds: [], credits: [] }) });
+    const defaultLookup = async (host: string) => host === 'callback.example' ? ['93.184.216.34'] : [];
+    const app = applyCcs(ctx, { loadData: async () => state.source.full, loadSettings: async () => state.source.settings, loadJury: async () => ({ holds: [], credits: [] }), webhookLookup: webhookLookup ?? defaultLookup });
     const key = `system/${state.source.contest.id}`;
     memory.tables.get('xcpcio.enhanced.settings')!.set(key, { _id: key, settings: { ccsApi: true } });
     // ccsStore cached the collection object at construction, so populate that same table.
@@ -316,5 +317,32 @@ describe('CCS writer and callbacks', () => {
         expect((await app.request('/webhooks', { root: true, uid: 1, method: 'post', body })).status).toBe(201);
         expect((await app.request('/webhooks', { root: true, uid: 2 })).body).toEqual([]);
         expect((await app.request('/webhooks', { root: true, uid: 2, method: 'post', body })).status).toBe(403);
+    });
+    it('blocks SSRF webhook targets statically and on DNS resolution to private or metadata IPs', async () => {
+        let resolvedIp = '169.254.169.254';
+        const app = setup(async (host) => host === 'rebind.example' ? [resolvedIp] : ['93.184.216.34']);
+        await app.writer.tick();
+        const request = vi.fn(async () => ({ ok: true, status: 200, body: null }));
+        vi.stubGlobal('fetch', request);
+        try {
+            const register = (url: string) => app.request('/webhooks', { root: true, uid: 99, method: 'post', body: { url, token: 'test-only', endpoints: ['teams'] } });
+            for (const bad of [
+                'http://127.0.0.1:8080/hook',
+                'http://localhost/hook',
+                'http://169.254.169.254/latest/meta-data/',
+                'http://10.0.0.5/internal',
+                'http://[::ffff:127.0.0.1]/hook',
+                'http://service.internal/hook',
+            ]) {
+                expect((await register(bad)).status, bad).toBe(400);
+            }
+            const hook = await register('https://rebind.example/ccs');
+            expect(hook.status).toBe(201);
+            state.source.full.teams[0].name = 'SSRF Trigger'; app.writer.touch(app.key); await app.writer.tick();
+            expect(request).not.toHaveBeenCalled();
+            resolvedIp = '93.184.216.34';
+            await app.writer.tick();
+            expect(request).toHaveBeenCalledTimes(1);
+        } finally { vi.unstubAllGlobals(); }
     });
 });

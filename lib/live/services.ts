@@ -228,11 +228,12 @@ export class AnalyticsService {
         const team = info.teams.find((item) => item.id === run.teamId);
         const problem = info.problems.find((item) => item.id === run.problemId);
         if (!team || !problem) return null;
+        const anonymous = !problem.letter;
         const { solved } = at;
         const substitute: Record<string, string> = {
             '{team.shortName}': team.shortName,
-            '{problem.letter}': problem.letter,
-            '{problem.name}': problem.name,
+            '{problem.letter}': anonymous ? '未公开' : problem.letter,
+            '{problem.name}': anonymous ? '未公开题目' : problem.name,
             '{run.result}': run.result.type === 'ICPC' ? run.result.verdict.shortName : '',
             '{result.rank}': String(analysis.rank || '*'),
             '{result.solvedProblems}': solved > 0 ? String(solved) : '',

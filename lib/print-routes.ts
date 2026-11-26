@@ -101,14 +101,24 @@ export function applyPrintServers(ctx: Context, dependencies: { receipts?: Recei
         return normalizePrintSettings(doc?.settings || {});
     }
 
+    let clientFilesCache: { expires: number; value: Promise<{ name: string; url: string; label: string; size: number }[]> } | null = null;
     function clientFiles() {
+        const now = Date.now();
+        if (clientFilesCache && clientFilesCache.expires > now) return clientFilesCache.value;
         const dir = path.join(root, 'public/hydro-print-client');
-        let names: string[] = [];
-        try { names = fs.readdirSync(dir); } catch { return []; }
-        return names.filter((name) => name.startsWith(CLIENT_PREFIX)).map((name) => {
-            const platform = name.slice(CLIENT_PREFIX.length);
-            return { name, url: `/hydro-print-client/${name}`, label: clientPlatforms[platform] || platform, size: fs.statSync(path.join(dir, name)).size };
-        }).sort((a, b) => a.name.localeCompare(b.name));
+        const value = (async () => {
+            let names: string[] = [];
+            try { names = await fs.promises.readdir(dir); } catch { return []; }
+            const entries = await Promise.all(names.filter((name) => name.startsWith(CLIENT_PREFIX)).map(async (name) => {
+                const platform = name.slice(CLIENT_PREFIX.length);
+                const info = await fs.promises.stat(path.join(dir, name)).catch(() => null);
+                return info ? { name, url: `/hydro-print-client/${name}`, label: clientPlatforms[platform] || platform, size: info.size } : null;
+            }));
+            return entries.filter((item): item is NonNullable<typeof item> => !!item).sort((a, b) => a.name.localeCompare(b.name));
+        })();
+        clientFilesCache = { expires: now + 60_000, value };
+        value.catch(() => { if (clientFilesCache?.value === value) clientFilesCache = null; });
+        return value;
     }
 
     const serverUrl = (origin: unknown) => {
@@ -118,11 +128,18 @@ export function applyPrintServers(ctx: Context, dependencies: { receipts?: Recei
         return typeof configured === 'string' ? configured : '';
     };
 
-    /** Team names, schools, members and seats of a contest's participants (staff see identity). */
-    async function contestInfo(domainId: string, tid: ObjectId) {
+    /** Team names, schools, members and seats of a contest's participants (staff see identity), cached briefly across polls. */
+    const contestInfoCache = new Map<string, { expires: number; value: Promise<Awaited<ReturnType<typeof loadContestInfo>>> }>();
+    async function loadContestInfo(domainId: string, tid: ObjectId) {
         const tdoc = await ContestModel.get(domainId, tid);
         if (!tdoc) return null;
-        const entries = await ContestModel.getMultiStatus(domainId, { docId: tid }).toArray() as unknown as (TeamEntry & { unrank?: boolean })[];
+        const cursor = ContestModel.getMultiStatus(domainId, { docId: tid }) as unknown as {
+            project?: (spec: object) => { toArray: () => Promise<(TeamEntry & { unrank?: boolean })[]> };
+            toArray: () => Promise<(TeamEntry & { unrank?: boolean })[]>;
+        };
+        const entries = await (typeof cursor.project === 'function'
+            ? cursor.project({ uid: 1, members: 1, displayName: 1, unrank: 1 })
+            : cursor).toArray();
         const uids = [...entries.map((entry) => entry.uid), ...memberIds(tdoc, entries)];
         const [users, seats] = await Promise.all([UserModel.getList(domainId, uids), loadSeats(ctx.db, uids)]);
         const byUid = new Map<number, { name: string; school: string; members: string[]; uname: string; seat: string; unofficial: boolean }>();
@@ -141,6 +158,20 @@ export function applyPrintServers(ctx: Context, dependencies: { receipts?: Recei
             unofficial: false, seat: seatOf(seats, uid),
         };
         return { tdoc, who };
+    }
+
+    function contestInfo(domainId: string, tid: ObjectId) {
+        const key = `${domainId}/${tid}`;
+        const now = Date.now();
+        for (const [k, entry] of contestInfoCache) if (entry.expires <= now) contestInfoCache.delete(k);
+        let entry = contestInfoCache.get(key);
+        if (!entry) {
+            const value = loadContestInfo(domainId, tid);
+            entry = { expires: now + 5000, value };
+            value.catch(() => { if (contestInfoCache.get(key)?.value === value) contestInfoCache.delete(key); });
+            contestInfoCache.set(key, entry);
+        }
+        return entry.value;
     }
 
     function sheetOf(task: PrintTask, who: ReturnType<NonNullable<Awaited<ReturnType<typeof contestInfo>>>['who']>): PrintSheet {
@@ -355,7 +386,7 @@ export function applyPrintServers(ctx: Context, dependencies: { receipts?: Recei
                 if (!infos.has(key)) infos.set(key, await contestInfo(task.domainId, task.parentId));
             }
             this.response.body = {
-                settings, clients: clientFiles(),
+                settings, clients: await clientFiles(),
                 queue: Object.fromEntries(counts.map((row: { _id: string; n: number }) => [row._id, row.n])),
                 contests: contests.map((tdoc: { domainId: string; docId: ObjectId; title: string; beginAt: Date; endAt: Date; allowPrint?: boolean; rule?: string }) => ({
                     key: `${tdoc.domainId}/${tdoc.docId}`, domainId: tdoc.domainId, title: tdoc.title, beginAt: tdoc.beginAt, endAt: tdoc.endAt,
@@ -554,19 +585,24 @@ export function applyPrintServers(ctx: Context, dependencies: { receipts?: Recei
             if (!/^[a-f\d]{24}$/i.test(id)) throw new PrintError('打印请求编号无效');
             const task = await documents.findOne({ docType: TYPE_CONTEST_PRINT, docId: new ObjectId(id), xcpcioServer: String(this.doc._id), status: 'printing' }) as PrintTask | null;
             if (!task) throw new PrintError('打印请求不存在或已交给其他打印服务器', 404);
+            const serverId = String(this.doc._id);
+            const claimFilter = { _id: task._id, status: 'printing', xcpcioServer: serverId };
             if (status === 'released') {
-                await documents.updateOne({ _id: task._id, status: 'printing' }, { $set: { status: 'pending' }, $unset: { xcpcioServer: '', xcpcioClaimedAt: '' } });
+                const updated = await documents.updateOne(claimFilter, { $set: { status: 'pending' }, $unset: { xcpcioServer: '', xcpcioClaimedAt: '' } });
+                if (!updated.modifiedCount) throw new PrintError('打印请求不存在或已交给其他打印服务器', 404);
             } else if (status === 'printed') {
-                await documents.updateOne({ _id: task._id }, {
+                const updated = await documents.updateOne(claimFilter, {
                     $set: { status: 'printed', xcpcioPrinter: printer, xcpcioPrintedAt: new Date() }, $unset: { xcpcioClaimedAt: '', xcpcioError: '' },
                 });
+                if (!updated.modifiedCount) throw new PrintError('打印请求不存在或已交给其他打印服务器', 404);
                 await servers.updateOne({ _id: this.doc._id }, { $inc: { 'stats.printed': 1 } });
             } else {
                 const attempts = (task.xcpcioAttempts || 0) + 1;
                 // Back to the queue (perhaps for another PC) until it has failed a few times.
-                await documents.updateOne({ _id: task._id }, attempts < MAX_ATTEMPTS
+                const updated = await documents.updateOne(claimFilter, attempts < MAX_ATTEMPTS
                     ? { $set: { status: 'pending', xcpcioAttempts: attempts, xcpcioError: message, xcpcioPrinter: printer }, $unset: { xcpcioServer: '', xcpcioClaimedAt: '' } }
                     : { $set: { status: 'failed', xcpcioAttempts: attempts, xcpcioError: message, xcpcioPrinter: printer }, $unset: { xcpcioClaimedAt: '' } });
+                if (!updated.modifiedCount) throw new PrintError('打印请求不存在或已交给其他打印服务器', 404);
                 await servers.updateOne({ _id: this.doc._id }, { $inc: { 'stats.failed': 1 } });
             }
             this.response.body = { ok: true };

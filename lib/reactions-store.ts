@@ -166,7 +166,7 @@ export function createReactionStore(ctx: Context, deps: ReactionDependencies) {
     }
     async function reconcile(tdoc: Tdoc, since: number, force: boolean) {
         const key = contestKey(tdoc);
-        const source = await clipList(key, { state: { $in: ['ready', 'partial'] }, ...(since ? { readyAt: { $gte: since - 1500 } } : {}) });
+        const source = await clipList(key, { state: { $in: ['ready', 'partial'] }, ...(since ? { readyAt: { $gte: since - 15000 } } : {}) });
         if (!source.length) return;
         const [{ info, runs }, history, previous] = await Promise.all([
             context(tdoc, force),
@@ -264,7 +264,7 @@ export function createReactionStore(ctx: Context, deps: ReactionDependencies) {
         for (const [id, entry] of synced) if (entry.until <= now) synced.delete(id);
         const old = synced.get(key);
         if (old && !force) return old.run;
-        const run = (old?.run || Promise.resolve()).then(async () => {
+        const run = (old?.run.catch(() => {}) || Promise.resolve()).then(async () => {
             const doc = await cfg(key);
             const previous = force || !doc.fixedLayouts ? 0 : doc.syncThrough || 0;
             await reconcile(tdoc, previous, force);

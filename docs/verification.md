@@ -1,5 +1,28 @@
 # 验证记录
 
+## v1.27.0 安全加固、Live 支持 CCPC 模式、CCS 奖项对齐与 MIT 许可
+
+2026 年 11 月 26 日，在完成全仓库安全、并发、性能与合规整改后，执行了全量构建与自动化回归检查。
+
+### ICPC Live CCPC 隐藏题号模式与 CCS 奖项一致性
+
+- 新增 [test/ccpc.test.ts](../test/ccpc.test.ts) 用例验证 ICPC Live 在 CCPC 封榜前隐藏题号模式下的表现：未达到公开门槛的题目槽位在 Live 模型与统计中不暴露字母题号、气球颜色、首解快报和单题战况（名称回退为「未公开」），达到门槛或封榜后自动恢复。
+- 新增 [test/ccs.test.ts](../test/ccs.test.ts) 用例验证 CCS `buildAwards()` 按比赛配置执行 `hydro` / `icpc` / `ccpc` 同分规则、`sameScore` / `medalSameScore` 与 `podiumTie`，自动跳过未公开的 CCPC 槽位，且 `scoreboardRows()` 的 `num_pending` 严格遵守 `upTo` 截止时间。
+
+### 安全、实时采集与多端稳定性
+
+- 新增 [test/ccs-routes.test.ts](../test/ccs-routes.test.ts) 回归测试覆盖 Webhook URL 静态校验与 DNS 重绑定防 SSRF 拦截，以及单域（20）/ 单用户（10）配额限制。
+- 新增 [test/capture.test.ts](../test/capture.test.ts) 回归测试覆盖内置 STUN 非法端口拒绝、跨比赛 `kickDevice` 拦截与 viewer 会话上限并发竞争防护。
+- 基于更新后的 `live/frontend.patch`（`cb524eaca06d`）从上游 `icpc/live-v3@v3.5.1` 重新构建 `live/dist`，通过 `pnpm build` 同步到 `public/`。
+- 六个平台的打印客户端通过全部 Go 测试（含配对码安全校验、页眉/页脚截断防重叠与 `--to-folder` 唯一文件名回归），完成跨平台编译；本机 `darwin-arm64` 二进制执行 `--version` 返回 `1.27.0`。
+- 媒体机脚本通过 `python3 -m py_compile` 语法检查，并将 `media-worker/package.py`、Compose 与发布流水线同步至 `1.27.0` 及 MIT 许可（含新增的 `.github/workflows/ci.yml` 覆盖 Node、Go 与 Python+FFmpeg 单元测试）。
+
+### 汇总结果
+
+- `pnpm test`：39 个测试文件共 474 项全部通过。
+- `pnpm build:print-client`：Go 测试全部通过并生成 6 平台可执行文件；`pnpm build` 与 `pnpm typecheck`（`hydrooj 5.1.0`）全部通过。
+- `pnpm test:ui`：180 个页面视图及主要交互全部通过，含 64 队 15 题滚榜观众屏（2592 步，首帧 54 ms）以及双路 720p H.265 留档与摄像头故障降级恢复（6 次上传 0 失败）。
+
 ## v1.26.0 中英文赛事模板、签名与文字颜色
 
 ### 从 v1.25.0 升级

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
     ContestModel, Context, DocumentModel, getAlphabeticId, Handler, MessageModel, NotFoundError, ObjectId,
-    param, PERM, ProblemModel, Tdoc, Types, UserModel,
+    param, PERM, PRIV, ProblemModel, Tdoc, Types, UserModel,
 } from 'hydrooj';
 import {
     clarificationAnnouncements, clarificationClaimMs, ClarificationDeskError, deskSettings, deskView, firstDeskReply,
@@ -52,6 +52,7 @@ const baseOf = (tdoc: Tdoc) => `/d/${encodeURIComponent(tdoc.domainId)}/contest/
 const token = () => randomBytes(24).toString('hex');
 const duplicate = (error: unknown) => (error as { code?: number } | null)?.code === 11000;
 const isManager = (handler: Handler, tdoc: Tdoc) => !!handler.user._id
+    && (typeof handler.user.hasPriv !== 'function' || handler.user.hasPriv(PRIV.PRIV_USER_PROFILE))
     && (handler.user.own(tdoc) || handler.user.hasPerm(PERM.PERM_EDIT_CONTEST));
 
 function readId(value: unknown) {
@@ -166,6 +167,10 @@ export function applyClarificationDesk(ctx: Context, dependencies: {
     ctx.on('contest/del', async (domainId, tid) => {
         const contest = `${domainId}/${tid}`;
         await Promise.all([settings.deleteOne({ _id: contest }), links.deleteMany({ contest }), claims.deleteMany({ contest })]);
+    });
+    ctx.on('domain/delete', async (domainId) => {
+        const pattern = new RegExp(`^${domainId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`);
+        await Promise.all([settings.deleteMany({ domainId }), links.deleteMany({ contest: pattern }), claims.deleteMany({ contest: pattern })]);
     });
 
     const deskData = new Map<string, { until: number; promise: ReturnType<typeof readDesk> }>();
@@ -415,6 +420,8 @@ export function applyClarificationDesk(ctx: Context, dependencies: {
         async get() { await this.data(); }
     }
     class DelegatePage extends DeskBase {
+        noCheckPermView = true;
+
         @param('tid', Types.ObjectId)
         @param('token', Types.String)
         async prepare(_domainId: string, tid: ObjectId, secret: string) {

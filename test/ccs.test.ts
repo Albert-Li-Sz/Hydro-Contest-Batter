@@ -115,4 +115,40 @@ describe('CCS 2026-01 objects', () => {
         expect(() => readZip(writeZip(input), { maxFiles: 1, maxBytes: 1 })).toThrow();
         expect(() => readZip(Buffer.from('bad'), { maxFiles: 1, maxBytes: 100 })).toThrow();
     });
+    it('honors contest tie-break, podium-tie and same-score settings in CCS winner awards and excludes post-AC pending runs', () => {
+        const source = ccsFixture();
+        // Team 1: solved at 10m + 50m (penalty 60m, last accept 50m). Team 2: solved at 20m + 40m (penalty 60m, last accept 40m).
+        source.full.teams = source.full.teams.slice(0, 2);
+        source.full.submissions = [
+            { submission_id: 'a1', team_id: '1', problem_id: 0, timestamp: 10 * 60_000, status: 'CORRECT' },
+            { submission_id: 'a2', team_id: '1', problem_id: 1, timestamp: 50 * 60_000, status: 'CORRECT' },
+            { submission_id: 'a3', team_id: '1', problem_id: 0, timestamp: 55 * 60_000, status: 'PENDING' }, // post-AC pending
+            { submission_id: 'b1', team_id: '2', problem_id: 0, timestamp: 20 * 60_000, status: 'CORRECT' },
+            { submission_id: 'b2', team_id: '2', problem_id: 1, timestamp: 40 * 60_000, status: 'CORRECT' },
+        ];
+        // Hydro rule with medalSameScore: both teams share rank 1 and winner.
+        const hydroShared = structuredClone(source);
+        hydroShared.settings.tieBreak = 'hydro';
+        hydroShared.settings.medalSameScore = true;
+        hydroShared.settings.podiumEnabled = false;
+        expect(buildObjects(hydroShared, 'full').awards.find((a) => a.id === 'winner')?.team_ids?.slice().sort()).toEqual(['1', '2']);
+        // ICPC rule breaks the tie by earlier last accepted run (team 2 at 40m beats team 1 at 50m).
+        const icpc = structuredClone(source);
+        icpc.settings.tieBreak = 'icpc';
+        expect(buildObjects(icpc, 'full').awards.find((a) => a.id === 'winner')?.team_ids).toEqual(['2']);
+        // CCPC rule with podiumTie: 'lastAccept' gives winner to team 2 only; 'shared' gives winner to both.
+        const ccpcLast = structuredClone(source);
+        ccpcLast.settings.tieBreak = 'ccpc';
+        ccpcLast.settings.podiumEnabled = true;
+        ccpcLast.settings.podiumTie = 'lastAccept';
+        expect(buildObjects(ccpcLast, 'full').awards.find((a) => a.id === 'winner')?.team_ids).toEqual(['2']);
+        const ccpcShared = structuredClone(ccpcLast);
+        ccpcShared.settings.podiumTie = 'shared';
+        expect(buildObjects(ccpcShared, 'full').awards.find((a) => a.id === 'winner')?.team_ids).toEqual(['2', '1']);
+        // Post-AC pending submission on problem 0 must not increment num_pending on the CCS scoreboard.
+        const board = buildScoreboard(hydroShared, 'full', null);
+        const team1 = board.rows.find((row) => row.team_id === '1')!;
+        expect(team1.problems[0].solved).toBe(true);
+        expect(team1.problems[0].num_pending).toBe(0);
+    });
 });

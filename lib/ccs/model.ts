@@ -13,8 +13,8 @@
 import type { BoardData } from '../board';
 import { creditedTime, type TimeCredit } from '../jury';
 import { enhanceBoard, schoolGroup, schoolName } from '../board';
-import { buildContestInfo, buildRuns, type LiveBoard, type LiveSource } from '../live/model';
-import { computeScoreboard, runsByTeam, sameScore, standingsAtRuns } from '../live/scoreboard';
+import { buildContestInfo, buildRuns, hiddenFromOf, type LiveBoard, type LiveSource } from '../live/model';
+import { compareTeams, computeScoreboard, runsByTeam, sameScore, standingsAtRuns } from '../live/scoreboard';
 import type { RunInfo } from '../live/types';
 import { awardsFor, type BoardSettings } from '../settings';
 import { resultsFinal, specialAwardResults } from '../special-awards';
@@ -291,7 +291,7 @@ function scoreboardRows(source: CcsSource, view: View, members: Set<string> | nu
                 return {
                     problem_id: problemIdOf(source, index),
                     num_judged: upTo.filter((run) => run.result.type === 'ICPC').length,
-                    num_pending: problemRuns.filter((run) => run.result.type !== 'ICPC').length,
+                    num_pending: upTo.filter((run) => run.result.type !== 'ICPC').length,
                     solved: solvedIndex >= 0,
                     ...solvedIndex >= 0 ? { time: reltime(problemRuns[solvedIndex].time) } : {},
                 };
@@ -400,6 +400,8 @@ function teamTime(source: CcsSource, uid: number, at: number) {
 function buildSubmissions(source: CcsSource, view: View, visibleTeams: Set<string>) {
     const { contest } = source;
     const times = contestTimes(source);
+    const knownProblems = new Set(source.problems.map((problem) => problem.pid));
+    const knownAccounts = new Set(source.accounts.map((account) => account.uid));
     const submissions: Submission[] = [];
     const judgements: Judgement[] = [];
     const runs: Run[] = [];
@@ -407,13 +409,13 @@ function buildSubmissions(source: CcsSource, view: View, visibleTeams: Set<strin
         const team = teamId(record.teamUid);
         if (!visibleTeams.has(team)) continue;
         if (record.submittedAt < contest.beginAt || record.submittedAt >= contest.endAt) continue;
-        if (!source.problems.some(problem => problem.pid === record.pid)) continue;
+        if (!knownProblems.has(record.pid)) continue;
         submissions.push({
             id: record.submissionId,
             language_id: languageId(record.lang),
             problem_id: String(record.pid),
             team_id: team,
-            account_id: source.accounts.some(account => account.uid === record.uid) ? `u${record.uid}` : null,
+            account_id: knownAccounts.has(record.uid) ? `u${record.uid}` : null,
             time: abstime(record.submittedAt),
             contest_time: reltime(teamTime(source, record.teamUid, record.submittedAt)),
             entry_point: null,
@@ -513,20 +515,32 @@ function buildClarifications(source: CcsSource, view: View, visibleTeams: Set<st
 
 function buildAwards(source: CcsSource, view: View, teams: Team[]): Award[] {
     const { info, runs, state } = standings(source, view);
+    const hiddenFrom = hiddenFromOf(info);
     const toCcs = (ids: string[]) => ids.map((id) => teamId(Number(id)));
+    const teamNames = new Map(info.teams.map((team) => [team.id, team.name]));
     const awards: Award[] = state.ranking.awards.map((award) => ({ id: award.id, citation: award.citation, team_ids: toCcs(award.teams) }));
     const official = info.teams.filter((team) => !team.isOutOfContest);
-    const leaders = (ids: string[]) => {
-        const rows = ids.map((id) => ({ id, row: state.rows.get(id)! })).filter(({ row }) => row && row.totalScore > 0);
+    // Honor the contest's configured tie-break, podium-tie and same-score rules for winner & group-winner awards.
+    const leaders = (ids: string[], boardId: string) => {
+        const rows = ids.map((id) => ({ id, name: teamNames.get(id) || id, row: state.rows.get(id)! })).filter(({ row }) => row && row.totalScore > 0);
         if (!rows.length) return [];
-        const best = rows.reduce((a, b) => (b.row.totalScore > a.row.totalScore || (b.row.totalScore === a.row.totalScore && b.row.penalty < a.row.penalty) ? b : a));
-        return toCcs(rows.filter(({ row }) => row.totalScore === best.row.totalScore && row.penalty === best.row.penalty).map(({ id }) => id));
+        rows.sort((a, b) => compareTeams(info, a, b));
+        const best = rows[0];
+        const rules = awardsFor(source.settings, boardId);
+        const tied = rows.filter(({ row }) => sameScore(info, best.row, row));
+        if (!rules.medalSameScore) return toCcs([best.id]);
+        if (rules.podiumEnabled && rules.podiumTie === 'lastAccept') {
+            const bestSec = Math.floor(best.row.lastAcceptedMs / 1000);
+            return toCcs(tied.filter(({ row }) => Math.floor(row.lastAcceptedMs / 1000) === bestSec).map(({ id }) => id));
+        }
+        return toCcs(tied.map(({ id }) => id));
     };
-    awards.unshift({ id: 'winner', citation: '冠军', team_ids: leaders(official.map((team) => team.id)) });
+    awards.unshift({ id: 'winner', citation: '冠军', team_ids: leaders(official.map((team) => team.id), 'all') });
     if (awardsFor(source.settings, 'all').firstSolve) {
         const ftsRules = awardsFor(source.settings, 'all');
         const eligible = new Set(info.teams.filter(team => !team.isOutOfContest || ftsRules.unofficialFirstSolve).map(team => team.id));
         info.problems.forEach((problem, index) => {
+            if (!problem.letter || (hiddenFrom !== undefined && index >= hiddenFrom)) return;
             const first = runs.filter((run) => run.problemId === problem.id && run.result.type === 'ICPC' && run.result.isFirstToSolveRun
                 && !runs.some(earlier => earlier.problemId === problem.id && eligible.has(earlier.teamId) && !earlier.isHidden
                     && earlier.time <= run.time && earlier.result.type !== 'ICPC'));
@@ -540,7 +554,7 @@ function buildAwards(source: CcsSource, view: View, teams: Team[]): Award[] {
     for (const group of info.groups) {
         if (group.id === 'official' || group.id === 'unofficial') continue;
         const members = official.filter((team) => team.groups.includes(group.id)).map((team) => team.id);
-        awards.push({ id: `group-winner-${group.id}`, citation: `${group.displayName}第一名`, team_ids: leaders(members) });
+        awards.push({ id: `group-winner-${group.id}`, citation: `${group.displayName}第一名`, team_ids: leaders(members, group.id) });
     }
     // 特别奖, from the data this view sees: none while the freeze hides results from it.
     const data = view === 'full' ? source.full : source.public;
@@ -573,8 +587,8 @@ function buildAwards(source: CcsSource, view: View, teams: Team[]): Award[] {
 function buildCommentary(source: CcsSource, view: View, visibleTeams: Set<string>): Commentary[] {
     const { contest } = source;
     const { info, runs } = standings(source, view);
-    const judged = runs.filter((run) => run.result.type === 'ICPC');
-    const at = standingsAtRuns(info, runs, new Set(judged.map((run) => run.id)));
+    const needStanding = new Set(runs.filter((run) => run.result.type === 'ICPC' && run.result.verdict.isAccepted && !run.result.isFirstToSolveRun).map((run) => run.id));
+    const at = needStanding.size ? standingsAtRuns(info, runs, needStanding) : new Map<string, { rank: number; solved: number }>();
     const records = new Map(source.records.map((record) => [record.rid, record]));
     const teamName = new Map(info.teams.map((team) => [team.id, team.name]));
     const problemOf = new Map(info.problems.map((problem, index) => [problem.id, { letter: problem.letter, id: problemIdOf(source, index) }]));
@@ -585,11 +599,12 @@ function buildCommentary(source: CcsSource, view: View, visibleTeams: Set<string
         const record = records.get(run.id);
         if (!visibleTeams.has(team) || !problem || !record) continue;
         const name = escapeMessage(teamName.get(run.teamId) || team);
+        const problemLabel = problem.letter ? `${problem.letter} 题` : '未公开题目';
         const refs = { team_ids: [team], problem_ids: [problem.id], submission_ids: [record.submissionId] };
         const submittedAt = record.submittedAt;
         result.push({
             id: `s${record.rid}`, time: abstime(submittedAt), contest_time: reltime(teamTime(source, record.teamUid, submittedAt)),
-            message: `${name} 提交了 ${problem.letter} 题`, tags: ['submission'], source_id: null, ...refs,
+            message: `${name} 提交了 ${problemLabel}`, tags: ['submission'], source_id: null, ...refs,
         });
         if (run.result.type !== 'ICPC') continue;
         const judgeAt = record.judgings.at(-1)?.judgeAt ?? submittedAt;
@@ -599,15 +614,15 @@ function buildCommentary(source: CcsSource, view: View, visibleTeams: Set<string
         if (!run.result.verdict.isAccepted) {
             // The public sees only "rejected" until the contest ends, as on the board.
             const type = view === 'public' && !contestTimes(source).ended ? null : judgementTypeOf(record.judgings.at(-1)?.status ?? -1);
-            message = `${name} 的 ${problem.letter} 题未通过${type ? `（${type}）` : ''}`;
+            message = `${name} 的 ${problemLabel}未通过${type ? `（${type}）` : ''}`;
             tags.push('rejected');
         } else if (run.result.isFirstToSolveRun) {
-            message = `${name} 拿下 ${problem.letter} 题一血！`;
+            message = `${name} 拿下 ${problemLabel}一血！`;
             tags.push('accepted', `accepted-first-to-solve-${problem.id}`);
         } else {
             message = standing && standing.rank
-                ? `${name} 通过 ${problem.letter} 题，共通过 ${standing.solved} 题，当前排名第 ${standing.rank}`
-                : `${name} 通过 ${problem.letter} 题`;
+                ? `${name} 通过 ${problemLabel}，共通过 ${standing.solved} 题，当前排名第 ${standing.rank}`
+                : `${name} 通过 ${problemLabel}`;
             tags.push('accepted');
         }
         result.push({
@@ -615,15 +630,17 @@ function buildCommentary(source: CcsSource, view: View, visibleTeams: Set<string
             message, tags, source_id: null, ...refs,
         });
     }
+    const knownProblems = new Set(source.problems.map((p) => String(p.pid)));
+    const visibleSubmissions = new Set(source.records.filter((r) => visibleTeams.has(teamId(r.teamUid))).map((r) => r.submissionId));
+    const visiblePersons = new Set(source.persons.filter((person) => view === 'full' || person.role === 'contestant').map((person) => person.uid));
     for (const comment of source.comments) {
         if (comment.team_ids?.some(id => !visibleTeams.has(id))
-            || comment.problem_ids?.some(id => !source.problems.some(p => String(p.pid) === id))
-            || comment.submission_ids?.some(id => !source.records.some(r => r.submissionId === id && visibleTeams.has(teamId(r.teamUid))))) continue;
+            || comment.problem_ids?.some(id => !knownProblems.has(id))
+            || comment.submission_ids?.some(id => !visibleSubmissions.has(id))) continue;
         result.push({
             id: comment.id, time: abstime(comment.at), contest_time: reltime(comment.at - contest.beginAt),
             message: comment.message, tags: comment.tags,
-            source_id: comment.sourceUid !== null && source.persons.some((person) => person.uid === comment.sourceUid
-                && (view === 'full' || person.role === 'contestant')) ? `p${comment.sourceUid}` : null,
+            source_id: comment.sourceUid !== null && visiblePersons.has(comment.sourceUid) ? `p${comment.sourceUid}` : null,
             team_ids: comment.team_ids, problem_ids: comment.problem_ids, submission_ids: comment.submission_ids,
         });
     }
@@ -649,45 +666,72 @@ function buildPeople(source: CcsSource, view: View, visibleTeams: Set<string>) {
     return { persons, accounts };
 }
 
-const objectsCache = new WeakMap<CcsSource, Map<View, CcsObjects>>();
+type CachedObjects = {
+    base: Omit<CcsObjects, 'commentary'>;
+    visibleTeams: Set<string>;
+    hidden: boolean;
+    full?: CcsObjects;
+    lite?: CcsObjects;
+};
+const objectsCache = new WeakMap<CcsSource, Map<View, CachedObjects>>();
 
 /** Every endpoint's objects for one view (computed once per source and view). */
-export function buildObjects(source: CcsSource, view: View): CcsObjects {
+export function buildObjects(source: CcsSource, view: View, options?: { skipCommentary?: boolean }): CcsObjects {
     let byView = objectsCache.get(source);
     if (!byView) objectsCache.set(source, byView = new Map());
-    let objects = byView.get(view);
-    if (!objects) byView.set(view, objects = computeObjects(source, view));
-    return objects;
+    let cached = byView.get(view);
+    if (!cached) {
+        if (view.startsWith('team-')) {
+            const held = new Set(source.records.filter((record) => record.held).map((record) => record.submissionId));
+            const full = buildObjects(source, 'full', { skipCommentary: true });
+            const pub = buildObjects(source, 'public', { skipCommentary: true });
+            const { commentary: _c, ...base } = teamObjects(full, pub, view.slice(5), held);
+            cached = { base, visibleTeams: new Set(), hidden: false };
+        } else {
+            cached = computeBaseObjects(source, view);
+        }
+        byView.set(view, cached);
+    }
+    if (options?.skipCommentary) {
+        if (cached.full) return cached.full;
+        return cached.lite ||= { ...cached.base, commentary: [] };
+    }
+    if (!cached.full) {
+        const commentary = view.startsWith('team-')
+            ? buildObjects(source, 'public').commentary
+            : cached.hidden ? [] : buildCommentary(source, view, cached.visibleTeams);
+        cached.full = { ...cached.base, commentary };
+    }
+    return cached.full;
 }
 
-function computeObjects(source: CcsSource, view: View): CcsObjects {
-    if (view.startsWith('team-')) {
-        const held = new Set(source.records.filter((record) => record.held).map((record) => record.submissionId));
-        return teamObjects(buildObjects(source, 'full'), buildObjects(source, 'public'), view.slice(5), held);
-    }
+function computeBaseObjects(source: CcsSource, view: View): CachedObjects {
     const hidden = view === 'public' && !source.publicVisible;
     const { groups, organizations, teams } = buildTeams(source, view);
     const visibleTeams = new Set(hidden ? [] : teams.map((team) => team.id));
     const live = buildSubmissions(source, view, visibleTeams);
     const people = buildPeople(source, view, visibleTeams);
     return {
-        contest: buildContest(source),
-        state: buildState(source),
-        'judgement-types': judgementTypes,
-        languages: buildLanguages(source),
-        // Problems are secret until the contest starts, except to the jury.
-        problems: view === 'public' && !contestTimes(source).started ? [] : buildProblems(source),
-        groups,
-        organizations: hidden ? [] : organizations,
-        teams: hidden ? [] : teams,
-        persons: people.persons,
-        accounts: view === 'full' ? people.accounts : [],
-        submissions: live.submissions,
-        judgements: live.judgements,
-        runs: live.runs,
-        clarifications: buildClarifications(source, view, visibleTeams, new Set(groups.map(group => group.id))),
-        awards: hidden ? [] : buildAwards(source, view, teams),
-        commentary: hidden ? [] : buildCommentary(source, view, visibleTeams),
+        hidden,
+        visibleTeams,
+        base: {
+            contest: buildContest(source),
+            state: buildState(source),
+            'judgement-types': judgementTypes,
+            languages: buildLanguages(source),
+            // Problems are secret until the contest starts, except to the jury.
+            problems: view === 'public' && !contestTimes(source).started ? [] : buildProblems(source),
+            groups,
+            organizations: hidden ? [] : organizations,
+            teams: hidden ? [] : teams,
+            persons: people.persons,
+            accounts: view === 'full' ? people.accounts : [],
+            submissions: live.submissions,
+            judgements: live.judgements,
+            runs: live.runs,
+            clarifications: buildClarifications(source, view, visibleTeams, new Set(groups.map(group => group.id))),
+            awards: hidden ? [] : buildAwards(source, view, teams),
+        },
     };
 }
 

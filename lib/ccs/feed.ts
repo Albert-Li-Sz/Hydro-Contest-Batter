@@ -32,6 +32,7 @@ export async function openFeed(options: {
             // Permissions and the contest switch are rechecked now and then, not on every poll.
             if (Date.now() - checkedAt >= (options.recheckMs ?? 15_000)) {
                 if (!await options.authorized()) break;
+                if (view.startsWith('team-')) await store.registerTeamView(key, view.slice(5)).catch(() => null);
                 checkedAt = Date.now();
             }
             const events = await store.eventsAfter(key, view, cursor);

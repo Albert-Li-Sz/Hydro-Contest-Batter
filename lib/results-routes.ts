@@ -361,8 +361,10 @@ export function applyResults(ctx: Context, dependencies: {
                 const rdoc = await RecordModel.get(tdoc.domainId, rid);
                 const owner = review.journal.get(change.rid);
                 if (!rdoc || !owner) continue;
-                await RecordModel.update(tdoc.domainId, rid, { status, score });
+                const judgeAt = rdoc.judgeAt || now;
+                await RecordModel.update(tdoc.domainId, rid, { status, score, judgeAt });
                 await ContestModel.updateStatus(tdoc.domainId, tdoc.docId, owner.uid, rid, owner.pid, { status, score, lang: rdoc.lang, subtasks: rdoc.subtasks });
+                (ctx.broadcast as any)('record/judge', { ...rdoc, status, score, judgeAt, rejudged: true });
                 await items.updateOne({ _id: latest.get(change.rid) }, restore
                     ? { $set: { restored: { at: now, by: this.user._id }, reapplied: null } }
                     : { $set: { restored: null, reapplied: { at: now, by: this.user._id } } });

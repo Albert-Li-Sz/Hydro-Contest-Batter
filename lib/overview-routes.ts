@@ -27,7 +27,8 @@ export function applyOverview(ctx: Context, dependencies: {
         find: (query: object, options?: object) => { toArray: () => Promise<StatusReport[]> };
     };
     // Hydro lists its loaded addons in global.Hydro.version; hydrojudge judges inside this server.
-    const localJudge = () => !!(globalThis as { Hydro?: { version?: Record<string, unknown> } }).Hydro?.version?.hydrojudge;
+    const localJudge = () => Object.keys((globalThis as { Hydro?: { version?: Record<string, unknown> } }).Hydro?.version || {})
+        .some((name) => name === 'hydrojudge' || name.endsWith('/hydrojudge'));
 
     /** Machine pressure: this server live, judges as last reported, and Hydro's whole judge queue. */
     async function system() {
@@ -69,15 +70,16 @@ export function applyOverview(ctx: Context, dependencies: {
 
         async get() {
             const tdoc = this.tdoc;
-            const key = `${tdoc.domainId}/${tdoc.docId}`;
+            const settings = await dependencies.loadSettings(tdoc);
+            const identity = settings.showIdentity || this.user.own(tdoc) || this.user.hasPerm(PERM.PERM_VIEW_USER_PRIVATE_INFO);
+            const key = `${tdoc.domainId}/${tdoc.docId}/${identity ? 1 : 0}`;
             const now = Date.now();
             for (const [name, entry] of cache) if (entry.expires <= now) cache.delete(name);
             let entry = cache.get(key);
             if (!entry) {
-                // Real-time results with names and schools, for contest managers only (see prepare).
                 entry = {
                     expires: now + 2000,
-                    value: Promise.all([dependencies.loadData(tdoc, true, true, true), dependencies.loadSettings(tdoc), system()]).then(([data, settings, machines]) => ({
+                    value: Promise.all([dependencies.loadData(tdoc, true, identity, true), system()]).then(([data, machines]) => ({
                         ...contestOverview({
                             title: tdoc.title, beginAt: tdoc.beginAt.getTime(), endAt: tdoc.endAt.getTime(),
                             lockAt: tdoc.lockAt ? tdoc.lockAt.getTime() : null, now: Date.now(), data,

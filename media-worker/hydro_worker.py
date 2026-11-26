@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import errno
 import hashlib
 import os
 import re
 import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -24,8 +26,14 @@ else:
     from hydro_connection import Connection, load_connection, safe_error
     from hydro_render import render
 
-VERSION = "1.23.1"
+VERSION = "1.27.0"
 SAFE_ID = re.compile(r"[a-zA-Z0-9_-]{1,100}")
+HERE = Path(__file__).resolve().parent
+
+
+def sound_file(name):
+    candidate = HERE / "example" / name
+    return candidate if candidate.is_file() else Path("example") / name
 
 
 def partition(key, count):
@@ -116,6 +124,8 @@ def process_partition(
 
     thread = threading.Thread(target=heartbeats, daemon=True)
     thread.start()
+    retry_after = {}
+    retry_counts = {}
     try:
         while not shutdown.is_set():
             try:
@@ -129,18 +139,23 @@ def process_partition(
                     if partition(str(j["runId"]), total_workers) == worker_id
                 ]
                 jobs.sort(key=lambda j: j["priority"])
+                active_keys = set()
                 state["queue"] = len(jobs)
                 announce()
+                now_mono = time.monotonic()
                 for job in jobs:
                     rid, lid = str(job["runId"]), str(job["layoutId"])
                     if not SAFE_ID.fullmatch(rid) or not SAFE_ID.fullmatch(lid):
                         raise ValueError("Invalid task ID")
                     generation = int(job["generation"])
                     key = f"{rid}-{lid}-{generation}"
+                    active_keys.add(key)
                     error = folder / (key + ".err")
                     marker = folder / (key + ".ready")
                     done = folder / (key + ".sent")
                     if error.exists() or done.exists():
+                        continue
+                    if not once and retry_after.get(key, 0) > now_mono:
                         continue
                     state["current"] = {
                         "runId": rid,
@@ -149,6 +164,7 @@ def process_partition(
                     }
                     result = endpoint + f"/results/{rid}/{lid}"
                     output = folder / (key + ".mp4")
+                    succeeded = False
                     try:
                         announce()
                         if not (output.exists() and marker.exists()):
@@ -173,7 +189,7 @@ def process_partition(
                                     work / "out.mp4",
                                     encoder,
                                     secret=connection.token,
-                                    sound=Path("example") / sound_name
+                                    sound=sound_file(sound_name)
                                     if with_sound
                                     else None,
                                 )
@@ -190,30 +206,60 @@ def process_partition(
                             },
                         )
                         done.touch()
+                        retry_after.pop(key, None)
+                        retry_counts.pop(key, None)
+                        if not once:
+                            output.unlink(missing_ok=True)
+                            marker.unlink(missing_ok=True)
+                        succeeded = True
                     except requests.RequestException as exc:
-                        # The encoded file stays available for a retry after an upload/network interruption.
+                        # The encoded file stays available for a retry after an upload/network interruption;
+                        # back off per-job so one broken item cannot starve other queued renders.
                         print(safe_error(exc, connection), file=sys.stderr, flush=True)
                         if once:
                             raise
-                    except (RuntimeError, ValueError, KeyError, OSError) as exc:
+                        count = retry_counts.get(key, 0) + 1
+                        retry_counts[key] = count
+                        retry_after[key] = time.monotonic() + min(300, 15 * (2 ** min(count - 1, 4)))
+                    except OSError as exc:
                         message = safe_error(exc, connection)
-                        api(
-                            "POST",
-                            result + "/error",
-                            json={"generation": generation, "error": message},
-                        )
+                        print(message, file=sys.stderr, flush=True)
+                        if once:
+                            raise
+                        if exc.errno in (errno.ENOSPC, errno.EDQUOT):
+                            retry_after[key] = time.monotonic() + 60
+                        else:
+                            try:
+                                api("POST", result + "/error", json={"generation": generation, "error": message})
+                            except requests.RequestException as report_exc:
+                                print(safe_error(report_exc, connection), file=sys.stderr, flush=True)
+                            error.write_text(message)
+                    except (RuntimeError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as exc:
+                        message = safe_error(exc, connection)
+                        try:
+                            api(
+                                "POST",
+                                result + "/error",
+                                json={"generation": generation, "error": message},
+                            )
+                        except requests.RequestException as report_exc:
+                            print(safe_error(report_exc, connection), file=sys.stderr, flush=True)
                         error.write_text(message)
                         if once:
                             raise
                     finally:
                         state["current"] = None
                         state["queue"] = max(0, state["queue"] - 1)
-                    if not once:
-                        break  # Rediscover priority after each render.
+                    if succeeded and not once:
+                        break  # Rediscover priority after each completed render.
+                for stale in list(retry_after):
+                    if stale not in active_keys:
+                        retry_after.pop(stale, None)
+                        retry_counts.pop(stale, None)
                 if once:
                     announce()
                     return
-            except (requests.RequestException, ValueError) as exc:
+            except (requests.RequestException, ValueError, OSError) as exc:
                 if once:
                     raise
                 print(safe_error(exc, connection), file=sys.stderr, flush=True)

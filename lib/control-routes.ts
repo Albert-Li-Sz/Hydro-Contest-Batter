@@ -79,6 +79,7 @@ export function applyControl(ctx: Context, dependencies: {
             const tdoc = await ContestModel.get(this.domain._id, tid);
             if (!tdoc) throw new NotFoundError('Contest not found');
             if (!this.user._id) throw new ControlError('请登录比赛管理账号', 403);
+            this.checkPriv(PRIV.PRIV_USER_PROFILE);
             if (!this.user.own(tdoc)) this.checkPerm(PERM.PERM_EDIT_CONTEST);
             if (tdoc.rule !== 'acm') throw new ControlError('比赛配置仅支持 ACM 比赛');
             this.tdoc = tdoc;

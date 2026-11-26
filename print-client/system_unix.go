@@ -5,22 +5,29 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
 	"runtime"
 	"strings"
+	"time"
 )
 
-// Request English output where CUPS honors the process locale.
-func cups(name string, args ...string) (string, error) {
-	cmd := exec.Command(name, args...)
+// Request English output where CUPS honors the process locale, bounded by a timeout so a hung daemon cannot stall the client.
+func cupsWithTimeout(timeout time.Duration, name string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Env = append(os.Environ(), "LANG=C", "LC_ALL=C")
 	var out, errOut bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errOut
 	err := cmd.Run()
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return out.String(), fmt.Errorf("%s: 命令执行超时", name)
+		}
 		message := strings.TrimSpace(errOut.String())
 		if message == "" {
 			message = err.Error()
@@ -28,6 +35,10 @@ func cups(name string, args ...string) (string, error) {
 		return out.String(), fmt.Errorf("%s: %s", name, message)
 	}
 	return out.String(), nil
+}
+
+func cups(name string, args ...string) (string, error) {
+	return cupsWithTimeout(30*time.Second, name, args...)
 }
 
 var printerLine = regexp.MustCompile(`^printer (\S+) (?:is |now )?(\S+)`)
@@ -147,12 +158,15 @@ func printOn(printer string, job Job, paper Paper) error {
 	if title == "" {
 		title = "Hydro"
 	}
-	_, err = cups("lp", "-d", printer, "-t", title, "-o", "media="+media, file.Name())
+	_, err = cupsWithTimeout(60*time.Second, "lp", "-d", printer, "-t", title, "-o", "media="+media, file.Name())
 	return err
 }
 
 // printRaw sends bytes the printer understands itself (ESC/POS) past any driver filter.
 func printRaw(printer, title string, data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
 	file, err := os.CreateTemp("", "hydro-ticket-*.bin")
 	if err != nil {
 		return err
@@ -166,7 +180,7 @@ func printRaw(printer, title string, data []byte) error {
 	if title == "" {
 		title = "Hydro"
 	}
-	_, err = cups("lp", "-d", printer, "-t", title, "-o", "raw", file.Name())
+	_, err = cupsWithTimeout(60*time.Second, "lp", "-d", printer, "-t", title, "-o", "raw", file.Name())
 	return err
 }
 
@@ -187,7 +201,7 @@ func printReceiptDriver(printer, title string, r Receipt) error {
 	if title == "" {
 		title = "Hydro"
 	}
-	_, err = cups("lp", "-d", printer, "-t", title, "-o", "media="+media, "-o", "print-scaling=none", file.Name())
+	_, err = cupsWithTimeout(60*time.Second, "lp", "-d", printer, "-t", title, "-o", "media="+media, "-o", "print-scaling=none", file.Name())
 	return err
 }
 

@@ -1,7 +1,7 @@
 """The fixed ICPC compositions. The published worker includes the pinned upstream package."""
 
-from functools import lru_cache
 from pathlib import Path
+import threading
 from unicodedata import east_asian_width
 
 from PIL import Image, ImageFont, ImageOps
@@ -11,9 +11,18 @@ PORTRAIT = HERE / "templates/portrait.png"
 if not PORTRAIT.exists():
     PORTRAIT = HERE.parent / "resolver/public/assets/reaction-template/portrait.png"
 
+_font_local = threading.local()
 
-@lru_cache(maxsize=2)
+
 def cjk_font(weight):
+    # Keep FreeTypeFont instances thread-local because FT_Face variation axes are not thread-safe.
+    cache = getattr(_font_local, "fonts", None)
+    if cache is None:
+        cache = {}
+        _font_local.fonts = cache
+    if weight in cache:
+        return cache[weight]
+
     # Pillow calls font_variant as the upstream fitter measures and resizes a label.
     class LabelFont(ImageFont.FreeTypeFont):
         def font_variant(self, *args, **kwargs):
@@ -24,7 +33,9 @@ def cjk_font(weight):
     path = HERE / "fonts/NotoSansSC-VF.ttf"
     if not path.exists():
         path = HERE.parent / "resolver/public/assets/font/NotoSansSC-VF.ttf"
-    return LabelFont(str(path), 10)
+    font = LabelFont(str(path), 10)
+    cache[weight] = font
+    return font
 
 
 def label_font(label, original, weight):

@@ -2,6 +2,8 @@
 // pull hundreds of MB into the renderer. Each device/team binding has its own database.
 const stores = ['segments', 'blobs', 'jobs', 'requests', 'gaps'];
 export const CLIP_AGE = 600_000;
+const CLIP_BYTES = 300 * 1024 * 1024;
+const TEST_AGE = 120_000;
 const ARCHIVE_AGE = 1_800_000;
 const ARCHIVE_BYTES = 300 * 1024 * 1024;
 
@@ -17,12 +19,19 @@ export function archiveLimit(archive, quota) {
 
 export function evictedSegments(rows, now, protectedIds, archiveCap = ARCHIVE_BYTES) {
     let archiveBytes = 0;
+    let clipBytes = 0;
+    const clipCap = Math.max(CLIP_BYTES, archiveCap);
     return rows.slice().sort((a, b) => b.endMs - a.endMs).filter((row) => {
         if (row.kind === 'archive') {
             archiveBytes += row.bytes;
             return row.endMs < now - ARCHIVE_AGE || archiveBytes > archiveCap;
         }
-        return row.endMs < now - CLIP_AGE && !protectedIds.has(row.id);
+        if (row.kind === 'test') {
+            return row.endMs < now - TEST_AGE;
+        }
+        if (protectedIds.has(row.id)) return false;
+        clipBytes += row.bytes;
+        return row.endMs < now - CLIP_AGE || clipBytes > clipCap;
     });
 }
 

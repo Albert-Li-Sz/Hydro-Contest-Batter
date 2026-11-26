@@ -86,9 +86,10 @@ export class RecordingStore {
             this.segments.createIndex({ contestKey: 1, teamUid: 1, kind: 1, startAt: 1 }), this.segments.createIndex({ contestKey: 1, kind: 1, createdAt: -1 }),
             this.segments.createIndex({ testId: 1 }), this.segments.createIndex({ path: 1 }),
             this.clips.createIndex({ refreshToken: 1 }, { sparse: true }), this.clips.createIndex({ contestKey: 1, state: 1, priority: 1 }), this.clips.createIndex({ contestKey: 1, teamUid: 1, windowEnd: 1 }),
+            this.clips.createIndex({ state: 1, windowEnd: 1 }), this.clips.createIndex({ contestKey: 1, pid: 1, firstSolve: 1 }),
             this.gaps.createIndex({ contestKey: 1, teamUid: 1, from: 1 }), this.tests.createIndex({ contestKey: 1, startedAt: -1 }),
             this.tests.createIndex({ contestKey: 1, targets: 1 }, { unique: true, partialFilterExpression: { endedAt: null, targets: { $type: 'array' } } }),
-            this.counters.createIndex({ testId: 1, at: 1 }), this.tests.createIndex({ endedAt: 1, deadline: 1 }),
+            this.counters.createIndex({ testId: 1, at: 1 }), this.tests.createIndex({ endedAt: 1, deadline: 1 }), this.tests.createIndex({ cleanupPending: 1 }),
         ]);
     }
     async freeBytes(): Promise<number | null> {
@@ -130,8 +131,11 @@ export class RecordingStore {
             if (found.length) any = true;
         }
         const state = complete && any ? 'ready' : any ? 'partial' : 'missing';
-        await this.clips.updateOne({ _id: clip._id, refreshToken: clip.refreshToken || { $exists: false } },
-            { $set: { state, streams, readyAt: Date.now(), reason: complete ? null : reason }, $unset: { refreshToken: '' } });
+        await this.clips.updateOne({
+            _id: clip._id,
+            refreshToken: clip.refreshToken || { $exists: false },
+            ...(!clip.refreshToken ? { state: { $in: ['requested', 'uploading', 'missing'] } } : {}),
+        }, { $set: { state, streams, readyAt: Date.now(), reason: complete ? null : reason }, $unset: { refreshToken: '' } });
     }
     async removeSegments(filter: Record<string, unknown>, refresh = true) {
         let batch: Segment[] = [];

@@ -25,14 +25,19 @@ export function applyRecording(ctx: Context, hooks: Hooks) {
     const store = new RecordingStore(ctx);
     const tests = recordingTests(ctx, store, hooks.send);
     const on = ctx.on.bind(ctx) as unknown as (event: string, callback: (...args: any[]) => unknown) => void;
-    const pendingSeats = new Map<string, Promise<Map<number, string>>>();
+    const seatCache = new Map<string, { expires: number; value: Promise<Map<number, string>> }>();
     function currentSeats(tdoc: Tdoc) {
         const key = hooks.key(tdoc);
-        const pending = pendingSeats.get(key);
-        if (pending) return pending;
-        const query = hooks.teamSeats(tdoc).finally(() => pendingSeats.delete(key));
-        pendingSeats.set(key, query);
-        return query;
+        const now = Date.now();
+        for (const [k, entry] of seatCache) if (entry.expires <= now) seatCache.delete(k);
+        let entry = seatCache.get(key);
+        if (!entry) {
+            const value = hooks.teamSeats(tdoc);
+            entry = { expires: now + 5000, value };
+            value.catch(() => { if (seatCache.get(key)?.value === value) seatCache.delete(key); });
+            seatCache.set(key, entry);
+        }
+        return entry.value;
     }
     async function teamFor(tdoc: Tdoc, doc: CaptureDevice) {
         if (doc.teamUid !== null) return doc.teamUid;
@@ -66,7 +71,7 @@ export function applyRecording(ctx: Context, hooks: Hooks) {
         if (!inScope(settings.recording.clips.scope, priority)) return;
         let device = await hooks.devices.findOne({ contestKey, teamUid: uid });
         if (!device) {
-            const seat = (await hooks.teamSeats(tdoc)).get(uid);
+            const seat = (await currentSeats(tdoc)).get(uid);
             if (seat) device = await hooks.devices.findOne({ contestKey, teamUid: null, seat: new RegExp('^' + seat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i') });
         }
         const online = device && isCaptureOnline(device, judgedAt);
@@ -174,6 +179,22 @@ export function applyRecording(ctx: Context, hooks: Hooks) {
             const file = this.request.files?.file;
             if (!file?.filepath) throw new RecordingError('请选择录像段');
             const { bytes, mime, extension } = await inspectSegment(file.filepath, file.mimetype || '');
+            // Enforce per-team and per-contest storage quotas for contestant uploads to prevent disk exhaustion.
+            if (kind !== 'test') {
+                const quotaMatch = teamUid !== null
+                    ? { contestKey, kind: { $ne: 'test' }, $or: [{ teamUid }, { contestKey }] }
+                    : { contestKey, kind: { $ne: 'test' } };
+                const totals = await store.segments.aggregate([
+                    { $match: quotaMatch },
+                    { $group: { _id: null, contestBytes: { $sum: '$bytes' }, teamBytes: { $sum: { $cond: [{ $eq: ['$teamUid', teamUid] }, '$bytes', 0] } } } },
+                ]).toArray() as { contestBytes: number; teamBytes: number }[];
+                const usedContest = totals[0]?.contestBytes ?? 0;
+                const usedTeam = totals[0]?.teamBytes ?? 0;
+                const MAX_TEAM_BYTES = 4 * 1024 ** 3;
+                const MAX_CONTEST_BYTES = 200 * 1024 ** 3;
+                if (teamUid !== null && usedTeam + bytes > MAX_TEAM_BYTES) throw new RecordingError('本队录像存储已达上限', 413);
+                if (usedContest + bytes > MAX_CONTEST_BYTES) throw new RecordingError('本场比赛录像存储已达上限', 413);
+            }
             const quality = uploadedRecordingQuality(a.quality);
             const begin = performance.now();
             const result = await store.save({ contestKey, device: device._id, teamUid: teamUid ?? 0, kind, stream: s, startAt, endAt, bytes, mime, ...extra, ...(quality ? { quality } : {}) }, file.filepath, extension);

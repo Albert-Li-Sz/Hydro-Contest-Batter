@@ -314,11 +314,15 @@ export class CaptureRelay {
     /**
      * Drop a device's connection wherever it is. 4004: for good (deleted, link regenerated); 4005:
      * capture turned off for the contest, the page waits and connects again once it is back on.
+     * When `contestKey` is provided, only devices belonging to that contest are disconnected.
      */
-    kickDevice(id: string, reason: string, code: 4004 | 4005 = 4004) {
+    kickDevice(id: string, reason: string, code: 4004 | 4005 = 4004, contestKey?: string) {
         const endpoint = this.devices.get(id);
-        if (endpoint) { endpoint.close(code, reason); this.detachDevice(id, endpoint); }
-        this.bus({ origin: this.instance, to: 'device', id, message: { type: 'kick', reason, code } });
+        if (endpoint && (!contestKey || endpoint.contestKey === contestKey)) {
+            endpoint.close(code, reason);
+            this.detachDevice(id, endpoint);
+        }
+        this.bus({ origin: this.instance, to: 'device', id, message: { type: 'kick', reason, code, ...(contestKey ? { contestKey } : {}) } });
     }
 
     attachViewer(endpoint: ViewerEndpoint) {
@@ -364,8 +368,17 @@ export class CaptureRelay {
                 endpoint.send({ type: 'error', session: local, message: typeof allowed === 'string' ? allowed : '没有观看该画面的权限' });
                 return;
             }
-            // The viewer may have left while the check ran.
+            // Re-check viewer presence, duplicate session ID, and session caps after awaiting DB checks.
             if (!this.viewers.has(viewer)) return;
+            if (this.viewerSessions.has(session)) { endpoint.send({ type: 'error', session: local, message: '会话名重复' }); return; }
+            let openAfter = 0;
+            let deviceOpen = 0;
+            for (const entry of this.viewerSessions.values()) {
+                if (entry.viewer === viewer) openAfter++;
+                if (entry.device === device) deviceOpen++;
+            }
+            if (openAfter >= MAX_VIEWER_SESSIONS) { endpoint.send({ type: 'error', session: local, message: `同时观看的画面不能超过 ${MAX_VIEWER_SESSIONS} 个` }); return; }
+            if (deviceOpen >= MAX_VIEWER_SESSIONS * 2) { endpoint.send({ type: 'error', session: local, message: '该设备的并发观看数已达上限' }); return; }
             this.viewerSessions.set(session, { viewer, device, stream });
             this.toDevice(device, { type: 'offer', session, viewer, stream, sdp });
             return;
@@ -461,7 +474,10 @@ export class CaptureRelay {
             return true;
         }
         if (message.type === 'kick') {
-            if (endpoint) { endpoint.close(message.code === 4005 ? 4005 : 4004, String(message.reason || '采集已停止')); this.detachDevice(device, endpoint); }
+            if (endpoint && (!message.contestKey || endpoint.contestKey === message.contestKey)) {
+                endpoint.close(message.code === 4005 ? 4005 : 4004, String(message.reason || '采集已停止'));
+                this.detachDevice(device, endpoint);
+            }
             return true;
         }
         // Not connected to this process: the bus finds the process that has it.

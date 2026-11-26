@@ -14,12 +14,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -53,6 +55,8 @@ type Config struct {
 	Insecure bool   `json:"insecure,omitempty"`
 }
 
+var validServerID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
 func parseCode(code string) (Connection, error) {
 	code = strings.TrimSpace(code)
 	const prefix = "hydro-print:"
@@ -68,6 +72,13 @@ func parseCode(code string) (Connection, error) {
 		return Connection{}, errors.New("连接信息无效，请重新复制")
 	}
 	c.URL = strings.TrimRight(c.URL, "/")
+	u, err := url.Parse(c.URL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
+		return Connection{}, errors.New("连接信息中的服务器地址无效，请重新复制")
+	}
+	if !validServerID.MatchString(c.ID) {
+		return Connection{}, errors.New("连接信息中的服务器编号无效，请重新复制")
+	}
 	return c, nil
 }
 
@@ -137,7 +148,13 @@ func (c *Client) call(action string, body any, out any) error {
 		return fmt.Errorf("无法连接 %s：%v", c.conn.URL, err)
 	}
 	defer res.Body.Close()
-	payload, _ := io.ReadAll(io.LimitReader(res.Body, 64<<20))
+	payload, err := io.ReadAll(io.LimitReader(res.Body, 64<<20))
+	if err != nil {
+		return fmt.Errorf("读取 Hydro 响应失败：%v", err)
+	}
+	if res.StatusCode >= 300 && res.StatusCode < 400 {
+		return fmt.Errorf("Hydro 返回意外重定向 %d，请检查服务器地址配置", res.StatusCode)
+	}
 	if res.StatusCode == 401 {
 		return errUnauthorized
 	}
@@ -274,6 +291,7 @@ func run(client *Client, paper Paper) error {
 	host, _ := os.Hostname()
 	system := systemName()
 	var (
+		stateMu  sync.Mutex
 		printers []SysPrinter
 		reply    heartbeatReply
 		balancer Balancer
@@ -282,6 +300,7 @@ func run(client *Client, paper Paper) error {
 	)
 	beat := func() error {
 		list, err := allPrinters()
+		stateMu.Lock()
 		if err != nil {
 			if err.Error() != lastWarn {
 				logf("读取打印机失败：%v", err)
@@ -290,28 +309,71 @@ func run(client *Client, paper Paper) error {
 		} else {
 			printers = list
 		}
+		currentPrinters := append([]SysPrinter(nil), printers...)
+		prevReply := reply
+		firstBeat := lastBeat.IsZero()
+		stateMu.Unlock()
+
 		var next heartbeatReply
 		// "receipt": this client prints balloon tickets, so the server may use its receipt printers.
-		if err := client.call("heartbeat", map[string]any{"version": version, "host": host, "os": system, "printers": printers, "capabilities": []string{"receipt"}}, &next); err != nil {
+		if err := client.call("heartbeat", map[string]any{"version": version, "host": host, "os": system, "printers": currentPrinters, "capabilities": []string{"receipt"}}, &next); err != nil {
 			return err
 		}
-		if next.Name != reply.Name || next.Enabled != reply.Enabled || lastBeat.IsZero() {
+		if next.Name != prevReply.Name || next.Enabled != prevReply.Enabled || firstBeat {
 			state := "已启用"
 			if !next.Enabled {
 				state = "已在管理页停用，暂不领取打印请求"
 			}
-			logf("已连接打印服务器“%s”（%s），本机 %d 台打印机，%d 台参与打印，%d 台小票机", next.Name, state, len(printers), usable(printers, next.Preferences), receiptPrinters(printers, next.Preferences))
+			logf("已连接打印服务器“%s”（%s），本机 %d 台打印机，%d 台参与打印，%d 台小票机", next.Name, state, len(currentPrinters), usable(currentPrinters, next.Preferences), receiptPrinters(currentPrinters, next.Preferences))
 		}
+		stateMu.Lock()
 		reply = next
 		lastBeat = time.Now()
+		stateMu.Unlock()
 		return nil
 	}
 	if err := beat(); err != nil {
 		return err
 	}
+	// Keep heartbeats flowing while long print/report batches run so Hydro does not mark this PC offline.
+	stopBeat := make(chan struct{})
+	unauthCh := make(chan error, 1)
+	defer close(stopBeat)
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stopBeat:
+				return
+			case <-ticker.C:
+				stateMu.Lock()
+				stale := time.Since(lastBeat) >= 10*time.Second
+				stateMu.Unlock()
+				if !stale {
+					continue
+				}
+				if err := beat(); errors.Is(err, errUnauthorized) {
+					select {
+					case unauthCh <- err:
+					default:
+					}
+					return
+				}
+			}
+		}
+	}()
 	failures := 0
 	for {
-		if time.Since(lastBeat) > 10*time.Second {
+		select {
+		case err := <-unauthCh:
+			return err
+		default:
+		}
+		stateMu.Lock()
+		needBeat := time.Since(lastBeat) > 10*time.Second
+		stateMu.Unlock()
+		if needBeat {
 			if err := beat(); err != nil {
 				if errors.Is(err, errUnauthorized) {
 					return err
@@ -322,14 +384,19 @@ func run(client *Client, paper Paper) error {
 				continue
 			}
 		}
-		poll := time.Duration(reply.PollMs) * time.Millisecond
+		stateMu.Lock()
+		currentPrinters := append([]SysPrinter(nil), printers...)
+		currentReply := reply
+		stateMu.Unlock()
+
+		poll := time.Duration(currentReply.PollMs) * time.Millisecond
 		if poll < time.Second {
 			poll = 3 * time.Second
 		}
 		// Only printers that can print now: one resting after a failure takes no new jobs.
-		slots := balancer.available(printers, reply.Preferences)
+		slots := balancer.available(currentPrinters, currentReply.Preferences)
 		// Receipt printers take balloon tickets also when no printer is free for printouts.
-		if !reply.Enabled || (slots == 0 && receiptPrinters(printers, reply.Preferences) == 0) {
+		if !currentReply.Enabled || (slots == 0 && receiptPrinters(currentPrinters, currentReply.Preferences) == 0) {
 			time.Sleep(poll)
 			continue
 		}
@@ -347,52 +414,81 @@ func run(client *Client, paper Paper) error {
 		}
 		failures = 0
 		released := false
+		type assignedJob struct {
+			printer string
+			job     Job
+		}
+		byPrinter := map[string][]assignedJob{}
+		var printerOrder []string
+		addAssigned := func(printer string, job Job) {
+			if _, ok := byPrinter[printer]; !ok {
+				printerOrder = append(printerOrder, printer)
+			}
+			byPrinter[printer] = append(byPrinter[printer], assignedJob{printer: printer, job: job})
+		}
 		for _, job := range next.Jobs {
 			if job.Kind == "receipt" {
-				// Tickets name their receipt printer (the contest's plan picked it).
-				result := map[string]any{"id": job.ID, "printer": job.Printer, "status": "printed"}
-				start := time.Now()
-				var err error
-				if !hasPrinter(printers, job.Printer) {
-					err = fmt.Errorf("本机没有小票机 %s", job.Printer)
-				} else {
-					err = printReceipt(job.Printer, job)
-				}
-				if err != nil {
-					result["status"], result["message"] = "failed", err.Error()
-					logf("小票打印失败  %s → %s：%v", job.Title, job.Printer, err)
-				} else {
-					logf("已打印小票  %s → %s（%.1f 秒）", job.Title, job.Printer, time.Since(start).Seconds())
-				}
-				if err := report(client, result); err != nil {
-					logf("回报结果失败：%v", err)
-				}
+				addAssigned(job.Printer, job)
 				continue
 			}
 			printer := job.Printer
-			if printer == "" || !hasPrinter(printers, printer) {
+			if printer == "" || !hasPrinter(currentPrinters, printer) {
 				var ok bool
-				if printer, ok = balancer.pick(printers, reply.Preferences); !ok {
+				if printer, ok = balancer.pick(currentPrinters, currentReply.Preferences); !ok {
 					// Not this request's fault: hand it back without using up one of its attempts.
 					released = true
 					report(client, map[string]any{"id": job.ID, "status": "released", "message": "没有可用的打印机"})
 					continue
 				}
 			}
-			start := time.Now()
-			err := printTo(printer, job, paper)
-			result := map[string]any{"id": job.ID, "printer": printer, "status": "printed"}
-			if err != nil {
-				balancer.rest(printer)
-				result["status"], result["message"] = "failed", err.Error()
-				logf("打印失败  %s → %s：%v", job.Title, printer, err)
-			} else {
-				logf("已打印  %s → %s（%.1f 秒）", job.Title, printer, time.Since(start).Seconds())
-			}
-			if err := report(client, result); err != nil {
-				logf("回报结果失败：%v", err)
-			}
+			addAssigned(printer, job)
 		}
+		// Dispatch distinct printers concurrently while keeping each individual printer serialized.
+		var wg sync.WaitGroup
+		for _, pName := range printerOrder {
+			batch := byPrinter[pName]
+			wg.Add(1)
+			go func(items []assignedJob) {
+				defer wg.Done()
+				for _, item := range items {
+					job := item.job
+					if job.Kind == "receipt" {
+						result := map[string]any{"id": job.ID, "printer": job.Printer, "status": "printed"}
+						start := time.Now()
+						var err error
+						if !hasPrinter(currentPrinters, job.Printer) {
+							err = fmt.Errorf("本机没有小票机 %s", job.Printer)
+						} else {
+							err = printReceipt(job.Printer, job)
+						}
+						if err != nil {
+							result["status"], result["message"] = "failed", err.Error()
+							logf("小票打印失败  %s → %s：%v", job.Title, job.Printer, err)
+						} else {
+							logf("已打印小票  %s → %s（%.1f 秒）", job.Title, job.Printer, time.Since(start).Seconds())
+						}
+						if err := report(client, result); err != nil {
+							logf("回报结果失败：%v", err)
+						}
+						continue
+					}
+					start := time.Now()
+					err := printTo(item.printer, job, paper)
+					result := map[string]any{"id": job.ID, "printer": item.printer, "status": "printed"}
+					if err != nil {
+						balancer.rest(item.printer)
+						result["status"], result["message"] = "failed", err.Error()
+						logf("打印失败  %s → %s：%v", job.Title, item.printer, err)
+					} else {
+						logf("已打印  %s → %s（%.1f 秒）", job.Title, item.printer, time.Since(start).Seconds())
+					}
+					if err := report(client, result); err != nil {
+						logf("回报结果失败：%v", err)
+					}
+				}
+			}(batch)
+		}
+		wg.Wait()
 		if len(next.Jobs) == 0 || released {
 			time.Sleep(poll)
 		}
@@ -439,9 +535,19 @@ func allPrinters() ([]SysPrinter, error) {
 	return list, err
 }
 
+var folderSeq atomic.Uint64
+
+func folderOutputBase(printer string, job Job) string {
+	tag := job.ID
+	if tag == "" {
+		tag = fmt.Sprintf("n%d", folderSeq.Add(1))
+	}
+	return safeName.ReplaceAllString(fmt.Sprintf("%s-%s-%s-%s", time.Now().Format("150405"), strings.TrimPrefix(printer, "保存到文件夹 "), tag, job.Title), "_")
+}
+
 func printTo(printer string, job Job, paper Paper) error {
 	if folder != "" && strings.HasPrefix(printer, "保存到文件夹 ") {
-		name := regexp.MustCompile(`[^\w\-.\p{Han}]+`).ReplaceAllString(fmt.Sprintf("%s-%s-%s", time.Now().Format("150405"), strings.TrimPrefix(printer, "保存到文件夹 "), job.Title), "_")
+		name := folderOutputBase(printer, job)
 		return os.WriteFile(filepath.Join(folder, name+".pdf"), WritePDF(Layout(job, paper), paper, job.Title), 0o644)
 	}
 	return printOn(printer, job, paper)
@@ -536,8 +642,14 @@ func main() {
 			config.Paper, changed = choice, true
 		}
 	}
-	if *insecure && !config.Insecure {
-		config.Insecure, changed = true, true
+	insecureSet := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "insecure" {
+			insecureSet = true
+		}
+	})
+	if insecureSet && config.Insecure != *insecure {
+		config.Insecure, changed = *insecure, true
 	}
 	paper := A4
 	if strings.EqualFold(config.Paper, "letter") {
@@ -585,7 +697,13 @@ func main() {
 		if config.Insecure {
 			transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 		}
-		client := &Client{conn: config.Connection, http: &http.Client{Timeout: 30 * time.Second, Transport: transport}}
+		client := &Client{conn: config.Connection, http: &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: transport,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}}
 		if !saved || changed {
 			if err := saveConfig(path, config); err == nil {
 				fmt.Println("连接信息已保存到", path)

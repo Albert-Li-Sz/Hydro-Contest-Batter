@@ -201,6 +201,7 @@ export function applyManage(ctx: Context, dependencies: {
             // Display names live per domain, as Hydro's own user import sets them.
             if (edit.displayName !== undefined) await DomainModel.setUserInDomain(domainId, udoc._id, { displayName: edit.displayName });
             forgetUser(udoc);
+            broadcast('user/delcache', true);
             this.response.body = { ok: true };
         }
 
@@ -243,6 +244,7 @@ export function applyManage(ctx: Context, dependencies: {
             if (Object.keys($set).length) {
                 await raw('vuser').updateOne({ _id: vuid }, { $set });
                 forgetUser(team);
+                broadcast('user/delcache', true);
             }
             let synced = 0;
             const statusSet: Record<string, unknown> = {};
@@ -325,6 +327,7 @@ export function applyManage(ctx: Context, dependencies: {
                 forgetUser(team);
                 deleted.push(team._id);
             }
+            if (deleted.length) broadcast('user/delcache', true);
             this.response.body = { deleted, missing: uids.length - deleted.length };
         }
     }
@@ -634,9 +637,11 @@ export function applyManage(ctx: Context, dependencies: {
     const jobs = raw('xcpcio.manage.rejudge.jobs');
     const items = raw('xcpcio.manage.rejudge.items');
     on('app/started', async () => {
-        await jobs.createIndex({ createdAt: -1 });
-        await items.createIndex({ job: 1, _id: 1 });
-        await items.createIndex({ rid: 1, after: 1 });
+        await Promise.all([
+            jobs.createIndex({ createdAt: -1 }),
+            items.createIndex({ job: 1, _id: 1 }),
+            items.createIndex({ rid: 1, after: 1 }),
+        ]).catch(() => null);
     });
     // Hydro fires record/judge in the process that judged the record, after the new result is saved.
     on('record/judge', async (rdoc: { _id?: unknown; status?: number; score?: number; rejudged?: boolean } | null) => {
@@ -742,16 +747,24 @@ export function applyManage(ctx: Context, dependencies: {
                 if (!pdoc?.config || typeof pdoc.config === 'string') { failed.push(`${pdoc?.pid || `#${pid}`} 题目配置无效，已跳过`); continue; }
                 for (const part of chunks(group)) {
                     const ids = part.map((record) => record._id);
+                    // Capture each record's live status right before reset so recent completions aren't recorded with a stale before-state.
+                    const latest = await RecordModel.coll.find({ _id: { $in: ids } }).project({ _id: 1, status: 1, score: 1 }).toArray();
+                    const latestById = new Map(latest.map((doc) => [String(doc._id), doc]));
                     // As Hydro's problem rejudge: below fresh submissions, contest records without details.
                     const priority = await RecordModel.submissionPriority(this.user._id, -10000 - ids.length * 5 - 50);
                     await RecordModel.reset(target, ids, true);
-                    // The result before (read with the selection), recorded once the reset has cleared it:
+                    // The result before (read right before reset), recorded once the reset has cleared it:
                     // a history read in between must not take the old final result for the new one.
                     // Still ahead of judging, so record/judge finds the items.
-                    await items.insertMany(part.map((record): RejudgeItem => ({
-                        job: jobId, rid: record._id, domainId: target, pid: record.pid, uid: record.uid, contest: record.contest ? String(record.contest) : null,
-                        before: record.status, beforeScore: typeof record.score === 'number' ? record.score : null, after: null, afterScore: null, judgedAt: null,
-                    })), { ordered: false });
+                    await items.insertMany(part.map((record): RejudgeItem => {
+                        const current = latestById.get(String(record._id));
+                        const before = typeof current?.status === 'number' ? current.status : record.status;
+                        const beforeScore = typeof current?.score === 'number' ? current.score : (typeof record.score === 'number' ? record.score : null);
+                        return {
+                            job: jobId, rid: record._id, domainId: target, pid: record.pid, uid: record.uid, contest: record.contest ? String(record.contest) : null,
+                            before, beforeScore, after: null, afterScore: null, judgedAt: null,
+                        };
+                    }), { ordered: false });
                     const inContest = part.filter((record) => record.contest).map((record) => record._id);
                     const outside = part.filter((record) => !record.contest).map((record) => record._id);
                     await Promise.all([

@@ -246,7 +246,11 @@ async function imageData(blob) {
 async function printableImage(blob, longest, type = 'image/png') {
     const bitmap = await createImageBitmap(blob);
     try {
-        if (bitmap.width * bitmap.height > 40_000_000) throw new Error('图片尺寸过大');
+        if (bitmap.width * bitmap.height > 16_000_000) throw new Error('图片尺寸过大');
+        // Keep already-valid JPEG uploads that fit within bounds instead of re-encoding them as bloated PNGs.
+        if (blob.type === 'image/jpeg' && bitmap.width <= longest && bitmap.height <= longest && blob.size <= 6 * 1024 * 1024) {
+            return blob;
+        }
         const scale = Math.min(1, longest / Math.max(bitmap.width, bitmap.height));
         const canvas = el('canvas', { width: Math.max(1, Math.round(bitmap.width * scale)), height: Math.max(1, Math.round(bitmap.height * scale)) });
         canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
@@ -472,11 +476,22 @@ function stage(template, kind) {
                     item.x = Math.min(page.width, Math.max(0, Math.round((start.fx + (moved.clientX - start.x) / scale) * 2) / 2));
                     item.y = Math.min(page.height, Math.max(0, Math.round((start.fy + (moved.clientY - start.y) / scale) * 2) / 2));
                     place();
-                    renderProps();
+                    const xInput = propsHost?.querySelector('[data-coord="x"]');
+                    const yInput = propsHost?.querySelector('[data-coord="y"]');
+                    if (xInput) xInput.value = String(item.x);
+                    if (yInput) yInput.value = String(item.y);
                 };
-                const up = () => { node.removeEventListener('pointermove', move); node.removeEventListener('pointerup', up); };
+                const up = () => {
+                    node.removeEventListener('pointermove', move);
+                    node.removeEventListener('pointerup', up);
+                    node.removeEventListener('pointercancel', up);
+                    node.removeEventListener('lostpointercapture', up);
+                    if (node.hasPointerCapture?.(event.pointerId)) node.releasePointerCapture(event.pointerId);
+                };
                 node.addEventListener('pointermove', move);
                 node.addEventListener('pointerup', up);
+                node.addEventListener('pointercancel', up);
+                node.addEventListener('lostpointercapture', up);
             });
             nodes.push({ item, node, offset: line.y - item.y, size: line.size });
             box.append(node);
@@ -517,6 +532,7 @@ function renderProps() {
     if (!item) { propsHost.replaceChildren(list); return; }
     const update = (changes, redraw = true) => { Object.assign(item, changes); if (redraw) renderStage(); };
     const num = (label, key, min, max, step = 0.5) => field(label, el('input', { class: 'textbox', type: 'number', min, max, step, value: item[key], 'aria-label': label,
+        ...(key === 'x' || key === 'y' ? { 'data-coord': key } : {}),
         onchange: (event) => { if (event.target.checkValidity()) update({ [key]: Number(event.target.value) }); } }));
     const content = el('textarea', { class: 'textbox', rows: 2, 'aria-label': '内容', oninput: (event) => update({ text: event.target.value }) });
     content.value = item.text;

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Hydro Contest Better v1.26.0 操作手册，涵盖安装升级、ACM 比赛配置、CCPC 赛制、榜单、答疑、气球、机位监控、录制与直播、打印、滚榜、成绩导出和双语证书制作、赛事模板签名、横竖版预设与装饰图排版。">
+  <meta name="description" content="Hydro Contest Better v1.27.0 操作手册，涵盖安装升级、ACM 比赛配置、CCPC 赛制与直播隐藏题号模式、榜单、答疑、气球、机位监控、录制与直播、打印、滚榜、成绩导出、CCS API 和双语证书制作。">
   <meta name="theme-color" content="#811c39">
   <title>Hydro Contest Better 操作手册</title>
   <link rel="stylesheet" href="./manual.css">
@@ -15,7 +15,7 @@
       <a class="brand" href="./">Hydro Contest Better</a>
       <nav aria-label="项目链接">
         <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better">源码</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.26.0">下载 v1.26.0</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.27.0">下载 v1.27.0</a>
       </nav>
     </div>
   </header>
@@ -46,7 +46,7 @@
     </aside>
     <main id="manual">
       <header class="intro">
-        <p class="version">适用于插件 v1.26.0 · Hydro 5.x</p>
+        <p class="version">适用于插件 v1.27.0 · Hydro 5.x</p>
         <h1>Hydro 比赛操作手册</h1>
         <p class="lead">从安装插件、配置 ACM 比赛，到现场投屏、气球配送、打印、直播和赛后滚榜。</p>
         <p>界面截图使用演示比赛数据。点击配图可查看原图。</p>
@@ -71,19 +71,19 @@
       <section id="install" aria-labelledby="install-heading">
         <h2 id="install-heading">安装与升级</h2>
         <p>使用运行 Hydro 的系统账号执行命令。需要 Hydro 5.x、Node.js 22 或以上。用 PM2 管理 Hydro 时，默认进程名为 <code>hydrooj</code>。</p>
-        <p>从发布页下载 <code>hydro-scoreboard-xcpcio-plus-1.26.0.tgz</code> 和同名 <code>.sha256</code> 文件，放在同一个目录。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.26.0">v1.26.0 下载</a></p>
+        <p>从发布页下载 <code>hydro-scoreboard-xcpcio-plus-1.27.0.tgz</code> 和同名 <code>.sha256</code> 文件，放在同一个目录。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.27.0">v1.27.0 下载</a></p>
 
         <h3>校验并解压</h3>
-        <pre><code>sha256sum -c hydro-scoreboard-xcpcio-plus-1.26.0.tgz.sha256
-mkdir xcpcio-v1.26.0
-tar -xzf hydro-scoreboard-xcpcio-plus-1.26.0.tgz -C xcpcio-v1.26.0</code></pre>
+        <pre><code>sha256sum -c hydro-scoreboard-xcpcio-plus-1.27.0.tgz.sha256
+mkdir xcpcio-v1.27.0
+tar -xzf hydro-scoreboard-xcpcio-plus-1.27.0.tgz -C xcpcio-v1.27.0</code></pre>
 
         <figure class="guide-shot">
           <a href="./images/manual/install-archive.svg"><img src="./images/manual/install-archive.svg" width="840" height="262" loading="lazy" alt="终端示例中的 SHA-256 校验显示 OK，解压后可找到 package/install.sh"></a>
           <figcaption>校验结果显示 OK 后再解压。进入新目录，确认 package 下有 install.sh。</figcaption>
         </figure>
         <h3>首次安装</h3>
-        <pre><code>bash xcpcio-v1.26.0/package/install.sh install</code></pre>
+        <pre><code>bash xcpcio-v1.27.0/package/install.sh install</code></pre>
         <p>脚本将插件复制到 <code>$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus</code>，执行 <code>hydrooj addon add</code>，然后重启 Hydro。</p>
         <figure class="guide-shot">
           <a href="./images/manual/install-choice.svg"><img src="./images/manual/install-choice.svg" width="840" height="298" loading="lazy" alt="首次安装选 install，已有安装从新包执行 upgrade，两种方式都要验证比赛入口"></a>
@@ -93,7 +93,7 @@ tar -xzf hydro-scoreboard-xcpcio-plus-1.26.0.tgz -C xcpcio-v1.26.0</code></pre>
           <summary>手动安装到新目录</summary>
           <pre><code>addon_dir="$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 mkdir -p "$addon_dir"
-tar -xzf hydro-scoreboard-xcpcio-plus-1.26.0.tgz -C "$addon_dir" --strip-components=1
+tar -xzf hydro-scoreboard-xcpcio-plus-1.27.0.tgz -C "$addon_dir" --strip-components=1
 hydrooj addon add "$addon_dir"
 pm2 restart hydrooj</code></pre>
           <figure class="guide-shot">
@@ -103,7 +103,7 @@ pm2 restart hydrooj</code></pre>
         </details>
 
         <h3>已有安装时升级</h3>
-        <pre><code>bash xcpcio-v1.26.0/package/install.sh upgrade
+        <pre><code>bash xcpcio-v1.27.0/package/install.sh upgrade
 pm2 status hydrooj</code></pre>
         <p>在浏览器打开 Hydro 首页和一场 ACM 比赛，确认榜单、滚榜和大屏入口可用。自定义目录用 <code>--dir</code> 指向原安装位置，非默认 PM2 进程用 <code>--service</code>。容器部署用 <code>--no-restart</code>，然后通过容器管理方式重启 Hydro。</p>
         <figure class="guide-shot">
@@ -252,7 +252,7 @@ pm2 status hydrooj</code></pre>
         <ol>
           <li>进入比赛侧边栏的「直播导播与 OBS」，登录后打开「导播台」。导播台默认中文，右上角可切换为 English。用 <strong>控制台</strong> 切换画面（含给观众看的<strong>赛况总览</strong>），用 <strong>字幕</strong> 添加公告和字幕，用 <strong>榜单</strong> 切换分榜。需要队伍画面时，在侧边栏的「采集设备与录像」启用本场的画面采集（默认不启用，可设置只采集屏幕）。导播台的「画面采集」页可预览各队画面并一键上屏，默认使用屏幕。选手登录并打开比赛后会弹窗提示开启，点一下打开采集窗口并选择整个屏幕即可，无需启动参数；关闭窗口时会提醒，中断后比赛页面立即要求重新开启。取消「比赛中直播可用屏幕」后，屏幕在比赛结束后才进入直播；比赛设了封榜时，要等到解除封榜。</li>
           <li>复制设置页的「直播画面」链接。在 OBS 添加「浏览器」来源，填写链接，宽高设为 <strong>1920 × 1080</strong>。需要隐藏状态条时，在链接末尾加 <code>?noStatus</code>。</li>
-          <li>控制台可单独开启首解快报、奖牌线追踪或单题战况，默认全部关闭。OBS 浏览器来源支持透明背景，可与比赛视频叠加。</li>
+          <li>控制台可单独开启首解快报、奖牌线追踪或单题战况，默认全部关闭。开启 CCPC 封榜前隐藏题号模式时，直播画面自动隐藏未公开槽位的字母题号、气球色、首解快报与单题战况，并在达到公开门槛或封榜后自动恢复。OBS 浏览器来源支持透明背景，可与比赛视频叠加。</li>
         </ol>
         <figure class="guide-shot"><a href="./images/manual/live-workspace.jpg"><img src="./images/manual/live-workspace.jpg" width="1272" height="541" loading="lazy" alt="导播台入口在上方，下方的 OBS 面板提供复制链接和浏览器源设置"></a><figcaption>在上方打开导播台，在下方复制直播画面链接。展开 OBS 浏览器源设置可以查看尺寸和透明背景配置。</figcaption></figure>
         <figure class="guide-shot">
@@ -399,6 +399,7 @@ pm2 status hydrooj</code></pre>
           <a href="./examples/certificate-styles.pdf"><img src="./images/manual/certificate-styles.jpg" width="1800" height="960" loading="lazy" alt="典雅雕花、ICPC、CCPC、天梯赛和蓝桥杯五种证书配色对照"></a>
           <figcaption>每套各有一张横版和一张竖版。CCPC 横版含一张透明枝叶装饰图。<a href="./examples/certificate-styles.pdf">查看十页 A4 样张（PDF）</a> · <a href="./examples/certificates.pdf">v1.24.1 校徽位置示例</a></figcaption>
         </figure>
+        <div class="callout"><strong>正式颁证前请替换默认样例素材</strong><p>赛事模板中随附的 2026 ICPC 沈阳区域赛抬头、徽标、个人手写签名样例及嵌入 Arial 字体子集仅作排版参考，归原权利人所有。主办方在对外签发证书前，务必在编辑器中替换或清除所有第三方徽标、默认个人签名与专有字体，详情见 <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.27.0/NOTICE">NOTICE</a>。</p></div>
       </section>
 
       <section id="cleanup" aria-labelledby="cleanup-heading">
@@ -428,7 +429,7 @@ pm2 status hydrooj</code></pre>
           <figcaption>复制「CCS API 地址」这一行给对接方。示例中的回环地址用于本机预览。</figcaption>
         </figure>
         <p class="path"><strong>比赛 API</strong><br><code>/d/&lt;域ID&gt;/ccsapi/contests/&lt;比赛ID&gt;</code></p>
-        <p>先检查 <code>access</code> 返回的能力，再接入榜单或事件流。需要对外确认最终结果时，等比赛结束、解冻并处理完待评测提交，核对成绩后再点「确认 CCS 最终结果」。确认会保存固定快照。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/usage.md#ccs-api2026-01">认证、端点与最终结果规则</a></p>
+        <p>先检查 <code>access</code> 返回的能力，再接入榜单或事件流。CCS 自动计算的奖项与并列规则完全遵循本场比赛配置的同分、同奖与奖杯规则；Webhook 回调会自动校验目标地址并拒绝内网/回环地址，单域最多 20 个、单用户最多 10 个。需要对外确认最终结果时，等比赛结束、解冻并处理完待评测提交，核对成绩后再点「确认 CCS 最终结果」。确认会保存固定快照。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/usage.md#ccs-api2026-01">认证、端点与最终结果规则</a></p>
         <figure class="guide-shot">
           <a href="./images/manual/ccs-feed.svg"><img src="./images/manual/ccs-feed.svg" width="840" height="334" loading="lazy" alt="先读取 access，再取 scoreboard 或读取 event-feed，用已处理事件的 token 续传"></a>
           <figcaption>持续同步时先处理完整事件，再保存 token。连接中断后在同一比赛、同一身份下续传。</figcaption>
@@ -572,8 +573,8 @@ pm2 status hydrooj</code></pre>
       </section>
       <footer class="manual-footer">
         <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/usage.md">完整使用文档</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.26.0/docs/verification.md">验证记录</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.26.0/NOTICE">来源与许可</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.27.0/docs/verification.md">验证记录</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.27.0/NOTICE">来源与许可</a>
         <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/issues">报告问题</a>
       </footer>
     </main>

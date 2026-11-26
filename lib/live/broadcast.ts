@@ -1,6 +1,6 @@
 // The three broadcast graphics use the same public runs and computed rankings as the overlay.
 import type { ContestInfo, RunInfo } from './types';
-import { publicRunVerdict } from './model';
+import { hiddenFromOf, publicRunVerdict } from './model';
 import type { ScoreboardState } from './scoreboard';
 
 export function medalCutoff(info: ContestInfo, board: ScoreboardState, group: string, medal: string) {
@@ -12,7 +12,8 @@ export function medalCutoff(info: ContestInfo, board: ScoreboardState, group: st
     const order = ranking.order.filter((id) => teams.has(id) && !teams.get(id)!.isOutOfContest
         && (group === 'all' || local?.ranks[id]) && rows.get(id)!.totalScore > 0);
     const insideId = award?.teams.at(-1);
-    const outsideId = insideId ? order[order.indexOf(insideId) + 1] : undefined;
+    const insideIndex = insideId ? order.indexOf(insideId) : -1;
+    const outsideId = insideIndex >= 0 ? order[insideIndex + 1] : undefined;
     const entry = (id: string | undefined) => {
         if (!id) return null;
         const row = rows.get(id)!;
@@ -25,7 +26,8 @@ export function medalCutoff(info: ContestInfo, board: ScoreboardState, group: st
 
 export function problemFocus(info: ContestInfo, runs: Iterable<RunInfo>, problemId: string, group: string) {
     const problem = info.problems.find((item) => item.id === problemId);
-    if (!problem) return null;
+    const hiddenFrom = hiddenFromOf(info);
+    if (!problem || !problem.letter || (hiddenFrom !== undefined && problem.ordinal >= hiddenFrom)) return null;
     const teams = new Map(info.teams.filter((team) => group === 'all' || team.groups.includes(group)).map((team) => [team.id, team.shortName]));
     const attempted = new Set<string>();
     const solved = new Set<string>();
@@ -56,13 +58,16 @@ export class FirstSolveBulletin {
         const teams = new Map(info.teams.map((team) => [team.id, team.shortName]));
         const next = new Map<string, string>();
         if (!onAir || info.status.type === 'before') this.active.clear();
+        const hiddenFrom = hiddenFromOf(info);
         for (const problem of info.problems) {
-            const list = winners.get(problem.id) || [];
+            const anonymous = !problem.letter || (hiddenFrom !== undefined && problem.ordinal >= hiddenFrom);
+            const list = anonymous ? [] : (winners.get(problem.id) || []);
             const key = list.map((run) => run.id).join(',');
             next.set(problem.id, key);
             if (onAir && info.status.type !== 'before' && this.known && (this.known.get(problem.id) || '') !== key) {
-                this.active.set(problem.id, { problem: problem.letter, teams: list.map((run) => teams.get(run.teamId)!),
-                    time: list[0]?.time ?? null, expires: now + 12_000 });
+                if (!list.length) this.active.delete(problem.id);
+                else this.active.set(problem.id, { problem: problem.letter, teams: list.map((run) => teams.get(run.teamId)!),
+                    time: list[0].time, expires: now + 12_000 });
             }
         }
         this.known = next;

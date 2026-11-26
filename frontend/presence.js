@@ -2,7 +2,7 @@
 export function installPresence({ url, interval }) {
     const every = Math.max(5000, Number(interval) || 20000);
     const shared = `xcpcio-presence:${url}`;
-    const timer = setInterval(() => {
+    const sendBeat = () => {
         const now = Date.now();
         try {
             if (now - Number(localStorage.getItem(shared) || 0) < every * 0.75) return;
@@ -12,6 +12,8 @@ export function installPresence({ url, interval }) {
             method: 'POST', credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: '{}',
         }).catch(() => null);
-    }, every);
-    return () => clearInterval(timer);
+    };
+    const initial = setTimeout(sendBeat, 2000);
+    const timer = setInterval(sendBeat, every);
+    return () => { clearTimeout(initial); clearInterval(timer); };
 }

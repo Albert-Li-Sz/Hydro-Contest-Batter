@@ -156,6 +156,18 @@ function changeRegistration(action, target, previous) {
     }
 }
 
+function verifyPm2Online(service) {
+    const result = spawnSync('pm2', ['jlist'], { stdio: 'pipe', encoding: 'utf8' });
+    if (result.error || result.status !== 0 || !result.stdout?.trim()) return;
+    let processes;
+    try { processes = JSON.parse(result.stdout); } catch { return; }
+    if (!Array.isArray(processes)) return;
+    const matched = processes.filter((item) => item?.name === service);
+    if (matched.length && matched.every((item) => ['errored', 'stopped'].includes(item?.pm2_env?.status))) {
+        throw new Error(`PM2 进程 ${service} 重启后未能进入在线状态`);
+    }
+}
+
 function install(config) {
     const { action, target, service, restart } = config;
     if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('需要 Node.js 22 或以上版本');
@@ -167,6 +179,16 @@ function install(config) {
     }
     fs.writeFileSync(path.join(lock, 'pid'), String(process.pid));
     let staged;
+    const cleanupLock = () => {
+        if (staged) try { fs.rmSync(staged, { recursive: true, force: true }); } catch { /* ignore */ }
+        try { fs.rmSync(lock, { recursive: true, force: true }); } catch { /* ignore */ }
+    };
+    const onSignal = (signal) => {
+        cleanupLock();
+        process.exit(signal === 'SIGINT' ? 130 : 143);
+    };
+    process.on('SIGINT', onSignal);
+    process.on('SIGTERM', onSignal);
     try {
         run('hydrooj', ['addon', 'list'], true);
         const previous = readAddons();
@@ -225,18 +247,20 @@ function install(config) {
                     const saved = path.join(backup, path.basename(file));
                     fs.cpSync(file, saved, { recursive: true });
                     movedStatic.push([file, saved]);
-                    fs.rmSync(file, { recursive: true });
+                    fs.rmSync(file, { recursive: true, force: true });
                 }
             }
             if (restart) {
                 restartAttempted = true;
                 run('pm2', ['restart', service]);
+                verifyPm2Online(service);
             }
         } catch (error) {
-            if (newDirectoryPlaced) fs.rmSync(target, { recursive: true });
-            if (oldDirectoryMoved) fs.renameSync(path.join(backup, 'plugin'), target);
-            for (const [file, saved] of movedStatic) fs.cpSync(saved, file, { recursive: true });
-            restoreAddons(previous, target);
+            // Execute each rollback step independently so one failure cannot leave addon.json or old files unrestored.
+            if (newDirectoryPlaced) try { fs.rmSync(target, { recursive: true, force: true }); } catch (e) { console.error('回滚删除新目录失败:', e.message); }
+            if (oldDirectoryMoved) try { fs.renameSync(path.join(backup, 'plugin'), target); } catch (e) { console.error('回滚恢复旧目录失败:', e.message); }
+            for (const [file, saved] of movedStatic) try { fs.cpSync(saved, file, { recursive: true }); } catch (e) { console.error(`回滚恢复静态资源 ${file} 失败:`, e.message); }
+            try { restoreAddons(previous, target); } catch (e) { console.error('回滚恢复 addon.json 失败:', e.message); }
             console.error(`操作失败，已恢复插件目录与 addon 注册。备份位于 ${backup}`);
             if (restartAttempted) {
                 try { run('pm2', ['restart', service]); } catch { console.error(`请检查并手动重启 PM2 进程 ${service}`); }
@@ -246,8 +270,9 @@ function install(config) {
         console.log(action === 'uninstall' ? '插件已卸载，文件已归档到备份，MongoDB 数据保留。' : `插件 ${pkg.version} 已安装到 ${target}`);
         if (!restart) console.log('请通过当前部署的服务管理器重启 Hydro，使更改生效。');
     } finally {
-        if (staged) fs.rmSync(staged, { recursive: true, force: true });
-        fs.rmSync(lock, { recursive: true, force: true });
+        process.off('SIGINT', onSignal);
+        process.off('SIGTERM', onSignal);
+        cleanupLock();
     }
 }
 

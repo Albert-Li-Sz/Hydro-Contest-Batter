@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-    ContestModel, Context, Handler, NotFoundError, ObjectId, param, PERM, Tdoc, Types,
+    ContestModel, Context, Handler, NotFoundError, ObjectId, param, PERM, PRIV, Tdoc, Types,
 } from 'hydrooj';
 import { type BoardData, enhanceBoard } from './board';
 import { specialAwardResults } from './special-awards';
@@ -21,7 +21,9 @@ export function applyResolver(ctx: Context, dependencies: {
     const logoNames = JSON.parse(fs.readFileSync(path.join(__dirname, '../logos/index.json'), 'utf8')).names;
     const codeBase = resolverCodeBase(JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8')).version);
     const sessionTtl = dependencies.sessionDays * 24 * 3600 * 1000;
-    ctx.on('app/started', async () => { await sessions.ensureIndexes(); await sessions.prune(sessionTtl); });
+    ctx.on('app/started', () => Promise.all([sessions.ensureIndexes(), sessions.prune(sessionTtl)]).catch((error) => console.warn('[xcpcio] 滚榜索引或清理失败', error)));
+    ctx.on('contest/del', (domainId, tid) => { void sessions.removeByScope({ domainId, contestId: String(tid) }).catch(() => null); });
+    ctx.on('domain/delete', (domainId) => { void sessions.removeByScope({ domainId }).catch(() => null); });
 
     async function sourceFor(tdoc: Tdoc, privateInfo: boolean) {
         const settings = await dependencies.loadSettings(tdoc);
@@ -64,6 +66,7 @@ export function applyResolver(ctx: Context, dependencies: {
             const tdoc = await ContestModel.get(this.domain._id, tid);
             if (!tdoc) throw new NotFoundError('Contest not found');
             if (!this.user._id) throw new ResolverError('请登录比赛管理账号', 403);
+            this.checkPriv(PRIV.PRIV_USER_PROFILE);
             if (!this.user.own(tdoc)) this.checkPerm(PERM.PERM_EDIT_CONTEST);
             if (tdoc.rule !== 'acm') throw new ResolverError('滚榜仅支持 ACM 比赛');
             this.tdoc = tdoc;

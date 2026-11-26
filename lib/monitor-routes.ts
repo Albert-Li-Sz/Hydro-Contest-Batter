@@ -47,6 +47,7 @@ export function applyMonitor(ctx: Context) {
         find: (query: object) => { toArray: () => Promise<ProcessDoc[]> };
         updateOne: (filter: object, update: object, options?: object) => Promise<unknown>;
         deleteOne: (filter: object) => Promise<unknown>;
+        createIndex?: (keys: object, options?: object) => Promise<unknown>;
     };
     const contestBase = (tdoc: Tdoc) => `/d/${encodeURIComponent(tdoc.domainId)}/contest/${tdoc.docId}`;
     // Hydro lists its loaded addons by name in global.Hydro.version (loader.ts): `@hydrooj/hydrojudge` is
@@ -68,6 +69,9 @@ export function applyMonitor(ctx: Context) {
     };
     const connections = new WeakMap<object, string>();
     const on = ctx.on.bind(ctx) as unknown as (name: string, listener: (...args: any[]) => unknown) => () => void;
+    on('app/started', async () => {
+        await shared.createIndex?.({ updateAt: 1 }, { expireAfterSeconds: 600 }).catch(() => null);
+    });
     on('connection/active', (handler: JudgeConnection) => {
         if (handler?.category !== '#judge' && handler?.constructor?.name !== 'JudgeConnectionHandler') return;
         if (typeof handler.message !== 'function' || typeof handler.newTask !== 'function') return;
@@ -177,7 +181,11 @@ export function applyMonitor(ctx: Context) {
     const cache = new Map<string, { expires: number; value: Promise<MonitorSnapshot> }>();
 
     async function snapshot(tdoc: Tdoc, identity: boolean): Promise<MonitorSnapshot> {
-        const entries = await ContestModel.getMultiStatus(tdoc.domainId, { docId: tdoc.docId }).toArray() as unknown as TeamEntry[];
+        const cursor = ContestModel.getMultiStatus(tdoc.domainId, { docId: tdoc.docId }) as unknown as {
+            project?: (spec: object) => { toArray: () => Promise<TeamEntry[]> };
+            toArray: () => Promise<TeamEntry[]>;
+        };
+        const entries = await (typeof cursor.project === 'function' ? cursor.project({ uid: 1, members: 1, displayName: 1 }) : cursor).toArray();
         const users = await UserModel.getList(tdoc.domainId, [...entries.map((entry) => entry.uid), ...memberIds(tdoc, entries)]);
         // Team contests: members submit, the team is credited.
         const teamOf = new Map<number, { id: string; name: string }>();

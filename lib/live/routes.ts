@@ -136,7 +136,13 @@ export function applyLive(ctx: Context, dependencies: {
 
     async function readMedia(contestKey: string, name: string) {
         const stored = await media.findOne({ _id: `${contestKey}/${name}` });
-        if (stored) return { data: Buffer.from((stored.data as unknown as { buffer?: Uint8Array }).buffer ?? stored.data), mime: stored.mime };
+        if (stored) {
+            const raw = stored.data as unknown;
+            const data = Buffer.isBuffer(raw) ? raw
+                : ArrayBuffer.isView(raw) ? Buffer.from(raw.buffer, raw.byteOffset, raw.byteLength)
+                    : Buffer.from((raw as { buffer: Uint8Array }).buffer);
+            return { data, mime: stored.mime };
+        }
         return readBuiltinMedia(name);
     }
 
@@ -219,6 +225,27 @@ export function applyLive(ctx: Context, dependencies: {
         const pending = [...hubs.values()];
         hubs.clear();
         await Promise.all(pending.map((hub) => hub.then((item) => item.dispose(), () => null)));
+    });
+    ctx.on('contest/del', async (domainId, tid) => {
+        const id = `${domainId}/${tid}`;
+        const pending = hubs.get(id);
+        if (pending) { hubs.delete(id); void pending.then((hub) => hub.dispose(), () => null); }
+        closeRevoked(id, '');
+        await Promise.all([
+            collection.deleteOne({ _id: id }),
+            media.deleteMany({ key: id }),
+        ]).catch(() => null);
+    });
+    ctx.on('domain/delete', async (domainId) => {
+        const prefix = `${domainId}/`;
+        for (const [id, pending] of [...hubs.entries()]) {
+            if (!id.startsWith(prefix)) continue;
+            hubs.delete(id);
+            void pending.then((hub) => hub.dispose(), () => null);
+            closeRevoked(id, '');
+        }
+        const pattern = new RegExp(`^${domainId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`);
+        await Promise.all([collection.deleteMany({ _id: pattern }), media.deleteMany({ key: pattern })]).catch(() => null);
     });
 
     async function checkAdmin(handler: Handler | ConnectionHandler, tid: ObjectId) {
@@ -397,13 +424,16 @@ export function applyLive(ctx: Context, dependencies: {
     class LiveAdminConnectionHandler extends ConnectionHandler {
         unsubscribe?: () => void;
         recheck?: NodeJS.Timeout;
+        closed = false;
 
         @param('tid', Types.ObjectId)
         async prepare(_domainId: string, tid: ObjectId) {
             const tdoc = await checkAdmin(this, tid);
+            if (this.closed) return;
             const channel = this.channel();
             if (!channel) throw new NotFoundError('channel');
             const hub = await hubFor(tdoc);
+            if (this.closed) return;
             this.unsubscribe = hub.subscribe(channel, (payload) => this.send(typeof payload === 'string' ? payload : JSON.stringify(payload)));
             // A director who loses the permission (or the contest) is disconnected within a minute.
             const { domainId, docId } = tdoc;
@@ -420,6 +450,7 @@ export function applyLive(ctx: Context, dependencies: {
         }
 
         async cleanup() {
+            this.closed = true;
             if (this.recheck) clearInterval(this.recheck);
             this.unsubscribe?.();
         }
@@ -454,14 +485,17 @@ export function applyLive(ctx: Context, dependencies: {
         recheck?: NodeJS.Timeout;
         registration?: { token: string; close: () => void };
         contestKey = '';
+        closed = false;
 
         @param('tid', Types.ObjectId)
         @param('token', Types.String)
         async prepare(_domainId: string, tid: ObjectId, token: string) {
             const { tdoc } = await checkToken(this.domain._id, tid, token);
+            if (this.closed) return;
             const channel = overlayChannel(/\/ws\/overlay\/(.+)$/.exec(this.request.path)?.[1] || '');
             if (!channel) throw new NotFoundError('channel');
             const hub = await hubFor(tdoc);
+            if (this.closed) return;
             this.contestKey = key(tdoc);
             this.registration = { token, close: () => this.close(4004, '直播链接已作废') };
             if (!overlays.has(this.contestKey)) overlays.set(this.contestKey, new Set());
@@ -476,6 +510,7 @@ export function applyLive(ctx: Context, dependencies: {
         }
 
         async cleanup() {
+            this.closed = true;
             if (this.recheck) clearInterval(this.recheck);
             const registered = overlays.get(this.contestKey);
             if (this.registration && registered) {

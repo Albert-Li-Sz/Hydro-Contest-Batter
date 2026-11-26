@@ -3149,7 +3149,7 @@ new file mode 100644
 index 0000000..3dd2762
 --- /dev/null
 +++ b/src/frontend/admin-overlay/src/services/hydroCapture.ts
-@@ -0,0 +1,156 @@
+@@ -0,0 +1,192 @@
 +// Hydro: 画面采集 previews in the director console. A copy of overlay/src/utils/hydroCapture.ts
 +// (the two apps share no module); keep them alike. The console connects with its Hydro login.
 +const HYDRO_LIVE = (window as unknown as { __HYDRO_LIVE__: { captureWs?: string } }).__HYDRO_LIVE__;
@@ -3157,7 +3157,7 @@ index 0000000..3dd2762
 +const ANSWER_TIMEOUT_MS = 12000;
 +
 +type Message = { type: string; session?: string; sdp?: string; candidate?: RTCIceCandidateInit | null; message?: string; reason?: string; iceServers?: RTCIceServer[]; stunPort?: number };
-+type Session = { handle: (message: Message) => void; fail: (reason: string) => void; close: () => void };
++type Session = { handle: (message: Message) => void; fail: (reason: string, notifyServer?: boolean) => void; close: () => void };
 +
 +class CaptureConnection {
 +    private socket: WebSocket | null = null;
@@ -3165,50 +3165,61 @@ index 0000000..3dd2762
 +    private sessions = new Map<string, Session>();
 +    private counter = 0;
 +    private ready: Promise<void> = Promise.resolve();
++    private resolveReady: (() => void) | null = null;
 +    readonly deviceListeners = new Set<() => void>();
 +
 +    constructor(private url: string) {
++        this.resetReady();
 +        this.connect();
 +        setInterval(() => {
 +            if (this.socket?.readyState === WebSocket.OPEN) this.socket.send("ping");
 +        }, 20000);
 +    }
 +
-+    private connect() {
++    private resetReady() {
++        if (this.resolveReady) return;
 +        this.ready = new Promise((resolve) => {
-+            const socket = new WebSocket(this.url);
-+            this.socket = socket;
-+            socket.onmessage = (event) => {
-+                if (event.data === "ping") {
-+                    socket.send("pong");
-+                    return;
-+                }
-+                if (event.data === "pong") return;
-+                let message: Message;
-+                try {
-+                    message = JSON.parse(event.data);
-+                } catch {
-+                    return;
-+                }
-+                if (message.type === "config") {
-+                    this.iceServers = [...(Array.isArray(message.iceServers) ? message.iceServers : []),
-+                        // Hydro's own STUN server, on the host this page came from.
-+                        ...(message.stunPort ? [{ urls: `stun:${location.hostname}:${message.stunPort}` }] : [])];
-+                    resolve();
-+                    return;
-+                }
-+                // Contest staff hear when a device connects, leaves or changes what it captures.
-+                if (message.type === "devices") {
-+                    for (const listener of this.deviceListeners) listener();
-+                    return;
-+                }
-+                if (message.session) this.sessions.get(message.session)?.handle(message);
-+            };
-+            socket.onclose = () => {
-+                for (const session of [...this.sessions.values()]) session.fail("websocket closed");
-+                setTimeout(() => this.connect(), RETRY_MS);
-+            };
++            this.resolveReady = resolve;
 +        });
++    }
++
++    private connect() {
++        this.resetReady();
++        const socket = new WebSocket(this.url);
++        this.socket = socket;
++        socket.onmessage = (event) => {
++            if (event.data === "ping") {
++                socket.send("pong");
++                return;
++            }
++            if (event.data === "pong") return;
++            let message: Message;
++            try {
++                message = JSON.parse(event.data);
++            } catch {
++                return;
++            }
++            if (message.type === "config") {
++                this.iceServers = [...(Array.isArray(message.iceServers) ? message.iceServers : []),
++                    // Hydro's own STUN server, on the host this page came from.
++                    ...(message.stunPort ? [{ urls: `stun:${location.hostname}:${message.stunPort}` }] : [])];
++                const resolve = this.resolveReady;
++                this.resolveReady = null;
++                resolve?.();
++                return;
++            }
++            // Contest staff hear when a device connects, leaves or changes what it captures.
++            if (message.type === "devices") {
++                for (const listener of this.deviceListeners) listener();
++                return;
++            }
++            if (message.session) this.sessions.get(message.session)?.handle(message);
++        };
++        socket.onclose = () => {
++            if (this.socket === socket) this.resetReady();
++            for (const session of [...this.sessions.values()]) session.fail("websocket closed", false);
++            setTimeout(() => this.connect(), RETRY_MS);
++        };
 +    }
 +
 +    private send(message: Record<string, unknown>) {
@@ -3227,29 +3238,42 @@ index 0000000..3dd2762
 +            const id = `o${++this.counter}`;
 +            const pc = new RTCPeerConnection({ iceServers: this.iceServers });
 +            let timer: ReturnType<typeof setTimeout> | null = null;
++            let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
++            let answered = false;
++            const outbound: (RTCIceCandidateInit | null)[] = [];
++            const inbound: RTCIceCandidateInit[] = [];
++            const sendIce = (candidate: RTCIceCandidateInit | null) => this.send({ type: "ice", session: id, candidate });
 +            const session: Session = {
 +                handle: (message) => {
 +                    if (message.type === "answer" && message.sdp) {
 +                        if (timer) clearTimeout(timer);
-+                        pc.setRemoteDescription({ type: "answer", sdp: message.sdp }).catch(() => session.fail("bad answer"));
++                        pc.setRemoteDescription({ type: "answer", sdp: message.sdp }).then(async () => {
++                            answered = true;
++                            for (const candidate of outbound.splice(0)) sendIce(candidate);
++                            for (const candidate of inbound.splice(0)) await pc.addIceCandidate(candidate).catch(() => {});
++                        }).catch(() => session.fail("bad answer"));
 +                    } else if (message.type === "ice" && message.candidate) {
-+                        pc.addIceCandidate(message.candidate).catch(() => {});
++                        if (answered) pc.addIceCandidate(message.candidate).catch(() => {});
++                        else if (inbound.length < 64) inbound.push(message.candidate);
 +                    } else if (message.type === "error" || message.type === "ended") {
 +                        console.warn(`HydroCapture ${device}/${stream}: ${message.message || message.reason}`);
-+                        session.fail(message.message || message.reason || "ended");
++                        session.fail(message.message || message.reason || "ended", false);
 +                    }
 +                },
-+                fail: () => {
++                fail: (_reason, notifyServer = true) => {
 +                    if (current !== session) return;
 +                    current = null;
 +                    if (timer) clearTimeout(timer);
++                    if (disconnectTimer) clearTimeout(disconnectTimer);
 +                    this.sessions.delete(id);
++                    if (notifyServer) this.send({ type: "stop", session: id });
 +                    pc.close();
 +                    video.srcObject = null;
 +                    if (!stopped) retry = setTimeout(start, RETRY_MS);
 +                },
 +                close: () => {
 +                    if (timer) clearTimeout(timer);
++                    if (disconnectTimer) clearTimeout(disconnectTimer);
 +                    this.sessions.delete(id);
 +                    this.send({ type: "stop", session: id });
 +                    pc.close();
@@ -3265,15 +3289,27 @@ index 0000000..3dd2762
 +                video.srcObject = media;
 +                video.play().catch(() => {});
 +            };
-+            pc.onicecandidate = (event) => this.send({ type: "ice", session: id, candidate: event.candidate ? event.candidate.toJSON() : null });
++            pc.onicecandidate = ({ candidate }) => {
++                const value = candidate?.toJSON() ?? null;
++                if (answered) sendIce(value);
++                else outbound.push(value);
++            };
 +            pc.onconnectionstatechange = () => {
++                if (disconnectTimer) clearTimeout(disconnectTimer);
 +                if (pc.connectionState === "connected") onPlaying();
 +                else if (pc.connectionState === "failed") session.fail("failed");
++                else if (pc.connectionState === "disconnected") disconnectTimer = setTimeout(() => { if (pc.connectionState === "disconnected") session.fail("disconnected"); }, 5000);
 +            };
-+            const offer = await pc.createOffer();
-+            await pc.setLocalDescription(offer);
-+            this.send({ type: "watch", session: id, device, stream, sdp: offer.sdp });
-+            timer = setTimeout(() => session.fail("no answer"), ANSWER_TIMEOUT_MS);
++            try {
++                const offer = await pc.createOffer();
++                if (stopped || current !== session) return;
++                await pc.setLocalDescription(offer);
++                if (stopped || current !== session) return;
++                this.send({ type: "watch", session: id, device, stream, sdp: offer.sdp });
++                timer = setTimeout(() => session.fail("no answer"), ANSWER_TIMEOUT_MS);
++            } catch (error) {
++                session.fail(String(error), false);
++            }
 +        };
 +        start().catch((error) => console.warn("HydroCapture:", error));
 +        return () => {
@@ -5350,7 +5386,7 @@ new file mode 100644
 index 0000000..ae53817
 --- /dev/null
 +++ b/src/frontend/overlay/src/utils/hydroCapture.ts
-@@ -0,0 +1,171 @@
+@@ -0,0 +1,194 @@
 +// Hydro: 画面采集. A contestant computer's screen or webcam over WebRTC; Hydro passes the
 +// handshake (lib/live/capture.ts in the plugin) and the video comes straight from that computer.
 +// One websocket per page, shared by every media holder. Mirrors the plugin's
@@ -5360,7 +5396,7 @@ index 0000000..ae53817
 +const ANSWER_TIMEOUT_MS = 12000;
 +
 +type Message = { type: string; session?: string; sdp?: string; candidate?: RTCIceCandidateInit | null; message?: string; reason?: string; iceServers?: RTCIceServer[]; stunPort?: number };
-+type Session = { handle: (message: Message) => void; fail: (reason: string) => void; close: () => void };
++type Session = { handle: (message: Message) => void; fail: (reason: string, notifyServer?: boolean) => void; close: () => void };
 +
 +class CaptureConnection {
 +    private socket: WebSocket | null = null;
@@ -5368,50 +5404,61 @@ index 0000000..ae53817
 +    private sessions = new Map<string, Session>();
 +    private counter = 0;
 +    private ready: Promise<void> = Promise.resolve();
++    private resolveReady: (() => void) | null = null;
 +    readonly deviceListeners = new Set<() => void>();
 +
 +    constructor(private url: string) {
++        this.resetReady();
 +        this.connect();
 +        setInterval(() => {
 +            if (this.socket?.readyState === WebSocket.OPEN) this.socket.send("ping");
 +        }, 20000);
 +    }
 +
-+    private connect() {
++    private resetReady() {
++        if (this.resolveReady) return;
 +        this.ready = new Promise((resolve) => {
-+            const socket = new WebSocket(this.url);
-+            this.socket = socket;
-+            socket.onmessage = (event) => {
-+                if (event.data === "ping") {
-+                    socket.send("pong");
-+                    return;
-+                }
-+                if (event.data === "pong") return;
-+                let message: Message;
-+                try {
-+                    message = JSON.parse(event.data);
-+                } catch {
-+                    return;
-+                }
-+                if (message.type === "config") {
-+                    this.iceServers = [...(Array.isArray(message.iceServers) ? message.iceServers : []),
-+                        // Hydro's own STUN server, on the host this page came from.
-+                        ...(message.stunPort ? [{ urls: `stun:${location.hostname}:${message.stunPort}` }] : [])];
-+                    resolve();
-+                    return;
-+                }
-+                // Contest staff hear when a device connects, leaves or changes what it captures.
-+                if (message.type === "devices") {
-+                    for (const listener of this.deviceListeners) listener();
-+                    return;
-+                }
-+                if (message.session) this.sessions.get(message.session)?.handle(message);
-+            };
-+            socket.onclose = () => {
-+                for (const session of [...this.sessions.values()]) session.fail("websocket closed");
-+                setTimeout(() => this.connect(), RETRY_MS);
-+            };
++            this.resolveReady = resolve;
 +        });
++    }
++
++    private connect() {
++        this.resetReady();
++        const socket = new WebSocket(this.url);
++        this.socket = socket;
++        socket.onmessage = (event) => {
++            if (event.data === "ping") {
++                socket.send("pong");
++                return;
++            }
++            if (event.data === "pong") return;
++            let message: Message;
++            try {
++                message = JSON.parse(event.data);
++            } catch {
++                return;
++            }
++            if (message.type === "config") {
++                this.iceServers = [...(Array.isArray(message.iceServers) ? message.iceServers : []),
++                    // Hydro's own STUN server, on the host this page came from.
++                    ...(message.stunPort ? [{ urls: `stun:${location.hostname}:${message.stunPort}` }] : [])];
++                const resolve = this.resolveReady;
++                this.resolveReady = null;
++                resolve?.();
++                return;
++            }
++            // Contest staff hear when a device connects, leaves or changes what it captures.
++            if (message.type === "devices") {
++                for (const listener of this.deviceListeners) listener();
++                return;
++            }
++            if (message.session) this.sessions.get(message.session)?.handle(message);
++        };
++        socket.onclose = () => {
++            if (this.socket === socket) this.resetReady();
++            for (const session of [...this.sessions.values()]) session.fail("websocket closed", false);
++            setTimeout(() => this.connect(), RETRY_MS);
++        };
 +    }
 +
 +    private send(message: Record<string, unknown>) {
@@ -5430,6 +5477,7 @@ index 0000000..ae53817
 +            const id = `o${++this.counter}`;
 +            const pc = new RTCPeerConnection({ iceServers: this.iceServers });
 +            let timer: ReturnType<typeof setTimeout> | null = null;
++            let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
 +            let answered = false;
 +            const outbound: (RTCIceCandidateInit | null)[] = [];
 +            const inbound: RTCIceCandidateInit[] = [];
@@ -5448,20 +5496,23 @@ index 0000000..ae53817
 +                        else if (inbound.length < 64) inbound.push(message.candidate);
 +                    } else if (message.type === "error" || message.type === "ended") {
 +                        console.warn(`HydroCapture ${device}/${stream}: ${message.message || message.reason}`);
-+                        session.fail(message.message || message.reason || "ended");
++                        session.fail(message.message || message.reason || "ended", false);
 +                    }
 +                },
-+                fail: () => {
++                fail: (_reason, notifyServer = true) => {
 +                    if (current !== session) return;
 +                    current = null;
 +                    if (timer) clearTimeout(timer);
++                    if (disconnectTimer) clearTimeout(disconnectTimer);
 +                    this.sessions.delete(id);
++                    if (notifyServer) this.send({ type: "stop", session: id });
 +                    pc.close();
 +                    video.srcObject = null;
 +                    if (!stopped) retry = setTimeout(start, RETRY_MS);
 +                },
 +                close: () => {
 +                    if (timer) clearTimeout(timer);
++                    if (disconnectTimer) clearTimeout(disconnectTimer);
 +                    this.sessions.delete(id);
 +                    this.send({ type: "stop", session: id });
 +                    pc.close();
@@ -5483,13 +5534,21 @@ index 0000000..ae53817
 +                else outbound.push(value);
 +            };
 +            pc.onconnectionstatechange = () => {
++                if (disconnectTimer) clearTimeout(disconnectTimer);
 +                if (pc.connectionState === "connected") onPlaying();
 +                else if (pc.connectionState === "failed") session.fail("failed");
++                else if (pc.connectionState === "disconnected") disconnectTimer = setTimeout(() => { if (pc.connectionState === "disconnected") session.fail("disconnected"); }, 5000);
 +            };
-+            const offer = await pc.createOffer();
-+            await pc.setLocalDescription(offer);
-+            this.send({ type: "watch", session: id, device, stream, sdp: offer.sdp });
-+            timer = setTimeout(() => session.fail("no answer"), ANSWER_TIMEOUT_MS);
++            try {
++                const offer = await pc.createOffer();
++                if (stopped || current !== session) return;
++                await pc.setLocalDescription(offer);
++                if (stopped || current !== session) return;
++                this.send({ type: "watch", session: id, device, stream, sdp: offer.sdp });
++                timer = setTimeout(() => session.fail("no answer"), ANSWER_TIMEOUT_MS);
++            } catch (error) {
++                session.fail(String(error), false);
++            }
 +        };
 +        start().catch((error) => console.warn("HydroCapture:", error));
 +        return () => {

@@ -34,8 +34,9 @@ const table = (labels, rows, empty) => el('div', { class: 'manage-scroll' }, el(
 async function operate(path, operation, payload) {
     const response = await fetch(path, { method: 'POST', credentials: 'same-origin', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify({ operation, payload: JSON.stringify(payload) }) });
-    const body = await response.json();
-    if (!response.ok || body.error) throw new Error(body.error?.message || body.error || '操作失败');
+    let body = {};
+    try { body = await response.json(); } catch { /* Proxy or gateway error pages may not be JSON. */ }
+    if (!response.ok || body.error) throw new Error(body.error?.message || (typeof body.error === 'string' ? body.error : '') || `操作失败（HTTP ${response.status}）`);
     return body;
 }
 const time = (s) => new Date(s).getTime();

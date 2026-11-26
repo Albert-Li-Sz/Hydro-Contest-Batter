@@ -130,8 +130,8 @@ export function recordingTests(ctx: Context, store: RecordingStore, send: (devic
         }) || null : null;
         const summary = { peakMbps, p95Mbps: rates[Math.max(0, Math.ceil(rates.length * .95) - 1)] || 0, peakFactor: avg > 0 ? peakMbps / avg : null,
             maxBacklog: test.maxBacklog || 0, failureRate: attempts ? failed / attempts : null, failedDevices, passed, recommended };
-        await tests.updateOne({ _id: id, endedAt: null }, { $set: { endedAt: Date.now(), series, summary, cleanupPending: true } });
-        await cleanup(id);
+        const updated = await tests.updateOne({ _id: id, endedAt: null }, { $set: { endedAt: Date.now(), series, summary, cleanupPending: true } });
+        if (updated.modifiedCount) await cleanup(id);
     }
     async function cleanup(testId: string) {
         await store.removeSegments({ kind: 'test', testId }, false);

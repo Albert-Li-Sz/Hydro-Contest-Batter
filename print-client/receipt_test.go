@@ -128,4 +128,15 @@ func TestReceiptToFolder(t *testing.T) {
 	if !pdf || !raw {
 		t.Errorf("folder printer wrote %v", files)
 	}
+	// Two jobs in the same second with distinct IDs must produce separate files.
+	if err := printReceipt("保存到文件夹 1", Job{ID: "job-a", Title: "气球 #3", Kind: "receipt", Receipt: &r}); err != nil {
+		t.Fatal(err)
+	}
+	if err := printReceipt("保存到文件夹 1", Job{ID: "job-b", Title: "气球 #3", Kind: "receipt", Receipt: &r}); err != nil {
+		t.Fatal(err)
+	}
+	pdfs, _ := filepath.Glob(filepath.Join(dir, "*.pdf"))
+	if len(pdfs) != 3 {
+		t.Errorf("want 3 distinct PDF files, got %v", pdfs)
+	}
 }

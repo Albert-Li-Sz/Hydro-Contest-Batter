@@ -74,6 +74,9 @@ export interface CertificateRequest {
 export interface CertificateFile { data: Buffer; type: string; name: string; inline: boolean }
 
 const MAX_IMAGE = 6 * 1024 * 1024;
+const MAX_DECORATIONS_PER_TEMPLATE = 20;
+const MAX_IMAGE_CACHE = 64;
+const yieldLoop = () => new Promise<void>((resolve) => setImmediate(resolve));
 const configId = (scope: SnapshotScope) => `${scope.domainId}/${scope.contestId}`;
 const bytes = (data: unknown): Buffer => {
     if (Buffer.isBuffer(data)) return data;
@@ -105,19 +108,58 @@ export function certificateService(db: Context['db'], dependencies: {
         ]);
     }
 
-    async function readConfig(request: Pick<CertificateRequest, 'scope' | 'title'>): Promise<CertificateConfig> {
+    const parsedImages = new Map<string, PdfImage>();
+    function cachedImage(doc: Pick<AssetDoc, '_id' | 'data' | 'revision' | 'createdAt'>, preserveAlpha: boolean): PdfImage {
+        const stamp = doc.revision ?? (doc.createdAt ? new Date(doc.createdAt).getTime() : 0);
+        const key = `${doc._id}:${stamp}:${preserveAlpha ? 1 : 0}`;
+        const hit = parsedImages.get(key);
+        if (hit) {
+            parsedImages.delete(key);
+            parsedImages.set(key, hit);
+            return hit;
+        }
+        const parsed = parseImage(bytes(doc.data), preserveAlpha);
+        if (parsedImages.size >= MAX_IMAGE_CACHE) parsedImages.delete(parsedImages.keys().next().value!);
+        parsedImages.set(key, parsed);
+        return parsed;
+    }
+
+    async function readConfigDoc(request: Pick<CertificateRequest, 'scope' | 'title'>) {
         const doc = await configs.findOne({ _id: configId(request.scope) });
         const fallback = defaultConfig(request.title);
-        if (!doc) return fallback;
+        if (!doc) return { doc: null as ConfigDoc | null, config: fallback };
         const { _id, domainId: _domain, contestId: _contest, updatedAt: _at, updatedBy: _by, ...saved } = doc;
         const templates = { ...fallback.templates, ...saved.templates };
-        return { ...fallback, ...saved, kinds: { ...fallback.kinds, ...saved.kinds }, templates: {
-            award: restoreTextColors(templates.award, 'award'), participation: restoreTextColors(templates.participation, 'participation'),
-        }, sheet: saved.sheet || {} };
+        return {
+            doc,
+            config: {
+                ...fallback, ...saved, kinds: { ...fallback.kinds, ...saved.kinds }, templates: {
+                    award: restoreTextColors(templates.award, 'award'), participation: restoreTextColors(templates.participation, 'participation'),
+                }, sheet: saved.sheet || {},
+            },
+        };
     }
-    async function writeConfig(request: CertificateRequest, config: CertificateConfig) {
-        await configs.updateOne({ _id: configId(request.scope) },
-            { $set: { ...config, ...request.scope, updatedAt: new Date(), updatedBy: request.uid } }, { upsert: true });
+    async function readConfig(request: Pick<CertificateRequest, 'scope' | 'title'>): Promise<CertificateConfig> {
+        return (await readConfigDoc(request)).config;
+    }
+    async function writeConfig(request: CertificateRequest, config: CertificateConfig, expectedUpdatedAt?: Date | null) {
+        const _id = configId(request.scope);
+        const now = new Date();
+        if (expectedUpdatedAt === undefined) {
+            await configs.updateOne({ _id }, { $set: { ...config, ...request.scope, updatedAt: now, updatedBy: request.uid } }, { upsert: true });
+            return true;
+        }
+        if (expectedUpdatedAt === null) {
+            try {
+                await configs.insertOne({ _id, ...config, ...request.scope, updatedAt: now, updatedBy: request.uid });
+                return true;
+            } catch (error) {
+                if ((error as { code?: number }).code === 11000) return false;
+                throw error;
+            }
+        }
+        const res = await configs.updateOne({ _id, updatedAt: expectedUpdatedAt }, { $set: { ...config, ...request.scope, updatedAt: now, updatedBy: request.uid } });
+        return res.matchedCount > 0;
     }
     async function readSource(scope: SnapshotScope, id: string): Promise<ResultsData> {
         if (!id) throw new CertificateError('请先选择出证依据的成绩快照');
@@ -133,7 +175,7 @@ export function certificateService(db: Context['db'], dependencies: {
         if (!id) return null;
         if (!cache.has(id)) {
             const doc = await assets.findOne({ _id: id, ...scope, slot: { $exists: false }, decoration: { $exists: false }, signatureSlot: { $exists: false }, emblemMode: { $exists: false } });
-            cache.set(id, doc ? parseImage(bytes(doc.data)) : null);
+            cache.set(id, doc ? cachedImage(doc, false) : null);
         }
         return cache.get(id)!;
     }
@@ -232,6 +274,8 @@ export function certificateService(db: Context['db'], dependencies: {
         if (typeof input.id !== 'string' || !/^[a-f0-9]{24}$/.test(input.id)) throw new CertificateError('装饰图片编号无效');
         const filter = { _id: input.id, ...scope, decoration: input.template as TemplateKind };
         if (input.action === 'add') {
+            const existingCount = await assets.countDocuments({ ...scope, decoration: input.template as TemplateKind });
+            if (existingCount >= MAX_DECORATIONS_PER_TEMPLATE) throw new CertificateError(`每个模板最多添加 ${MAX_DECORATIONS_PER_TEMPLATE} 张装饰图片`);
             const { data, type, aspect } = uploadedImage(input.data);
             const label = typeof input.label === 'string' ? input.label.trim().slice(0, 100) : '';
             const placement = { x: .42, y: .42, width: Math.min(.18, .15 * aspect), aspect };
@@ -270,17 +314,19 @@ export function certificateService(db: Context['db'], dependencies: {
         const signatures: Record<EventDesign, Map<number, PdfImage | null>> = { event: new Map(), 'event-zh': new Map() };
         for (const doc of signatureDocs) {
             const design = doc.signatureDesign ?? 'event';
-            if (designs.includes(design)) signatures[design].set(doc.signatureSlot!, doc.hidden ? null : parseImage(bytes(doc.data), true));
+            if (designs.includes(design)) signatures[design].set(doc.signatureSlot!, doc.hidden ? null : cachedImage(doc, true));
         }
-        const emblem = emblemDoc?.emblemMode === 'custom' ? parseImage(bytes(emblemDoc.data), true) : emblemDoc?.emblemMode ?? 'icpc';
-        const logos = logoDocs.map((doc) => ({ slot: doc.slot!, image: parseImage(bytes(doc.data), true) }));
-        const decorations = artwork.map((doc) => ({ template: doc.decoration, ...doc.placement!, image: parseImage(bytes(doc.data), true) }));
+        const emblem = emblemDoc?.emblemMode === 'custom' ? cachedImage(emblemDoc, true) : emblemDoc?.emblemMode ?? 'icpc';
+        const logos = logoDocs.map((doc) => ({ slot: doc.slot!, image: cachedImage(doc, true) }));
+        const decorations = artwork.map((doc) => ({ template: doc.decoration, ...doc.placement!, image: cachedImage(doc, true) }));
         const result = [];
-        for (const doc of docs) {
+        for (let i = 0; i < docs.length; i++) {
+            const doc = docs[i];
             const template = templateFor(config, doc.kind);
             result.push(certificatePage(template, doc.kind, doc.values, verifyUrl(request.site, request.scope.domainId, doc._id),
                 await background(request.scope, template.background, cache), logos, decorations.filter((d) => d.template === (doc.kind === 'participation' ? 'participation' : 'award')),
                 isEventDesign(template.frame) ? signatures[template.frame] : undefined, emblem));
+            if ((i + 1) % 20 === 0) await yieldLoop();
         }
         return result;
     }
@@ -360,7 +406,7 @@ export function certificateService(db: Context['db'], dependencies: {
         };
     }
 
-    async function issue(request: CertificateRequest): Promise<{ created: number; corrected: number; revoked: number; unchanged: number }> {
+    async function issue(request: CertificateRequest, attemptDepth = 0): Promise<{ created: number; corrected: number; revoked: number; unchanged: number }> {
         const config = await readConfig(request);
         if (!config.locked) throw new CertificateError('请先核对并锁定制证信息表');
         const source = await readSource(request.scope, config.source);
@@ -368,7 +414,11 @@ export function certificateService(db: Context['db'], dependencies: {
         const entries = certificateEntries(boardOf(source, config.board), config);
         await finishPending(request.scope);
         const all = await issued.find(request.scope).toArray();
-        if (all.some((doc) => doc.status === 'pending')) return issue(request);
+        if (all.some((doc) => doc.status === 'pending')) {
+            if (attemptDepth >= 5) throw new CertificateError('另有出证任务正在进行，请稍后重试', 409);
+            await new Promise((resolve) => setTimeout(resolve, 50 * (attemptDepth + 1)));
+            return issue(request, attemptDepth + 1);
+        }
         const versions = new Map<string, number>();
         for (const doc of all) versions.set(doc.key, Math.max(versions.get(doc.key) ?? 0, doc.version));
         const plan = planIssue(entries, all.filter((doc) => doc.status === 'valid').map((doc) => ({ code: doc._id, key: doc.key, fingerprint: doc.fingerprint })));
@@ -421,35 +471,6 @@ export function certificateService(db: Context['db'], dependencies: {
         if (operation === 'decoration') return editDecoration(request.scope, payload);
         if (operation === 'signature') return editSignature(request.scope, payload);
         if (operation === 'emblem') return editEmblem(request.scope, payload);
-        const config = await readConfig(request);
-        if (operation === 'config') {
-            const next = normalizeConfig(payload, config);
-            // A different source or board gives other certificates: the sheet must be checked again.
-            if (next.source !== config.source || next.board !== config.board) next.locked = false;
-            if (!next.locked) next.lockedEnglish = null;
-            else if (!config.locked && next.source) {
-                const result = boardOf(await readSource(request.scope, next.source), next.board);
-                next.lockedEnglish = freezeEnglish(sheetOf(result, next.sheet));
-            }
-            await writeConfig(request, next);
-            return { ok: true };
-        }
-        if (operation === 'team' || operation === 'upload') {
-            if (config.locked) throw new CertificateError('信息表已锁定，请先解除锁定再修改');
-            if (operation === 'team') {
-                const teamId = String(payload.teamId ?? '');
-                if (!/^-?\d{1,16}$/.test(teamId)) throw new CertificateError('队伍无效');
-                config.sheet = { ...config.sheet, [teamId]: normalizeOverride(payload.override ?? {}) };
-                await writeConfig(request, config);
-                return { ok: true };
-            }
-            if (typeof payload.csv !== 'string' || payload.csv.length > 4_000_000) throw new CertificateError('信息表文件无效或过大');
-            const result = boardOf(await readSource(request.scope, config.source), config.board);
-            const { overrides, updated, unknown } = overridesFromCsv(payload.csv, result, config.sheet);
-            config.sheet = overrides;
-            await writeConfig(request, config);
-            return { updated, unknown };
-        }
         if (operation === 'logo') {
             const slot = payload.slot;
             if (slot !== 0 && slot !== 1) throw new CertificateError('每张证书最多两个校徽，请选择左侧或右侧');
@@ -466,6 +487,54 @@ export function certificateService(db: Context['db'], dependencies: {
             await assets.updateOne(filter, { $set: { data, type, label, createdAt } }, { upsert: true });
             return { id, slot, label: label || '学校校徽', revision: createdAt.getTime() };
         }
+        if (operation === 'team') {
+            const teamId = String(payload.teamId ?? '');
+            if (!/^-?\d{1,16}$/.test(teamId)) throw new CertificateError('队伍无效');
+            const override = normalizeOverride(payload.override ?? {});
+            const _id = configId(request.scope);
+            for (let attempt = 0; attempt < 3; attempt++) {
+                const { doc, config } = await readConfigDoc(request);
+                if (config.locked) throw new CertificateError('信息表已锁定，请先解除锁定再修改');
+                if (!doc) {
+                    config.sheet = { ...config.sheet, [teamId]: override };
+                    if (await writeConfig(request, config, null)) return { ok: true };
+                    continue;
+                }
+                const updated = await configs.updateOne(
+                    { _id, locked: { $ne: true } },
+                    { $set: { [`sheet.${teamId}`]: override, updatedAt: new Date(), updatedBy: request.uid } },
+                );
+                if (updated.matchedCount) return { ok: true };
+            }
+            throw new CertificateError('信息表已锁定，请先解除锁定再修改');
+        }
+        if (operation === 'config') {
+            for (let attempt = 0; attempt < 3; attempt++) {
+                const { doc, config } = await readConfigDoc(request);
+                const next = normalizeConfig(payload, config);
+                // A different source or board gives other certificates: the sheet must be checked again.
+                if (next.source !== config.source || next.board !== config.board) next.locked = false;
+                if (!next.locked) next.lockedEnglish = null;
+                else if (!config.locked && next.source) {
+                    const result = boardOf(await readSource(request.scope, next.source), next.board);
+                    next.lockedEnglish = freezeEnglish(sheetOf(result, next.sheet));
+                }
+                if (await writeConfig(request, next, doc?.updatedAt ?? null)) return { ok: true };
+            }
+            throw new CertificateError('证书配置已被他人修改，请刷新后重试', 409);
+        }
+        if (operation === 'upload') {
+            if (typeof payload.csv !== 'string' || payload.csv.length > 4_000_000) throw new CertificateError('信息表文件无效或过大');
+            for (let attempt = 0; attempt < 3; attempt++) {
+                const { doc, config } = await readConfigDoc(request);
+                if (config.locked) throw new CertificateError('信息表已锁定，请先解除锁定再修改');
+                const result = boardOf(await readSource(request.scope, config.source), config.board);
+                const { overrides, updated, unknown } = overridesFromCsv(payload.csv, result, config.sheet);
+                config.sheet = overrides;
+                if (await writeConfig(request, config, doc?.updatedAt ?? null)) return { updated, unknown };
+            }
+            throw new CertificateError('信息表已被他人修改，请刷新后重试', 409);
+        }
         if (operation === 'background') {
             const which = payload.template === 'participation' ? 'participation' : 'award';
             let id: string | null = null;
@@ -474,18 +543,31 @@ export function certificateService(db: Context['db'], dependencies: {
                 id = randomBytes(12).toString('hex');
                 await assets.insertOne({ _id: id, ...request.scope, data, type, createdAt: new Date() });
             }
-            const previous = config.templates[which].background;
-            config.templates = { ...config.templates, [which]: { ...config.templates[which], background: id } };
-            await writeConfig(request, config);
-            const other = which === 'award' ? config.templates.participation.background : config.templates.award.background;
+            let previous: string | null = null;
+            let other: string | null = null;
+            let saved = false;
+            for (let attempt = 0; attempt < 3; attempt++) {
+                const { doc, config } = await readConfigDoc(request);
+                previous = config.templates[which].background;
+                other = which === 'award' ? config.templates.participation.background : config.templates.award.background;
+                config.templates = { ...config.templates, [which]: { ...config.templates[which], background: id } };
+                if (await writeConfig(request, config, doc?.updatedAt ?? null)) { saved = true; break; }
+            }
+            if (!saved) {
+                if (id) await assets.deleteOne({ _id: id, ...request.scope }).catch(() => null);
+                throw new CertificateError('证书配置已被他人修改，请刷新后重试', 409);
+            }
             if (previous && previous !== other) await assets.deleteOne({ _id: previous, ...request.scope, slot: { $exists: false }, decoration: { $exists: false }, signatureSlot: { $exists: false }, emblemMode: { $exists: false } });
             return { id };
         }
         if (operation === 'snapshot') {
             const label = typeof payload.label === 'string' ? payload.label.trim().slice(0, 80) : '';
             const id = await dependencies.snapshot(request.scope, label || '出证', request.uid);
-            await writeConfig(request, { ...config, source: id, locked: false, lockedEnglish: null });
-            return { id };
+            for (let attempt = 0; attempt < 3; attempt++) {
+                const { doc, config } = await readConfigDoc(request);
+                if (await writeConfig(request, { ...config, source: id, locked: false, lockedEnglish: null }, doc?.updatedAt ?? null)) return { id };
+            }
+            throw new CertificateError('证书配置已被他人修改，请刷新后重试', 409);
         }
         throw new CertificateError('未知的操作');
     }
@@ -526,7 +608,12 @@ export function certificateService(db: Context['db'], dependencies: {
         }
         if (format === 'zip') {
             const rendered = await pages(request, config, docs);
-            const entries = docs.map((doc, index) => ({ name: `${safeName(doc.values.school || '未填写学校')}/${fileName(doc)}`, data: buildPdf([rendered[index]], `${doc.values.name} ${doc.values.award}`) }));
+            const entries: { name: string; data: Buffer }[] = [];
+            for (let index = 0; index < docs.length; index++) {
+                const doc = docs[index];
+                entries.push({ name: `${safeName(doc.values.school || '未填写学校')}/${fileName(doc)}`, data: buildPdf([rendered[index]], `${doc.values.name} ${doc.values.award}`) });
+                if ((index + 1) % 10 === 0) await yieldLoop();
+            }
             return { data: writeZip(entries), type: 'application/zip', name: `${title}${suffix}-证书.zip`, inline: false };
         }
         throw new CertificateError('未知的下载格式', 404);

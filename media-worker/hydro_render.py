@@ -7,6 +7,7 @@ import json
 import math
 import re
 import subprocess
+import time
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
@@ -60,35 +61,48 @@ def download(base, url, dest, limit=20 * 1024 * 1024, secret=""):
         tail,
     )
     headers = {"Authorization": "Bearer " + secret} if secret and protected else {}
-    for _ in range(6):
-        with requests.get(
-            resolved,
-            headers=headers,
-            allow_redirects=False,
-            stream=True,
-            timeout=(10, 90),
-        ) as response:
-            if response.is_redirect:
-                resolved = urljoin(resolved, response.headers["Location"])
-                target = urlsplit(resolved)
-                if (
-                    target.scheme not in ("https", "http")
-                    or not target.hostname
-                    or target.username is not None
-                ):
-                    raise ValueError("Invalid storage redirect")
-                headers = {}
-                continue
-            response.raise_for_status()
-            size = 0
-            with dest.open("wb") as output:
-                for block in response.iter_content(256 * 1024):
-                    size += len(block)
-                    if size > limit:
-                        raise ValueError("Media exceeds its size limit")
-                    output.write(block)
-            return dest
-    raise ValueError("Too many storage redirects")
+    for attempt in range(3):
+        current_url = resolved
+        current_headers = dict(headers)
+        try:
+            for _ in range(6):
+                with requests.get(
+                    current_url,
+                    headers=current_headers,
+                    allow_redirects=False,
+                    stream=True,
+                    timeout=(10, 90),
+                ) as response:
+                    if response.is_redirect:
+                        location = response.headers.get("Location")
+                        if not location:
+                            raise ValueError("Missing storage redirect location")
+                        current_url = urljoin(current_url, location)
+                        target = urlsplit(current_url)
+                        if (
+                            target.scheme not in ("https", "http")
+                            or not target.hostname
+                            or target.username is not None
+                        ):
+                            raise ValueError("Invalid storage redirect")
+                        current_headers = {}
+                        continue
+                    if (response.status_code >= 500 or response.status_code == 429) and attempt < 2:
+                        response.raise_for_status()
+                    response.raise_for_status()
+                    size = 0
+                    with dest.open("wb") as output:
+                        for block in response.iter_content(256 * 1024):
+                            size += len(block)
+                            if size > limit:
+                                raise ValueError("Media exceeds its size limit")
+                            output.write(block)
+                    return dest
+            raise ValueError("Too many storage redirects")
+        except requests.RequestException:
+            if attempt == 2:
+                raise
+            time.sleep(2**attempt)
 
 
 def timeline(segments, start, end):
@@ -210,6 +224,17 @@ def make_track(folder, kind, spans, assets, item, bg, fps=FPS):
             output,
         )
         chunks.append(output)
+    if not chunks:
+        output = folder / f"{kind}-empty.mp4"
+        ffmpeg(
+            "-f", "lavfi", "-i", f"color=c={bg}:s={w}x{h}:r={fps}",
+            "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+            "-t", f"{1 / fps:.3f}",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", 17, "-pix_fmt", "yuv420p",
+            "-ar", 48000, "-ac", 2, "-c:a", "aac",
+            output,
+        )
+        return output
     manifest = folder / f"{kind}.txt"
     manifest.write_text("".join(f"file '{p.name}'\n" for p in chunks))
     out = folder / f"{kind}.mp4"
@@ -368,6 +393,9 @@ def render(
             for k in ("width", "height")
         ):
             raise ValueError("Invalid layer size")
+        # Chroma subsampling requires even rectangles; round before checking CUDA canvas bounds.
+        item["width"] += item["width"] % 2
+        item["height"] += item["height"] % 2
         if encoder == "nvidia_full" and (
             item["x"] < 0
             or item["y"] < 0
@@ -465,6 +493,7 @@ def render(
             if asset:
                 layers.append((asset, item, True))
     for idx, (src, item, still) in enumerate(layers, 1):
+        args += ["-protocol_whitelist", "file,pipe"]
         if still:
             args += ["-loop", "1", "-framerate", str(fps)]
         args += ["-i", src]

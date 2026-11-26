@@ -6,7 +6,7 @@
 import type {
     Award, ContestInfo, ICPCProblemResult, OptimismLevel, RunInfo, ScoreboardDiff, ScoreboardRow, SolutionsStatistic, TimeLineRunInfo,
 } from './types';
-import { publicRunVerdict } from './model';
+import { hiddenFromOf, publicRunVerdict } from './model';
 import { schoolRanks, trophyWinners } from '../../resolver/public/js/trophies.js';
 import { honorsWinners } from '../../resolver/public/js/honors.js';
 
@@ -42,7 +42,9 @@ export function scoreboardRow(info: ContestInfo, runs: RunInfo[], level: Optimis
     const byProblem = new Map<string, RunInfo[]>();
     for (const run of runs) {
         if (run.isHidden) continue;
-        byProblem.set(run.problemId, [...(byProblem.get(run.problemId) || []), run]);
+        let list = byProblem.get(run.problemId);
+        if (!list) { list = []; byProblem.set(run.problemId, list); }
+        list.push(run);
     }
     let solved = 0;
     let penalty = 0;
@@ -201,29 +203,67 @@ export function rankOf(info: ContestInfo, rows: Map<string, ScoreboardRow>, team
  */
 export function standingsAtRuns(info: ContestInfo, runs: RunInfo[], targets: Set<string>) {
     const result = new Map<string, { rank: number; solved: number }>();
+    if (!targets.size) return result;
     const first = runs.findIndex((run) => targets.has(run.id));
     if (first < 0) return result;
-    // Everything before the earliest target is settled: build those rows once, then replay only
-    // from there (during a contest the targets are the newest runs, so this is short).
-    const byTeam = new Map<string, RunInfo[]>();
-    for (const run of runs.slice(0, first)) {
-        if (run.isHidden) continue;
-        if (!byTeam.has(run.teamId)) byTeam.set(run.teamId, []);
-        byTeam.get(run.teamId)!.push(run);
+    const problemWeights = new Map(info.problems.filter((problem) => !problem.isHidden).map((problem) => [problem.id, problem.weight]));
+    const roundMinutes = info.penaltyRoundingMode === 'each_submission_down_to_minute';
+    const wrongPenalty = info.penaltyPerWrongAttemptSeconds;
+    type TeamTrack = {
+        totalScore: number;
+        penalty: number;
+        lastAcceptedMs: number;
+        solvedCount: number;
+        official: boolean;
+        problems: Map<string, { solved: boolean; wrong: number }>;
+    };
+    const tracks = new Map<string, TeamTrack>();
+    const officialTracks: TeamTrack[] = [];
+    for (const team of info.teams) {
+        const official = !team.isOutOfContest && !team.isHidden;
+        const track: TeamTrack = { totalScore: 0, penalty: 0, lastAcceptedMs: 0, solvedCount: 0, official, problems: new Map() };
+        tracks.set(team.id, track);
+        if (official) officialTracks.push(track);
     }
-    const rows = new Map(info.teams.map((team) => [team.id, scoreboardRow(info, byTeam.get(team.id) || [], 'normal')]));
+    const apply = (run: RunInfo) => {
+        if (run.isHidden) return null;
+        let track = tracks.get(run.teamId);
+        if (!track) {
+            track = { totalScore: 0, penalty: 0, lastAcceptedMs: 0, solvedCount: 0, official: false, problems: new Map() };
+            tracks.set(run.teamId, track);
+        }
+        const weight = problemWeights.get(run.problemId);
+        if (weight === undefined) return track;
+        let ps = track.problems.get(run.problemId);
+        if (!ps) { ps = { solved: false, wrong: 0 }; track.problems.set(run.problemId, ps); }
+        if (ps.solved) return track;
+        if (isAccepted(run)) {
+            ps.solved = true;
+            track.solvedCount++;
+            track.totalScore += weight;
+            const accepted = roundMinutes ? Math.floor(run.time / 60_000) * 60 : Math.floor(run.time / 1000);
+            track.penalty += accepted + ps.wrong * wrongPenalty;
+            track.lastAcceptedMs = Math.max(track.lastAcceptedMs, run.time);
+        } else if (isJudged(run) && isAddingPenalty(run)) {
+            ps.wrong++;
+        }
+        return track;
+    };
+    for (let i = 0; i < first; i++) apply(runs[i]);
     let remaining = targets.size;
-    for (const run of runs.slice(first)) {
-        if (run.isHidden) continue;
-        if (!byTeam.has(run.teamId)) byTeam.set(run.teamId, []);
-        const list = byTeam.get(run.teamId)!;
-        list.push(run);
-        rows.set(run.teamId, scoreboardRow(info, list, 'normal'));
-        if (!targets.has(run.id)) continue;
-        result.set(run.id, {
-            rank: rankOf(info, rows, run.teamId),
-            solved: rows.get(run.teamId)!.problemResults.filter((item) => item.isSolved).length,
-        });
+    for (let i = first; i < runs.length; i++) {
+        const run = runs[i];
+        const track = apply(run);
+        if (!track || !targets.has(run.id)) continue;
+        let rank = 0;
+        if (track.official) {
+            let better = 0;
+            for (const other of officialTracks) {
+                if (other !== track && scoreOrder(info, other as unknown as ScoreboardRow, track as unknown as ScoreboardRow) < 0) better++;
+            }
+            rank = better + 1;
+        }
+        result.set(run.id, { rank, solved: track.solvedCount });
         if (!--remaining) break;
     }
     return result;
@@ -236,7 +276,11 @@ export interface ScoreboardState {
 
 export function runsByTeam(runs: RunInfo[]) {
     const result = new Map<string, RunInfo[]>();
-    for (const run of runs) result.set(run.teamId, [...(result.get(run.teamId) || []), run]);
+    for (const run of runs) {
+        let list = result.get(run.teamId);
+        if (!list) { list = []; result.set(run.teamId, list); }
+        list.push(run);
+    }
     return result;
 }
 
@@ -258,6 +302,7 @@ export function scoreboardDiff(state: ScoreboardState, previous?: ScoreboardStat
 
 export function statistics(info: ContestInfo, state: ScoreboardState, runs: Iterable<RunInfo>): SolutionsStatistic {
     const problems = info.problems.filter((problem) => !problem.isHidden);
+    const hiddenFrom = hiddenFromOf(info);
     const visible = new Set(problems.map((problem) => problem.id));
     const verdictCounts: Record<string, number> = {};
     for (const run of runs) {
@@ -269,7 +314,9 @@ export function statistics(info: ContestInfo, state: ScoreboardState, runs: Iter
         type: 'ICPC',
         teamsCount: state.ranking.order.length,
         verdictCounts,
-        stats: problems.map((_, index) => {
+        stats: problems.map((problem, index) => {
+            // CCPC hidden-label mode: anonymous columns hold a different problem per team, so do not aggregate across teams.
+            if (hiddenFrom !== undefined && problem.ordinal >= hiddenFrom) return { success: 0, wrong: 0, pending: 0 };
             let success = 0;
             let wrong = 0;
             let pending = 0;

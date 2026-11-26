@@ -80,6 +80,22 @@ export function applyJuryRoutes(ctx: Context, dependencies: {
     snapshot: (tdoc: Tdoc, label: string, operator: number) => Promise<string>;
 }) {
     const { store } = dependencies;
+    ctx.on('app/started', () => {
+        void store.logs.createIndex({ domainId: 1, contestId: 1, at: -1 }).catch((error) => console.warn('[xcpcio] 裁判日志索引创建失败', error));
+    });
+    ctx.on('contest/del', (domainId, tid) => {
+        const scope = { domainId, contestId: String(tid) };
+        void Promise.all([
+            ctx.db.collection('xcpcio.jury').deleteOne({ _id: idFor(scope) }),
+            store.logs.deleteMany(scope),
+        ]).catch(() => null);
+    });
+    ctx.on('domain/delete', (domainId) => {
+        void Promise.all([
+            ctx.db.collection('xcpcio.jury').deleteMany({ domainId }),
+            store.logs.deleteMany({ domainId }),
+        ]).catch(() => null);
+    });
     async function record(tdoc: Tdoc, entry: Parameters<typeof store.log>[1]) {
         await store.log(tdoc, entry);
         (ctx.broadcast as (event: string, ...args: unknown[]) => void)('xcpcio/ccs-touch', idFor(scopeFor(tdoc)));
@@ -211,8 +227,10 @@ export function applyJuryRoutes(ctx: Context, dependencies: {
                 // The results before the change stay on the results page.
                 await dependencies.snapshot(this.tdoc, `人工改判之前 · ${payload.rid.slice(-6)}`, this.user._id);
                 const score = status === 1 ? 100 : 0;
-                await RecordModel.update(this.tdoc.domainId, rid, { status, score });
+                const judgeAt = rdoc.judgeAt || new Date();
+                await RecordModel.update(this.tdoc.domainId, rid, { status, score, judgeAt });
                 await ContestModel.updateStatus(this.tdoc.domainId, this.tdoc.docId, owner.uid, rid, rdoc.pid, { status, score, lang: rdoc.lang, subtasks: rdoc.subtasks });
+                (ctx.broadcast as (event: string, ...args: unknown[]) => void)('record/judge', { ...rdoc, status, score, judgeAt, rejudged: true });
                 await record(this.tdoc, { action: 'verdict', text: `${this.label(rdoc.pid)} 题提交 ${payload.rid.slice(-6)}：${before} → ${choice[1]}`, reason, by: this.user._id, rid: payload.rid });
             });
             this.response.body = { ok: true };

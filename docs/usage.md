@@ -81,7 +81,7 @@ MongoDB 租约让一个进程负责生成事件，其他进程读同一日志；
 
 ![用同一身份读取 access 和榜单，消费事件流时保留最后一个完整 token 以便重连](images/manual/ccs-feed.svg)
 
-webhook 只发送注册后的变更。使用 `POST $CCS_BASE/webhooks`，JSON 例如 `{"url":"https://receiver.example/ccs","token":"client-generated-secret","endpoints":["teams","judgements"],"contest_ids":[]}`。空数组表示全部事件类型/本域可管理且已开放的比赛。回调头为 `Webhook-Token`，请求体为 `{"contest_id":"…","notifications":[…]}`。同一接收方顺序发送，2xx 后推进游标，失败重试，连续失败 30 分钟停用；所有者失去管理权限后也停用。回调工作不会阻塞事件生成。接收方应处理崩溃恢复导致的重复投递。
+webhook 只发送注册后的变更。使用 `POST $CCS_BASE/webhooks`，JSON 例如 `{"url":"https://receiver.example/ccs","token":"client-generated-secret","endpoints":["teams","judgements"],"contest_ids":[]}`。空数组表示全部事件类型/本域可管理且已开放的比赛。目标地址须为公网可达的 HTTP/HTTPS 地址（注册与投递前均执行静态地址与 DNS 防 SSRF 校验，拒绝回环、内网、链路本地与保留地址）；单域最多注册 20 个、单用户最多注册 10 个，并发投递上限为 4。回调头为 `Webhook-Token`，请求体为 `{"contest_id":"…","notifications":[…]}`。同一接收方顺序发送，2xx 后推进游标，失败重试，连续失败 30 分钟停用；所有者失去管理权限后也停用。回调工作不会阻塞事件生成。接收方应处理崩溃恢复导致的重复投递。
 
 ### 写入与最终结果
 
@@ -89,7 +89,7 @@ webhook 只发送注册后的变更。使用 `POST $CCS_BASE/webhooks`，JSON �
 - `POST submissions`：team 提交本队代码；admin 不带 time 时代理提交（必须带 team_id），带 time 时导入历史提交。`PUT submissions/<ID>` 必须有匹配的 id、time 和 team_id。files 是恰好一个含单个 UTF-8 源文件的 ZIP，以 base64 放入 data，mime 可省略或为 `application/zip`；遵守 Hydro 的代码长度、语言范围、参赛资格与比赛时间限制。入口由 Hydro 语言配置确定，entry_point 须省略或为 null。ZIP 校验拒绝路径越界、重复文件名、加密、损坏数据及超限解压。
 - `POST/PUT clarifications`：team 提问、judge 裁判回复/公告、admin 代理提问及历史导入。使用 `to_team_ids` / `to_group_ids`，可指定多队或分组；PUT 必须带 id 和 time。私有问题不会因向其他队共享回复而泄露。CCS 定向消息持久化在独立集合，可表达的普通问题与回复同时尝试镜像到 Hydro；多队/分组消息通过 CCS 查看。镜像失败不撤销已存储的 CCS 消息，并记录服务端日志。
 - `POST commentary`：judge/admin 提交 message、tags 及可选队伍/题目/提交引用；服务端设置作者与时间。
-- `POST/PUT/PATCH/DELETE awards`：admin 管理奖项。修改后该 ID 由管理员接管，不被自动计算覆盖。`team_ids: null` 表示暂停更新，空数组表示当前无人获奖。自动奖项包括冠军、金银铜、已开启的一血和分组冠军。一血奖要等更早的合资格待评测提交全部判完，避免提前公布后换队。
+- `POST/PUT/PATCH/DELETE awards`：admin 管理奖项。修改后该 ID 由管理员接管，不被自动计算覆盖。`team_ids: null` 表示暂停更新，空数组表示当前无人获奖。自动奖项包括冠军、金银铜、已开启的一血和分组冠军，完全遵循本场比赛配置的同分规则（Hydro / ICPC / CCPC）、并列同奖与奖杯并列规则；开启 CCPC 封榜前隐藏题号模式时自动跳过未公开题号的一血奖。一血奖要等更早的合资格待评测提交全部判完，避免提前公布后换队。
 - 设置页“确认 CCS 最终结果”（扩展 `POST contests/<ID>/finalize`）要求已结束、已解冻且无待评测提交。默认手动确认；可开启自动确认，在条件满足且数据稳定 30 秒后触发。确认后保存不可变 CCS 数据快照，拒绝后续 CCS 写入，`end_of_updates` 是事件流最后一条事件。之后 Hydro 中的重测、改题或修改奖项不改变该快照；关闭 API 和收紧学校可见性仍立即生效。需要修改最终结果时，应在确认前完成。
 
 ![管理员先核对解冻状态、待评测提交及最终成绩，再确认 CCS 最终结果](images/manual/ccs-finalize.svg)
@@ -108,12 +108,12 @@ Schema 测试固定使用官方 2026-01 分支文件；上游 schema 对 runs �
 
 需要 Node.js 22 或以上版本及 Hydro 5.x。使用运行 Hydro 的系统用户操作；命令中的 `$HOME` 对应这个用户。自 0.8.1 起，安装包包含供 Hydro 直接加载的源码和完整预构建资源。
 
-从发布页下载 `hydro-scoreboard-xcpcio-plus-1.26.0.tgz` 和同名 `.sha256` 文件，放入同一个目录。首次安装按以下步骤校验、解压、注册 addon 并重启服务。[v1.26.0 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.26.0)
+从发布页下载 `hydro-scoreboard-xcpcio-plus-1.27.0.tgz` 和同名 `.sha256` 文件，放入同一个目录。首次安装按以下步骤校验、解压、注册 addon 并重启服务。[v1.27.0 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v1.27.0)
 
 ```bash
-sha256sum -c hydro-scoreboard-xcpcio-plus-1.26.0.tgz.sha256
+sha256sum -c hydro-scoreboard-xcpcio-plus-1.27.0.tgz.sha256
 mkdir -p "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
-tar -xzf hydro-scoreboard-xcpcio-plus-1.26.0.tgz \
+tar -xzf hydro-scoreboard-xcpcio-plus-1.27.0.tgz \
   -C "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus" --strip-components=1
 hydrooj addon add "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 pm2 restart hydrooj
@@ -126,9 +126,9 @@ pm2 restart hydrooj
 在新的临时目录中校验并解压安装包。
 
 ```bash
-sha256sum -c hydro-scoreboard-xcpcio-plus-1.26.0.tgz.sha256
+sha256sum -c hydro-scoreboard-xcpcio-plus-1.27.0.tgz.sha256
 mkdir -p xcpcio-update
-tar -xzf hydro-scoreboard-xcpcio-plus-1.26.0.tgz -C xcpcio-update
+tar -xzf hydro-scoreboard-xcpcio-plus-1.27.0.tgz -C xcpcio-update
 ```
 
 首次安装运行 `bash xcpcio-update/package/install.sh install`。升级已有安装运行 `bash xcpcio-update/package/install.sh upgrade`。
@@ -280,7 +280,7 @@ Honors 使用单独的获奖位次（place）。Highest Honors 分界以内使�
 - 每支队伍的格子按各自的顺序排列：先是已显示题号的题目，按题号排列；再是本队通过的其他题目，按通过时间先后；再是本队提交过的其他题目，按最晚一次提交先后；最后是未提交的题目。未显示题号的列没有表头。
 - 一血标记只用在已显示题号的列上。
 - 封榜后与原 XCPC 模式相同：显示全部题号，封榜后的提交显示为封榜。
-- 大屏和直播读取同一份数据。封榜前不显示气球配送图，CCS API 的公开视图也不公开榜单。比赛管理员的实时榜、滚榜、成绩导出和管理页面始终显示真实题目。
+- 大屏和直播原生支持该模式：ICPC Live 画面对未公开槽位自动隐藏字母题号、气球色、首解快报、题目统计与单题战况（未公开槽位名回退为「未公开」），达到公开门槛或封榜后恢复显示真实题目。封榜前不显示气球配送图，CCS API 的公开视图也不公开榜单。比赛管理员的实时榜、滚榜、成绩导出和管理页面始终显示真实题目。
 - 这段时间里，Hydro 原生榜单一律跳转到增强榜，即使比赛关闭了“替换 Hydro 原生榜单”。原生榜单的 HTML、CSV 导出只对比赛管理员开放。
 
 “过题后忽略再次提交”可以单独开启：队伍通过某题后，再交该题的提交不计入提交次数，也不出现在榜单、滚榜、大屏、直播和导出中。
@@ -362,6 +362,8 @@ Honors 使用单独的获奖位次（place）。Highest Honors 分界以内使�
 
    **替换签名。** 在当前模板的签名区选择左、中、右任意一处，点「编辑签名」。上传手写签名的 PNG 或 JPEG（最大 6 MB），填写下方两行文字，例如姓名和职务，在「署名颜色」选好文字颜色，再点「生成并使用」。系统自动裁掉白边，将笔迹、签名线和文字合成一张透明 PNG。已有签名可以沿用笔迹，修改署名或颜色后重新点「生成并使用」。每一处均可单独下载、留白或恢复原样。中英文赛事模板各保存三处签名，同一语言的获奖证书和参赛证明共用签名。[查看原稿签名与三处替换签名的两页样张](examples/certificate-event.pdf)
 
+   > **合规提示**：赛事模板中内置的 2026 ICPC 沈阳区域赛抬头、徽标、个人手写签名样例及嵌入 Arial 字体子集均归原权利人所有，不属于本项目 MIT 许可范围，仅作排版与替换功能参考。主办方正式对外签发证书前，务必在编辑器中替换或清除所有第三方徽标、默认个人签名与专有字体，详见仓库根目录的 [NOTICE](../NOTICE)。
+
 4. **设置学校校徽。** 在「模板 → 学校校徽」的左侧或右侧点「选学校」，输入中文或英文校名并确认。也可点「上传图片」，选择每张不超过 6 MB 的 PNG 或 JPEG。校徽按原比例显示，透明 PNG 可透出纸色或自定义底图。两个位置可分别替换或移除，也可全部留空。校徽操作立即保存，对本场的获奖证书和参赛证明同时生效。
 5. **添加装饰图片。** 在所选模板点「添加装饰图」，可多选 PNG 或 JPEG，每张最大 6 MB。拖动图片可移动，拖右下角可等比缩放。选中图片后也可输入毫米数精确设置左边距、上边距和宽度，或点「移除装饰图」。图片彼此重叠时，可在右侧列表选中指定图片。装饰图显示在正文和二维码下方，透明 PNG 保留透明区域。上传、移动、缩放和移除会自动保存到当前模板，切换预设仍可使用这些图片。
 6. **核对样张并发放。** 用「样张 PDF」核对所选方向、图片和长姓名在实际打印用阅读器中的效果。PDF 中文采用阅读器提供的宋体或黑体。比赛已结束、已解除封榜或未设封榜且已无待评测提交时，点击「出证」核对新增、更正和撤销数量。管理员可下载合并 PDF 或按学校分目录的 ZIP。获发证书的账号可在比赛详情点「我的证书」领取。
@@ -439,7 +441,7 @@ pnpm preview
 
 ## 开源许可
 
-插件为 AGPL-3.0-or-later；XCPCIO 前端保留 MIT 许可。来源和许可见 `NOTICE`、`LICENSE` 与 `licenses/XCPCIO-MIT.txt`。
+本项目自研代码采用 MIT 许可；XCPCIO 前端保留 MIT 许可。早期源自 Hydro 的集成脚手架、Resolver 中的 ICPC Tools（非商业/可撤销条款）以及赛事证书参考模板的抬头、签名与 Arial 字体子集保留各自原有许可与权利归属，均不在本项目 MIT 授权范围内，详见 `NOTICE`、`LICENSE` 与 `licenses/`。
 
 
 ## Resolver 滚榜
@@ -472,7 +474,7 @@ pnpm preview
 
 固定来源为 Resolver-Web v1.4.0，commit `d4a1a80fa1c0a7b0013f941256004ba5f63c6773`。原始文件 SHA-256 和修改后 SHA-256 见 `resolver/UPSTREAM.json`，修改清单见 `resolver/CHANGES.md`。本插件源码随安装包提供。
 
-插件原有集成代码继续适用 AGPL-3.0-or-later，XCPCIO 继续适用 MIT。Resolver-Web 的 Apache-2.0 和原 MIT 声明保存在 `licenses/`。源自 ICPC Tools 的引擎、绘图和 Helvetica 字体、ICPC 图标继续适用 ICPC Software License。该许可证要求非商业使用，商业或创收使用须取得 ICPC Foundation 的书面例外授权，同时要求公开使用者的源码并在所有分发版本中保留许可证。Noto Sans SC 采用 SIL OFL 1.1。学校标志属于相应学校。各组件适用范围与许可证路径见 `NOTICE`。
+本项目自研与适配代码采用 MIT 许可（详见 `LICENSE` 与 `NOTICE` 顶部单独声明），XCPCIO 继续适用 MIT。Resolver-Web 的 Apache-2.0 和原 MIT 声明保存在 `licenses/`。源自 ICPC Tools 的引擎、绘图和 Helvetica 字体、ICPC 图标继续适用 ICPC Software License。该许可证要求非商业使用，商业或创收使用须取得 ICPC Foundation 的书面例外授权，同时要求公开使用者的源码并在所有分发版本中保留许可证。Noto Sans SC 采用 SIL OFL 1.1。学校标志属于相应学校。各组件适用范围与许可证路径见 `NOTICE`。
 
 验证过程与验收范围见 `verification.md`。
 
@@ -822,7 +824,7 @@ Hydro 的系统管理员（`PRIV_EDIT_SYSTEM`）可在控制面板（`/manage`�
    HYDRO_MEDIA_CONNECTION=hydro-reactions:此处粘贴完整连接码
    ```
 
-3. 执行配置校验、拉取和启动。配置默认使用 CPU 与固定版本公共镜像 `ghcr.io/albert-li-sz/reactions-generator-hydro:1.23.1`。输出保存在本机 `./out`。
+3. 执行配置校验、拉取和启动。配置默认使用 CPU 与固定版本公共镜像 `ghcr.io/albert-li-sz/reactions-generator-hydro:1.27.0`。输出保存在本机 `./out`（常驻模式上传完成后会自动清理本地成片以防占满磁盘）。
 
    ```sh
    docker compose config --quiet
@@ -865,7 +867,7 @@ Windows 可在 Docker Desktop 中运行同一 Compose 配置。赛场无法访�
 数据规则：
 
 - 与公开榜一致：比赛开始前直播画面只显示比赛时钟和题目，不显示队伍（导播台仍能看到队伍，可提前设置队伍画面，比赛开始后自动显示）；封榜后的提交显示为封榜，直至解封。可见提交按 Hydro 的实际判题显示 WA、TLE、MLE、OLE、RE、CE 等结果，同一提交重测后更新；选手名显示显示名，是否显示学校跟随“向所有观众显示学校”。
-- 排名、奖牌和一血与增强榜、滚榜、大屏使用同一套规则：罚时按秒累加，每次错误加 20 分钟，编译错误、格式错误和取消的提交不计罚时；题数和罚时都相同的队伍并列，并列队伍按队名排列。打星选手显示为 `*`，不参与排名和奖牌。
+- 排名、奖牌和一血与增强榜、滚榜、大屏、CCS API 使用同一套规则：罚时与同分比较遵循比赛配置的 Hydro（按秒）、ICPC 区域赛（按分钟 + 末题通过时间）或 CCPC（按分钟）规则，每次错误加 20 分钟，编译错误、格式错误和取消的提交不计罚时；开启 CCPC 封榜前隐藏题号模式时，未公开槽位的字母题号、气球色、首解快报与单题战况自动隐藏，待公开或封榜后恢复。打星选手显示为 `*`，不参与排名和奖牌。
 - 奖牌（金银铜）和一血使用主榜的奖项设置：开启“同分同奖”时并列队伍得到同一奖牌，否则按名次顺序发放；只有通过至少一题的正式队伍获奖。一血为各题最早通过的提交，同一时刻通过的都算，打星选手按设置决定是否计入。分榜对应 ICPC Live 的分组，可在 Scoreboard 中选择只显示某个分榜；与增强榜的分榜视图一样，这时显示的是分榜内的名次和该分榜自己的奖牌设置。
 - 乐观榜和悲观榜分别把待定提交视为通过和错误，用于封榜后的悬念展示。
 - 赛况总览是给观众看的整体情况，参照“赛况总览”页面：比赛时钟与进度、参赛队伍和学校数、提交与通过数、通过率、已过题队伍，正式队伍排名前列，各题通过队数、通过率与一血，学校情况，最近通过，累计提交与通过曲线、过题数分布和评测结果。它在导播台 Controls 的“赛况总览”中显示或隐藏，可设置画面语言（中文或 English）、标题、排名显示队数，以及排名、题目、学校、最近通过和图表各部分是否显示；画面位于榜单的位置，右侧的评测队列仍可同时显示。数据与公开榜一致：封榜后只统计封榜前的结果，并显示封榜后的提交数；赛中即可查看已公开提交的具体判题分布；比赛开始前只显示倒计时。与管理员的“赛况总览”页面不同，这里不显示系统负载。
@@ -923,7 +925,7 @@ Windows 可在 Docker Desktop 中运行同一 Compose 配置。赛场无法访�
 - 采集链接带有设备密钥，无需登录，可在管理页查看、复制或重新生成。重新生成、删除设备或关闭画面采集后，对应的采集页立即断开；作废直播画面链接后，旧链接上的画面也立即断开。同一设备的链接在第二个页面打开时，第一个页面断开。
 - WebRTC 实时画面在有人观看时上传，同时观看的路数越多，上传带宽越大。每个观看页面最多同时观看 16 个画面。新配置的屏幕和摄像头采集目标均为 1080p、30 fps，可按机位条件调低。摄像头声音单独开启。若另行启用了全程留档，机位还会在没有观众时持续上传录像段。修改后正在采集的选手机立即使用新设置；取消“比赛中直播可用屏幕”时，直播画面中正在播放的屏幕立即停止。
 - 采集要求比赛使用 HTTPS 地址：浏览器只允许 HTTPS（或本机 localhost）页面共享屏幕和摄像头。通过 HTTP 访问时，比赛页面和采集窗口会提示改用 HTTPS 地址。
-- 网络：OBS 电脑（及导播、管理员的电脑）需要能和选手机直接通信，UDP 不能被拦截。Hydro 内置一个 STUN 服务（插件配置“画面采集内置 STUN 服务的 UDP 端口”，默认 3478，0 为关闭；只回应 Binding 请求，回应不大于请求），页面自动在访问 Hydro 的主机名上使用它，让双方拿到彼此的真实地址，只采集屏幕、没有摄像头权限时也能直接连接；请在防火墙中放行该 UDP 端口。多进程部署时由其中一个进程提供。也可以在设置中另填 STUN 服务器；选手网和直播网完全隔离时，需要在设置中填写一台两边都能访问的 TURN 服务器（如 coturn）。
+- 网络：OBS 电脑（及导播、管理员的电脑）需要能和选手机直接通信，UDP 不能被拦截。Hydro 内置一个 STUN 服务（插件配置“画面采集内置 STUN 服务的 UDP 端口”，默认 3478，0 为关闭；只回应 Binding 请求，回应不大于请求，并内置单 IP 与全局速率限制），页面自动在访问 Hydro 的主机名上使用它，让双方拿到彼此的真实地址，只采集屏幕、没有摄像头权限时也能直接连接；请在防火墙中放行该 UDP 端口。多进程部署时由其中一个进程提供。也可以在设置中另填 STUN 服务器；选手网和直播网完全隔离时，需要在设置中填写一台两边都能访问的 TURN 服务器（如 coturn）。
 - 采集页需要保持打开；关闭或停止共享后，已在播放的画面停止，重新开启后自动恢复。浏览器会显示“正在共享屏幕”的提示条。
 - 多进程（PM2 集群）部署时，选手机和观看端可能连在不同进程上，连接消息通过 Hydro 的进程间广播转交。
 - 浏览器启动参数的效果因系统和浏览器版本而异，赛前请在实际的比赛镜像和网络中逐项实测。

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
     ContestModel, Context, ForbiddenError, getAlphabeticId, Handler, NotFoundError, ObjectId,
-    param, PERM, Schema, STATUS, Tdoc, Types, UserModel, ValidationError,
+    param, PERM, PRIV, Schema, STATUS, Tdoc, Types, UserModel, ValidationError,
 } from 'hydrooj';
 import { BoardData, BoardTeam, automaticBoards, enhanceBoard, problemColor, reservedBoardNames, schoolName } from './lib/board';
 import { BoardSettings, checkBoardNames, defaultSettings, normalizeSettings, pruneMembers, toScriptJson } from './lib/settings';
@@ -175,12 +175,27 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     // Every request reads the saved settings anyway; their save time versions the cache, so a
     // save handled by another Hydro process invalidates this one's entry too.
     const settingsVersion = new WeakMap<BoardSettings, number>();
-    // Anonymous viewers all poll the same frozen data; share one computation per short window.
+    // Poll cache shared by anonymous and authenticated scoreboard viewers (short TTL, invalidated on ccs-touch).
     const publicCache = new Map<string, { expires: number, body: Promise<BoardData> }>();
     (ctx.on as (event: string, handler: (contest: string) => void) => unknown)('xcpcio/ccs-touch', (contest) => {
         for (const key of publicCache.keys()) if (key.startsWith(`${contest}@`)) publicCache.delete(key);
     });
+    ctx.on('contest/del', (domainId, tid) => {
+        const key = settingsKey(domainId, `${tid}`);
+        for (const cached of publicCache.keys()) if (cached.startsWith(`${key}@`)) publicCache.delete(cached);
+        void collection.deleteOne({ _id: key }).catch(() => null);
+    });
+    ctx.on('domain/delete', (domainId) => {
+        const prefix = `${domainId}/`;
+        for (const cached of publicCache.keys()) if (cached.startsWith(prefix)) publicCache.delete(cached);
+        void collection.deleteMany({ _id: new RegExp(`^${domainId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`) }).catch(() => null);
+    });
+    ctx.on('app/started', () => {
+        void (collection as unknown as { createIndex?: (k: object, o?: object) => Promise<unknown> })
+            .createIndex?.({ 'settings.ccsApi': 1 }, { partialFilterExpression: { 'settings.ccsApi': true } }).catch(() => null);
+    });
     const publicTtl = Math.min(5000, Math.floor(config.refreshInterval / 2));
+    const authTtl = Math.min(2000, publicTtl);
     const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'public/hydro-xcpcio/manifest.json'), 'utf8'));
     const profileFields = config.profileFields || defaultProfileFields;
     const contestBase = (tdoc: Tdoc) => `/d/${encodeURIComponent(tdoc.domainId)}/contest/${tdoc.docId}`;
@@ -208,16 +223,13 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
             return displaySpecialAwards(enhanceBoard(data, settings, { identity }), settings, ended, frozen);
         };
         if (json || handler.request.json) {
-            if (!publicView) {
-                handler.response.body = await board();
-                return;
-            }
-            const key = `${settingsKey(tdoc.domainId, `${tdoc.docId}`)}@${settingsVersion.get(settings) ?? 0}:${ended}:${frozen}`;
+            const ttl = publicView ? publicTtl : authTtl;
+            const key = `${settingsKey(tdoc.domainId, `${tdoc.docId}`)}@${settingsVersion.get(settings) ?? 0}:${ended}:${frozen}:${realtime ? 1 : 0}:${identity ? 1 : 0}`;
             const now = Date.now();
             for (const [cached, entry] of publicCache) if (entry.expires <= now) publicCache.delete(cached);
             let entry = publicCache.get(key);
             if (!entry) {
-                entry = { expires: now + publicTtl, body: board() };
+                entry = { expires: now + ttl, body: board() };
                 entry.body.catch(() => publicCache.delete(key));
                 publicCache.set(key, entry);
             }
@@ -280,6 +292,7 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
             domainId = this.domain._id;
             const contest = await ContestModel.get(domainId, tid);
             if (!contest) throw new NotFoundError('Contest not found');
+            this.checkPriv(PRIV.PRIV_USER_PROFILE);
             if (!this.user.own(contest)) this.checkPerm(PERM.PERM_EDIT_CONTEST);
             if (contest.rule !== 'acm') throw new ValidationError('tid', '仅支持 ACM 比赛');
             this.tdoc = contest;

@@ -9,7 +9,7 @@ import type { BoardData } from './board';
 import { writeZip } from './ccs/zip';
 import { resultsCsv } from './results';
 import {
-    casePairs, caseStatuses, defaultSimilarity, IntegrityError, mergeIntervals, readCase, similarityGroups, similarPairs, uncovered, type CaseStatus, type CodeSample, type SimilarPair,
+    casePairs, caseStatuses, defaultSimilarity, IntegrityError, mergeIntervals, readCase, similarityGroups, similarPairsAsync, uncovered, type CaseStatus, type CodeSample, type SimilarPair,
 } from './integrity';
 import type { JuryState } from './jury';
 import { verdictChoices } from './jury';
@@ -81,6 +81,22 @@ export function applyIntegrity(ctx: Context, dependencies: {
             signals.createIndex({ contestKey: 1, teamUid: 1, at: 1 }),
         ]).catch((error) => console.warn('[xcpcio] 诚信复核索引创建失败', error));
     });
+    ctx.on('contest/del', (domainId, tid) => {
+        const key = `${domainId}/${tid}`;
+        void Promise.all([
+            runs.deleteOne({ _id: key }),
+            cases.deleteMany({ domainId, contestId: String(tid) }),
+            signals.deleteMany({ contestKey: key }),
+        ]).catch(() => null);
+    });
+    ctx.on('domain/delete', (domainId) => {
+        const pattern = new RegExp(`^${domainId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`);
+        void Promise.all([
+            runs.deleteMany({ _id: pattern }),
+            cases.deleteMany({ domainId }),
+            signals.deleteMany({ contestKey: pattern }),
+        ]).catch(() => null);
+    });
 
     /** Record id to the team it counts for, from the contest's participation records. */
     async function journals(tdoc: Tdoc) {
@@ -121,13 +137,23 @@ export function applyIntegrity(ctx: Context, dependencies: {
         return chosen.filter((item) => codes.has(item.rid)).map((item) => ({ ...item, code: codes.get(item.rid)! }));
     }
 
+    async function teamJournal(tdoc: Tdoc, uid: number) {
+        const entry = await ContestModel.getStatus(tdoc.domainId, tdoc.docId, uid) as
+            { journal?: { rid: ObjectId; pid: number; status: number }[] } | null;
+        const list: { rid: string; pid: number; status: number; at: number }[] = [];
+        for (const record of new Map((entry?.journal || []).map((item) => [String(item.rid), item])).values()) {
+            list.push({ rid: String(record.rid), pid: record.pid, status: record.status, at: new ObjectId(record.rid).getTimestamp().getTime() });
+        }
+        return list.sort((a, b) => a.at - b.at);
+    }
+
     async function timeline(tdoc: Tdoc, teamId: string) {
         const uid = Number(teamId);
         const key = contestKey(tdoc);
         const begin = tdoc.beginAt.getTime();
         const end = tdoc.endAt.getTime();
-        const [{ byTeam }, archive, missing, screens, jury] = await Promise.all([
-            journals(tdoc),
+        const [teamRecords, archive, missing, screens, jury] = await Promise.all([
+            teamJournal(tdoc, uid),
             segments.find({ contestKey: key, teamUid: uid, kind: 'archive', deleting: { $ne: true } }).sort({ startAt: 1 }).toArray(),
             gaps.find({ contestKey: key, teamUid: uid }).sort({ from: 1 }).toArray(),
             signals.find({ contestKey: key, teamUid: uid }).sort({ at: 1 }).toArray(),
@@ -146,7 +172,7 @@ export function applyIntegrity(ctx: Context, dependencies: {
         });
         return {
             teamId, duration: end - begin,
-            submissions: (byTeam.get(uid) || []).filter((item) => item.at >= begin && item.at < end)
+            submissions: teamRecords.filter((item) => item.at >= begin && item.at < end)
                 .map((item) => ({ rid: item.rid, at: item.at - begin, label: label(item.pid), verdict: verdictName(item.status) })),
             streams,
             signals: screens.map((signal) => ({ at: signal.at - begin, kind: signal.kind, value: signal.value, device: signal.deviceName })),
@@ -203,7 +229,7 @@ export function applyIntegrity(ctx: Context, dependencies: {
                 if (!(threshold >= 0.3 && threshold <= 1)) throw new IntegrityError('相似度门槛应在 0.3 至 1 之间');
                 const includeRejected = payload.includeRejected === true;
                 const list = await samples(this.tdoc, pids, includeRejected);
-                const pairs = similarPairs(list, { ...defaultSimilarity, threshold }).slice(0, 2000);
+                const pairs = (await similarPairsAsync(list, { ...defaultSimilarity, threshold })).slice(0, 2000);
                 await runs.updateOne({ _id: contestKey(this.tdoc) }, { $set: { at: new Date(), by: this.user._id, options: { threshold, includeRejected, pids }, samples: list.length, pairs } }, { upsert: true });
                 return { samples: list.length, pairs: pairs.length };
             });
@@ -242,13 +268,19 @@ export function applyIntegrity(ctx: Context, dependencies: {
                 const due = payload.due ? new Date(String(payload.due)) : doc.due;
                 if (due && Number.isNaN(due.getTime())) throw new IntegrityError('复核期限无效');
                 const now = new Date();
+                const entry = { at: now, by: this.user._id, status, note: status === doc.status ? '更新' : caseStatuses[status] };
+                const needsSnapshot = status === 'violation' && doc.status !== 'violation';
+                const updated = await cases.updateOne(
+                    { _id: doc._id, updatedAt: doc.updatedAt },
+                    { $set: { status, conclusion, assignee, due, updatedAt: now }, $push: { history: entry } },
+                );
+                if (!updated.matchedCount) throw new IntegrityError('复核任务已被其他裁判修改，请刷新后重试', 409);
                 // The results the conclusion was reached on stay on the results page.
-                const snapshot = status === 'violation' && doc.status !== 'violation'
-                    ? await dependencies.snapshot(this.tdoc, `诚信复核认定 · ${doc.title.slice(0, 40)}`, this.user._id) : doc.snapshot;
-                await cases.updateOne({ _id: doc._id }, {
-                    $set: { status, conclusion, assignee, due, snapshot, updatedAt: now,
-                        history: [...doc.history, { at: now, by: this.user._id, status, note: status === doc.status ? '更新' : caseStatuses[status] }] },
-                });
+                let snapshot = doc.snapshot;
+                if (needsSnapshot) {
+                    snapshot = await dependencies.snapshot(this.tdoc, `诚信复核认定 · ${doc.title.slice(0, 40)}`, this.user._id);
+                    await cases.updateOne({ _id: doc._id }, { $set: { snapshot } });
+                }
                 return { ok: true, snapshot };
             });
         }

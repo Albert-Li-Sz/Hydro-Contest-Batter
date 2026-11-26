@@ -32,6 +32,12 @@ export function applyPresence(ctx: Context) {
     on('app/started', async () => {
         await records.createIndex({ contest: 1 }).catch(() => null);
     });
+    on('contest/del', (domainId: string, tid: ObjectId) => {
+        void records.deleteMany({ contest: `${domainId}/${tid}` }).catch(() => null);
+    });
+    on('domain/delete', (domainId: string) => {
+        void records.deleteMany({ contest: new RegExp(`^${domainId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`) }).catch(() => null);
+    });
 
     /** The team a user plays for in the contest (their own uid outside team contests), cached a minute. */
     const teams = new Map<string, { expires: number; value: Promise<number | null> }>();
@@ -57,11 +63,23 @@ export function applyPresence(ctx: Context) {
 
     async function record(tdoc: Tdoc, team: number, member: number, ip: string, ua: string) {
         const key = `${contestKey(tdoc)}/${team}`;
-        const prev = await records.findOne({ _id: key });
-        const next = applyBeat(prev, { contest: contestKey(tdoc), uid: team, member, ip, ua }, new Date());
-        if (next) {
+        // Optimistic CAS retry preserves distinct IPs when two tabs or machines report concurrently.
+        for (let attempt = 0; attempt < 4; attempt++) {
+            const prev = await records.findOne({ _id: key });
+            const next = applyBeat(prev, { contest: contestKey(tdoc), uid: team, member, ip, ua }, new Date());
+            if (!next) break;
+            if (!prev) {
+                try {
+                    await records.insertOne(next);
+                    break;
+                } catch (error) {
+                    if ((error as { code?: number }).code === 11000) continue;
+                    throw error;
+                }
+            }
             const { _id, ...fields } = next;
-            await records.updateOne({ _id }, { $set: fields }, { upsert: true });
+            const res = await records.updateOne({ _id, lastSeen: prev.lastSeen, ip: prev.ip }, { $set: fields });
+            if (res.matchedCount) break;
         }
         lastWrite.set(key, Date.now());
     }

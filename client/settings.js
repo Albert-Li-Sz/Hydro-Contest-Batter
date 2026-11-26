@@ -508,9 +508,16 @@ if (root) {
     refreshAwardEditors();
     checkNames();
     updateAddButton();
+    function randomBoardId() {
+        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID().slice(0, 8);
+        if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+            return [...crypto.getRandomValues(new Uint8Array(4))].map((b) => b.toString(16).padStart(2, '0')).join('');
+        }
+        return Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+    }
     addButton.addEventListener('click', () => {
         if (editors.length >= 50) return;
-        addBoard({ id: `g-${crypto.randomUUID().slice(0, 8)}`, name: '', teamIds: [] });
+        addBoard({ id: `g-${randomBoardId()}`, name: '', teamIds: [] });
         editors.at(-1).name.focus(); markDirty(); updateAddButton(); refreshAwardEditors(); refreshSpecialBoards();
     });
     // 特别奖: a name, how the winner is found, and on which board.

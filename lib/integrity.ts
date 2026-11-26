@@ -97,37 +97,87 @@ export interface SimilarityOptions {
 }
 export const defaultSimilarity: SimilarityOptions = { threshold: 0.7, minFingerprints: 12, commonShare: 0.3 };
 
-/** Pairs of programs of different teams on the same problem that share much of their structure. */
-export function similarPairs(samples: CodeSample[], options: SimilarityOptions = defaultSimilarity): SimilarPair[] {
-    const byProblem = new Map<number, CodeSample[]>();
-    for (const sample of samples) byProblem.set(sample.pid, [...byProblem.get(sample.pid) || [], sample]);
-    const pairs: SimilarPair[] = [];
-    for (const [pid, list] of byProblem) {
-        const prints = list.map((sample) => fingerprints(tokenize(sample.code)));
-        const counts = new Map<number, number>();
-        for (const set of prints) for (const value of set) counts.set(value, (counts.get(value) ?? 0) + 1);
-        const limit = Math.max(3, Math.ceil(list.length * options.commonShare));
-        const kept = prints.map((set) => new Set([...set].filter((value) => counts.get(value)! <= limit)));
-        // Inverted index: only programs sharing a fingerprint are compared.
-        const holders = new Map<number, number[]>();
-        kept.forEach((set, index) => { for (const value of set) holders.set(value, [...holders.get(value) || [], index]); });
-        const shared = new Map<string, number>();
-        for (const indices of holders.values()) {
-            for (let i = 0; i < indices.length; i++) {
-                for (let j = i + 1; j < indices.length; j++) {
-                    const key = `${indices[i]},${indices[j]}`;
-                    shared.set(key, (shared.get(key) ?? 0) + 1);
-                }
+function scoreProblemSamples(pid: number, list: CodeSample[], prints: Set<number>[], options: SimilarityOptions): SimilarPair[] {
+    const n = list.length;
+    const counts = new Map<number, number>();
+    for (const set of prints) for (const value of set) counts.set(value, (counts.get(value) ?? 0) + 1);
+    const limit = Math.max(3, Math.ceil(n * options.commonShare));
+    const kept = prints.map((set) => {
+        const filtered = new Set<number>();
+        for (const value of set) if (counts.get(value)! <= limit) filtered.add(value);
+        return filtered;
+    });
+    // Inverted index: only programs sharing a fingerprint are compared.
+    const holders = new Map<number, number[]>();
+    for (let index = 0; index < kept.length; index++) {
+        for (const value of kept[index]) {
+            let bucket = holders.get(value);
+            if (!bucket) { bucket = []; holders.set(value, bucket); }
+            bucket.push(index);
+        }
+    }
+    const shared = new Map<number, number>();
+    for (const indices of holders.values()) {
+        for (let i = 0; i < indices.length; i++) {
+            const base = indices[i] * n;
+            for (let j = i + 1; j < indices.length; j++) {
+                const key = base + indices[j];
+                shared.set(key, (shared.get(key) ?? 0) + 1);
             }
         }
-        for (const [key, count] of shared) {
-            const [i, j] = key.split(',').map(Number);
-            if (list[i].teamId === list[j].teamId) continue;
-            const smaller = Math.min(kept[i].size, kept[j].size);
-            if (smaller < options.minFingerprints) continue;
-            const score = count / smaller;
-            if (score < options.threshold) continue;
-            pairs.push({ pid, a: { teamId: list[i].teamId, rid: list[i].rid }, b: { teamId: list[j].teamId, rid: list[j].rid }, score: Math.round(score * 1000) / 1000, shared: count });
+    }
+    const pairs: SimilarPair[] = [];
+    for (const [key, count] of shared) {
+        const i = Math.floor(key / n);
+        const j = key - i * n;
+        if (list[i].teamId === list[j].teamId) continue;
+        const smaller = Math.min(kept[i].size, kept[j].size);
+        if (smaller < options.minFingerprints) continue;
+        const score = count / smaller;
+        if (score < options.threshold) continue;
+        pairs.push({ pid, a: { teamId: list[i].teamId, rid: list[i].rid }, b: { teamId: list[j].teamId, rid: list[j].rid }, score: Math.round(score * 1000) / 1000, shared: count });
+    }
+    return pairs;
+}
+
+function groupSamplesByProblem(samples: CodeSample[]) {
+    const byProblem = new Map<number, CodeSample[]>();
+    for (const sample of samples) {
+        let list = byProblem.get(sample.pid);
+        if (!list) { list = []; byProblem.set(sample.pid, list); }
+        list.push(sample);
+    }
+    return byProblem;
+}
+
+/** Pairs of programs of different teams on the same problem that share much of their structure. */
+export function similarPairs(samples: CodeSample[], options: SimilarityOptions = defaultSimilarity): SimilarPair[] {
+    const pairs: SimilarPair[] = [];
+    for (const [pid, list] of groupSamplesByProblem(samples)) {
+        const prints = list.map((sample) => fingerprints(tokenize(sample.code)));
+        pairs.push(...scoreProblemSamples(pid, list, prints, options));
+    }
+    return pairs.sort((x, y) => y.score - x.score || y.shared - x.shared);
+}
+
+/** Cooperative async variant that yields to the event loop on large contests. */
+export async function similarPairsAsync(samples: CodeSample[], options: SimilarityOptions = defaultSimilarity): Promise<SimilarPair[]> {
+    const yieldLoop = () => new Promise<void>((resolve) => setImmediate(resolve));
+    const pairs: SimilarPair[] = [];
+    let lastYield = Date.now();
+    for (const [pid, list] of groupSamplesByProblem(samples)) {
+        const prints: Set<number>[] = [];
+        for (let i = 0; i < list.length; i++) {
+            prints.push(fingerprints(tokenize(list[i].code)));
+            if ((i & 15) === 15 && Date.now() - lastYield >= 15) {
+                await yieldLoop();
+                lastYield = Date.now();
+            }
+        }
+        pairs.push(...scoreProblemSamples(pid, list, prints, options));
+        if (Date.now() - lastYield >= 15) {
+            await yieldLoop();
+            lastYield = Date.now();
         }
     }
     return pairs.sort((x, y) => y.score - x.score || y.shared - x.shared);

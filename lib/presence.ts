@@ -136,10 +136,16 @@ export function presenceSnapshot(teams: PresenceTeam[], docs: PresenceDoc[], tim
     const add = (row: typeof rows[number], kind: AlertKind, text: string, since: number | null) => alerts.push({ kind, uid: row.uid, seat: row.seat, name: row.name, text, since });
     // Computers in use now, by address: two teams on one address is a swapped or shared seat.
     const active = rows.filter((row) => row.state === 'online' || row.state === 'weak');
+    const activeSet = new Set(active);
     const byIp = new Map<string, typeof rows>();
-    for (const row of active) if (row.ip) byIp.set(row.ip, [...byIp.get(row.ip) || [], row]);
+    for (const row of active) {
+        if (!row.ip) continue;
+        let list = byIp.get(row.ip);
+        if (!list) { list = []; byIp.set(row.ip, list); }
+        list.push(row);
+    }
     for (const row of rows) {
-        const live = active.includes(row);
+        const live = activeSet.has(row);
         const others = live && row.ip ? byIp.get(row.ip)!.filter((other) => other !== row) : [];
         if (others.length) add(row, 'sharedIp', `与 ${others.map((other) => other.seat || other.name).join('、')} 同一 IP ${row.ip}`, null);
         if (live && row.ip && row.mapped.length && !row.mapped.includes(row.ip)) add(row, 'ipMismatch', `IP ${row.ip}，座位绑定 ${row.mapped.join('、')}`, null);
@@ -151,15 +157,24 @@ export function presenceSnapshot(teams: PresenceTeam[], docs: PresenceDoc[], tim
     }
     alerts.sort((a, b) => severity.indexOf(a.kind) - severity.indexOf(b.kind) || collator.compare(a.seat || '~', b.seat || '~') || a.uid - b.uid);
     const flagged = new Map<number, AlertKind[]>();
-    for (const alert of alerts) flagged.set(alert.uid, [...flagged.get(alert.uid) || [], alert.kind]);
+    for (const alert of alerts) {
+        let list = flagged.get(alert.uid);
+        if (!list) { list = []; flagged.set(alert.uid, list); }
+        list.push(alert.kind);
+    }
     const zones = new Map<string, typeof rows>();
-    for (const row of rows) zones.set(row.seat ? row.zone : '￿', [...zones.get(row.seat ? row.zone : '￿') || [], row]);
+    for (const row of rows) {
+        const zoneKey = row.seat ? row.zone : "\ufffd";
+        let list = zones.get(zoneKey);
+        if (!list) { list = []; zones.set(zoneKey, list); }
+        list.push(row);
+    }
     const counts = Object.fromEntries(presenceStates.map((state) => [state, rows.filter((row) => row.state === state).length])) as Record<PresenceState, number>;
     return {
         phase, now, counts, total: rows.length, checkedIn: rows.filter((row) => row.checkedIn).length,
         capture: teams.some((team) => team.capture !== null),
         zones: [...zones].sort(([a], [b]) => collator.compare(a, b)).map(([zone, list]) => ({
-            zone: zone === '￿' ? null : zone,
+            zone: zone === "\ufffd" ? null : zone,
             teams: list.sort((a, b) => collator.compare(a.seat, b.seat) || collator.compare(a.name, b.name)).map(({ doc: _doc, ...row }) => ({ ...row, alerts: flagged.get(row.uid) || [] })),
         })),
         alerts,

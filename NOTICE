@@ -1,11 +1,47 @@
-Hydro XCPCIO Plus is based on @hydrooj/scoreboard-xcpcio.
-Hydro plugin integration is derived from hydro-dev/Hydro, AGPL-3.0-or-later.
-https://github.com/hydro-dev/Hydro/tree/master/packages/scoreboard-xcpcio
+Hydro Contest Better (hydro-scoreboard-xcpcio-plus) original project code is
+licensed under the MIT License (see LICENSE).
 
-The initial Hydro-Contest-Better repository's (formerly Hydro-Contest-Batter and Hydro-Contes-Batter)
-Apache-2.0 notice is preserved verbatim in licenses/Repository-initial-Apache-2.0.txt from commit
-61ea976cc1bc9a392cce0fc7938804b0ce13d2bd. The imported Hydro plugin integration
-continues to use its existing AGPL-3.0-or-later license.
+IMPORTANT SEPARATE LICENSING, COPYRIGHT, TRADEMARK & SIGNATURE NOTICE
+=====================================================================
+Third-party components, upstream derived code, typefaces, institutional marks,
+and reference certificate assets bundled in this repository are NOT covered by
+this project's MIT License and remain subject to their respective licenses,
+copyrights, trademarks, and personal rights:
+
+1. Hydro OJ origin:
+   Initial plugin scaffolding was derived from hydro-dev/Hydro
+   (packages/scoreboard-xcpcio), which is licensed under AGPL-3.0-or-later.
+   https://github.com/hydro-dev/Hydro/tree/master/packages/scoreboard-xcpcio
+   The initial Hydro-Contest-Better repository's Apache-2.0 notice is preserved
+   verbatim in licenses/Repository-initial-Apache-2.0.txt from commit
+   61ea976cc1bc9a392cce0fc7938804b0ce13d2bd.
+
+2. ICPC Tools non-commercial & revocable license conflict notice:
+   Resolver and big-screen components derived from ICPC Tools are governed by
+   the ICPC Software License (licenses/ICPC-Software-License.txt), which
+   prohibits commercial or income-generating use without written permission
+   from the ICPC Foundation and is revocable by the licensor. Downstream users
+   must comply with those restrictions independently of this project's MIT
+   license, or remove the ICPC Tools components when commercial or unrestricted
+   redistribution is required.
+
+3. Event certificate sample artwork, personal handwritten signatures & proprietary fonts:
+   Files under lib/certificates/event-art/, lib/certificates/event-fonts/, and
+   resolver/public/js/certificate-event/ contain reference letterhead, marks,
+   handwritten signatures (William B. Poucher, C. Jinshong Hwang, WangQiang),
+   and embedded ArialMT / Arial-BoldMT font subsets extracted from an
+   organizer-provided 2026 ICPC Asia Shenyang Regional Contest certificate.
+   - These assets belong exclusively to their respective rights holders (ICPC /
+     ICPC Foundation, Northeastern University, the named signatories, and
+     Monotype / font copyright holders) and are NOT licensed under MIT.
+   - They are retained strictly as layout/editing reference placeholders.
+   - Organizers MUST replace or clear all third-party marks, personal
+     signatures, and proprietary fonts with their own authorized materials
+     before generating or distributing official certificates, and MUST NOT
+     misrepresent unofficial events as ICPC-endorsed contests.
+
+Detailed Third-Party Component Inventory
+========================================
 
 The bundled leaderboard application is XCPCIO 0.98.0, MIT License.
 https://github.com/xcpcio/xcpcio
@@ -53,8 +89,9 @@ The big-screen pages draw ICPC Tools presentation ports from the same Resolver-W
 release (public/js/render/presentation-*.js, pres-*.js, java-*.js and the ICPC
 balloon and map images); they are covered by the same terms as above.
 The Hydro adapter, independent session storage and configuration UI retain this
-plugin's AGPL-3.0-or-later license. Each third-party component retains its own
-terms, copyright and trademark ownership.
+plugin's MIT license (see LICENSE and the separate notice at the top of this
+file). Each third-party component retains its own terms, copyright and
+trademark ownership.
 
 ICPC Live integration (added in Hydro XCPCIO Plus 0.8.0)
 Source: https://github.com/icpc/live-v3/tree/v3.5.1

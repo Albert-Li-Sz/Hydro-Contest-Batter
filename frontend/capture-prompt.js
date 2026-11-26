@@ -63,7 +63,23 @@ export function installCapturePrompt(info) {
     document.body.append(chip);
 
     function focusWindow() {
-        // An open window of this name is brought to the front instead of a new one.
+        // Ask the already-open capture window to focus itself first so clicking from another tab
+        // never opens a duplicate window that kicks the live capture session with close code 4009.
+        if (channel && state.lastAlive && Date.now() - state.lastAlive < SILENT_MS) {
+            let acknowledged = false;
+            const onMessage = (event) => {
+                if (event.data?.type === 'focused') acknowledged = true;
+            };
+            channel.addEventListener('message', onMessage);
+            channel.postMessage({ type: 'focus' });
+            setTimeout(() => {
+                channel.removeEventListener('message', onMessage);
+                if (acknowledged || (state.lastAlive && Date.now() - state.lastAlive < SILENT_MS)) return;
+                const opened = window.open(info.url, info.channel, 'popup=yes,width=620,height=780');
+                opened?.focus();
+            }, 300);
+            return;
+        }
         const opened = window.open('', info.channel);
         if (opened && opened.location.href === 'about:blank') { opened.location.href = info.url; }
         opened?.focus();

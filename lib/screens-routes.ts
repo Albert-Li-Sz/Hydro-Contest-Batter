@@ -2,7 +2,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-    ContestModel, Context, getAlphabeticId, Handler, NotFoundError, ObjectId, param, PERM, ProblemModel, TaskModel, Tdoc, Types,
+    ContestModel, Context, getAlphabeticId, Handler, NotFoundError, ObjectId, param, PERM, PRIV, ProblemModel, TaskModel, Tdoc, Types,
 } from 'hydrooj';
 import { problemColor, type BoardData } from './board';
 import type { BoardSettings } from './settings';
@@ -82,6 +82,18 @@ export function applyScreens(ctx: Context, dependencies: {
         return (await collection.findOne({ _id: doc._id }))!;
     }
 
+    ctx.on('contest/del', async (domainId, tid) => {
+        const id = `${domainId}/${tid}`;
+        await Promise.all([
+            collection.deleteOne({ _id: id }),
+            media.deleteMany({ _id: new RegExp(`^${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`) }),
+        ]).catch(() => null);
+    });
+    ctx.on('domain/delete', async (domainId) => {
+        const pattern = new RegExp(`^${domainId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`);
+        await Promise.all([collection.deleteMany({ _id: pattern }), media.deleteMany({ _id: pattern })]).catch(() => null);
+    });
+
     dependencies.links?.add({
         id: 'screens', label: '大屏',
         async status(tdoc) {
@@ -134,6 +146,7 @@ export function applyScreens(ctx: Context, dependencies: {
             const tdoc = await ContestModel.get(this.domain._id, tid);
             if (!tdoc) throw new NotFoundError('Contest not found');
             if (!this.user._id) throw new ScreenError('请登录比赛管理账号', 403);
+            this.checkPriv(PRIV.PRIV_USER_PROFILE);
             if (!this.user.own(tdoc)) this.checkPerm(PERM.PERM_EDIT_CONTEST);
             if (tdoc.rule !== 'acm') throw new ScreenError('大屏仅支持 ACM 比赛');
             this.tdoc = tdoc;

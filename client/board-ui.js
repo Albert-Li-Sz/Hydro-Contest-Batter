@@ -7,8 +7,10 @@ if (app) {
     window.addEventListener('hydro-xcpcio-awards', (event) => {
         awardRules = event.detail.rules;
         const podium = document.getElementById('xp-podium');
-        podium.hidden = !event.detail.podium.length;
-        podium.textContent = event.detail.podium.map((trophy) => `${trophy.name} ${trophy.teams.join('、')}`).join(' · ');
+        if (podium) {
+            podium.hidden = !event.detail.podium.length;
+            podium.textContent = event.detail.podium.map((trophy) => `${trophy.name} ${trophy.teams.join('、')}`).join(' · ');
+        }
         for (const tier of ['gold', 'silver', 'bronze']) {
             const dot = document.querySelector(`#xp-legend .xp-${tier}`);
             if (dot?.nextSibling) dot.nextSibling.textContent = awardRules?.[`${tier}Citation`] || { gold: '金牌', silver: '银牌', bronze: '铜牌' }[tier];
@@ -63,6 +65,7 @@ if (app) {
     // Team contests (Hydro 5.1): team name -> member names, from the board data.
     let teamMembers = null;
     function noteTexts(entries) {
+        if (!measure) return false;
         let family = null;
         let widest = widestText;
         for (const { name, school, star } of entries) {
@@ -346,7 +349,7 @@ if (app) {
                         let school = team?.querySelector('.xp-mobile-school');
                         if (hasSchool && team && !school) {
                             school = document.createElement('button'); school.type = 'button'; school.className = 'xp-mobile-school';
-                            school.addEventListener('click', () => schoolAction?.click()); team.append(school);
+                            school.addEventListener('click', () => row.cells[1]?.querySelector('[cursor-pointer]')?.click()); team.append(school);
                         }
                         // Name on the first line, school on the second; unofficial (打星) participants get
                         // a star after the school instead of after the name.

@@ -3,12 +3,10 @@ package main
 import (
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 )
 
 // Balloon tickets (气球配送) for receipt printers. The server sends the lines and, for printers set
@@ -120,7 +118,7 @@ func printReceipt(printer string, job Job) error {
 	}
 	r := *job.Receipt
 	if folder != "" && strings.HasPrefix(printer, "保存到文件夹 ") {
-		name := safeName.ReplaceAllString(fmt.Sprintf("%s-%s-%s", time.Now().Format("150405"), strings.TrimPrefix(printer, "保存到文件夹 "), job.Title), "_")
+		name := folderOutputBase(printer, job)
 		data, _ := ReceiptPDF(r, job.Title)
 		if err := os.WriteFile(filepath.Join(folder, name+".pdf"), data, 0o644); err != nil {
 			return err
@@ -135,6 +133,9 @@ func printReceipt(printer string, job Job) error {
 		raw, err := base64.StdEncoding.DecodeString(r.Raw)
 		if err != nil {
 			return errors.New("小票指令无效")
+		}
+		if len(raw) == 0 {
+			return errors.New("小票指令为空")
 		}
 		return printRaw(printer, job.Title, raw)
 	}

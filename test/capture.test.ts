@@ -266,6 +266,16 @@ describe('画面采集的连接转交', () => {
         expect(overlay.sent).toEqual([]);
         expect(otherContest.sent).toEqual([]);
     });
+
+    it('kickDevice 带比赛作用域时不能跨比赛踢掉其他比赛的采集设备', () => {
+        const [a, b] = cluster();
+        const dev = endpoint('system/2');
+        b.attachDevice('dev-other', { ...dev, connection: 'b/1' });
+        a.kickDevice('dev-other', 'cross-contest', 4004, 'system/1');
+        expect(dev.closed).toEqual([]);
+        a.kickDevice('dev-other', 'same-contest', 4004, 'system/2');
+        expect(dev.closed).toEqual([[4004, 'same-contest']]);
+    });
 });
 
 describe('内置 STUN 服务', () => {
@@ -303,6 +313,10 @@ describe('内置 STUN 服务', () => {
         expect(stunResponse(Buffer.from('GET / HTTP/1.1'), '10.0.0.1', 1)).toBeNull();
         // Never larger than a request with attributes: no amplification.
         expect(stunResponse(request(), '10.0.0.1', 1)!.length).toBe(32);
+        // Invalid UDP source ports (0 or >65535) must be ignored instead of crashing socket.send.
+        expect(stunResponse(request(), '10.0.0.1', 0)).toBeNull();
+        expect(stunResponse(request(), '10.0.0.1', -1)).toBeNull();
+        expect(stunResponse(request(), '10.0.0.1', 70000)).toBeNull();
     });
 
     it('serves over UDP, and a second server on the same port stays quiet', async () => {

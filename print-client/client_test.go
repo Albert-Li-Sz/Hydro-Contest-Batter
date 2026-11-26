@@ -151,8 +151,37 @@ func TestConnectionCodeAndPDF(t *testing.T) {
 	if _, err := parseCode("nonsense"); err == nil {
 		t.Fatal("bad code accepted")
 	}
+	// Reject non-http(s) URLs, embedded credentials and path-traversal server IDs.
+	for _, bad := range []string{
+		"hydro-print:eyJ1cmwiOiJmaWxlOi8vL2V0Yy9wYXNzd2QiLCJpZCI6ImEiLCJ0b2tlbiI6InQifQ",
+		"hydro-print:eyJ1cmwiOiJodHRwczovL3VzZXI6cGFzc0BleGFtcGxlLmNvbSIsImlkIjoiYSIsInRva2VuIjoidCJ9",
+		"hydro-print:eyJ1cmwiOiJodHRwczovL29qLmV4YW1wbGUuY29tIiwiaWQiOiIuLi9hZG1pbiIsInRva2VuIjoidCJ9",
+	} {
+		if _, err := parseCode(bad); err == nil {
+			t.Fatalf("unsafe connection code accepted: %s", bad)
+		}
+	}
 	pdf := WritePDF(Layout(sampleJob(), A4), A4, "样张")
 	if !bytes.HasPrefix(pdf, []byte("%PDF-1.4")) || !bytes.Contains(pdf, []byte("/STSong-Light")) || !bytes.HasSuffix(pdf, []byte("%%EOF\n")) {
 		t.Fatal("not a complete PDF")
+	}
+}
+
+func TestLayoutTruncatesLongContestAndFooter(t *testing.T) {
+	job := sampleJob()
+	job.Contest = strings.Repeat("非常长的程序设计竞赛正式赛名称", 6)
+	job.Header.Team = strings.Repeat("一支名字超长超长的参赛队伍", 6)
+	pages := Layout(job, A4)
+	if len(pages) == 0 {
+		t.Fatal("no pages")
+	}
+	left, right := A4.Margin, A4.Width-A4.Margin
+	for _, text := range pages[0].Texts {
+		if text.X+textWidth(text.Text, text.Style) > right+1 {
+			t.Errorf("text overflows right margin: %q (end %.1f > %.1f)", text.Text, text.X+textWidth(text.Text, text.Style), right)
+		}
+		if text.X < left-1 {
+			t.Errorf("text starts left of margin: %q (x %.1f < %.1f)", text.Text, text.X, left)
+		}
 	}
 }

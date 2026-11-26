@@ -7,7 +7,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-    ContestModel, Context, getAlphabeticId, Handler, NotFoundError, ObjectId, param, PERM, ProblemModel, Tdoc, Types, UserModel,
+    ContestModel, Context, getAlphabeticId, Handler, NotFoundError, ObjectId, param, PERM, PRIV, ProblemModel, Tdoc, Types, UserModel,
 } from 'hydrooj';
 import {
     BalloonError, balloonKey, balloonLook, defaultReceiptConfig, dueBalloons, firstBalloons, firstNumbers, normalizeBalloonSettings, pickTarget, problemColors,
@@ -180,8 +180,10 @@ export function applyBalloons(ctx: Context, dependencies: {
     const teamCache = new Map<string, { at: number; value: Promise<Map<number, { name: string; school: string; members: string[]; seat: string; unofficial: boolean }>> }>();
     function contestTeams(tdoc: Tdoc) {
         const key = contestKey(tdoc);
+        const now = Date.now();
+        for (const [k, item] of teamCache) if (now - item.at >= 10_000) teamCache.delete(k);
         const cached = teamCache.get(key);
-        if (cached && Date.now() - cached.at < 10_000) return cached.value;
+        if (cached && now - cached.at < 10_000) return cached.value;
         const value = (async () => {
             const entries = await ContestModel.getMultiStatus(tdoc.domainId, { docId: tdoc.docId })
                 .project<TeamEntry & { unrank?: boolean }>({ uid: 1, members: 1, displayName: 1, unrank: 1 }).toArray();
@@ -207,46 +209,78 @@ export function applyBalloons(ctx: Context, dependencies: {
 
     /**
      * Brings the stored balloons in line with the contest's journals. One process at a time per
-     * contest (a short lease on the settings document); `soon` shortens the lease after a judgement.
+     * contest (a lease on the settings document); returns `'synced'` on completion, `'busy'` when
+     * another process holds the lease, or `'skip'` when disabled/deleted so callers do not retry forever.
      */
-    async function sync(key: string, soon = false) {
+    async function sync(key: string, soon = false): Promise<'synced' | 'busy' | 'skip'> {
         const now = Date.now();
+        const minGap = soon ? 1500 : 4000;
+        const leaseMs = 15_000;
         const lease = await settingsColl.findOneAndUpdate(
-            { _id: key, 'settings.enabled': true, $or: [{ syncedAt: { $exists: false } }, { syncedAt: { $lt: new Date(now - (soon ? 800 : 4000)) } }] },
-            { $set: { syncedAt: new Date(now) } }, { returnDocument: 'after' },
+            {
+                _id: key, 'settings.enabled': true,
+                $and: [
+                    { $or: [{ syncedAt: { $exists: false } }, { syncedAt: { $lt: new Date(now - minGap) } }] },
+                    { $or: [{ syncLeaseUntil: { $exists: false } }, { syncLeaseUntil: { $lt: new Date(now) } }] },
+                ],
+            },
+            { $set: { syncedAt: new Date(now), syncLeaseUntil: new Date(now + leaseMs) } }, { returnDocument: 'after' },
         ) as SettingsDoc | null;
-        if (!lease) return false;
-        const [domainId, tid] = key.split('/');
-        const tdoc = await ContestModel.get(domainId, new ObjectId(tid));
-        if (!tdoc) return false;
-        const settings = settingsOf(lease, tdoc);
-        const [entries, stored, sent, jury] = await Promise.all([
-            ContestModel.getMultiStatus(domainId, { docId: tdoc.docId }).project({ uid: 1, journal: 1 }).toArray(),
-            balloons.find({ contest: key }).toArray() as Promise<BalloonDoc[]>,
-            hydroBalloons.find({ domainId, tid: tdoc.docId, sent: { $exists: true } }).project({ uid: 1, pid: 1 }).toArray() as Promise<{ uid: number; pid: number }[]>,
-            dependencies.jury?.(tdoc) ?? null,
-        ]);
-        const due = dueBalloons(key, tdoc, entries as never);
-        const { inserts, updates } = reconcile(stored.map(toStored), due, {
-            now, lockAt: tdoc.lockAt ? tdoc.lockAt.getTime() : null, locked: ContestModel.isLocked(tdoc),
-            hold: settings.afterFreeze !== 'continue', encourage: settings.afterFreeze === 'encourage' ? settings.encourageCount : undefined,
-            heldProblems: heldProblems(jury, tdoc.beginAt.getTime()), tickets: settings.tickets.enabled,
-            hydroSent: new Set(sent.map((row) => balloonKey(key, row.uid, row.pid))),
-        });
-        if (inserts.length) {
-            const counter = await settingsColl.findOneAndUpdate({ _id: key }, { $inc: { seq: inserts.length } }, { returnDocument: 'after' }) as SettingsDoc;
-            const first = counter.seq - inserts.length + 1;
-            const docs = inserts.map((balloon, index) => ({
-                _id: new ObjectId(), contest: key, domainId, tid: tdoc.docId, seq: first + index, createdAt: new Date(now), ...toDocSet(balloon),
-            }));
-            // Another process inserting the same balloon meanwhile only costs a ticket number.
-            await balloons.insertMany(docs, { ordered: false }).catch((error: { code?: number; writeErrors?: unknown[] }) => {
-                if (error?.code !== 11000 && !error?.writeErrors) throw error;
-            });
+        if (!lease) {
+            const existing = await settingsColl.findOne({ _id: key }, { projection: { 'settings.enabled': 1 } }) as { settings?: { enabled?: boolean } } | null;
+            return existing?.settings?.enabled ? 'busy' : 'skip';
         }
-        for (const update of updates) await balloons.updateOne({ _id: new ObjectId(update.id) }, { $set: toDocSet(update.set) });
-        if (inserts.length || updates.length) await bump(key);
-        return true;
+        try {
+            const [domainId, tid] = key.split('/');
+            const tdoc = await ContestModel.get(domainId, new ObjectId(tid));
+            if (!tdoc) return 'skip';
+            const settings = settingsOf(lease, tdoc);
+            const [entries, stored, sent, jury] = await Promise.all([
+                ContestModel.getMultiStatus(domainId, { docId: tdoc.docId }).project({ uid: 1, journal: 1 }).toArray(),
+                balloons.find({ contest: key }).toArray() as Promise<BalloonDoc[]>,
+                hydroBalloons.find({ domainId, tid: tdoc.docId, sent: { $exists: true } }).project({ uid: 1, pid: 1 }).toArray() as Promise<{ uid: number; pid: number }[]>,
+                dependencies.jury?.(tdoc) ?? null,
+            ]);
+            const due = dueBalloons(key, tdoc, entries as never);
+            const { inserts, updates } = reconcile(stored.map(toStored), due, {
+                now, lockAt: tdoc.lockAt ? tdoc.lockAt.getTime() : null, locked: ContestModel.isLocked(tdoc),
+                hold: settings.afterFreeze !== 'continue', encourage: settings.afterFreeze === 'encourage' ? settings.encourageCount : undefined,
+                heldProblems: heldProblems(jury, tdoc.beginAt.getTime()), tickets: settings.tickets.enabled,
+                hydroSent: new Set(sent.map((row) => balloonKey(key, row.uid, row.pid))),
+            });
+            if (inserts.length) {
+                const counter = await settingsColl.findOneAndUpdate({ _id: key }, { $inc: { seq: inserts.length } }, { returnDocument: 'after' }) as SettingsDoc;
+                const first = counter.seq - inserts.length + 1;
+                const docs = inserts.map((balloon, index) => ({
+                    _id: new ObjectId(), contest: key, domainId, tid: tdoc.docId, seq: first + index, createdAt: new Date(now), ...toDocSet(balloon),
+                }));
+                // Only ignore duplicate-key races (11000); surface real write failures.
+                await balloons.insertMany(docs, { ordered: false }).catch((error: { code?: number; writeErrors?: { code?: number }[] }) => {
+                    const onlyDup = error?.code === 11000 && (!error.writeErrors || error.writeErrors.every((entry) => entry.code === 11000));
+                    if (!onlyDup) throw error;
+                });
+            }
+            for (const update of updates) {
+                const { ticket, ...otherFields } = toDocSet(update.set);
+                if (Object.keys(otherFields).length) {
+                    await balloons.updateOne({ _id: new ObjectId(update.id) }, { $set: otherFields });
+                }
+                // Guard ticket transitions so sync never clobbers a concurrently claimed/printed receipt.
+                if (ticket && typeof ticket === 'object') {
+                    const nextStatus = (ticket as { status?: string }).status;
+                    if (nextStatus === 'pending' || nextStatus === 'none') {
+                        await balloons.updateOne(
+                            { _id: new ObjectId(update.id), 'ticket.status': { $nin: ['printing', 'printed'] } },
+                            { $set: { 'ticket.status': nextStatus } },
+                        );
+                    }
+                }
+            }
+            if (inserts.length || updates.length) await bump(key);
+            return 'synced';
+        } finally {
+            await settingsColl.updateOne({ _id: key }, { $unset: { syncLeaseUntil: '' } }).catch(() => null);
+        }
     }
 
     // The process that judged a record learns of it first (Hydro's record/judge), after the journal is saved.
@@ -260,12 +294,15 @@ export function applyBalloons(ctx: Context, dependencies: {
         return enabled.keys;
     }
     const scheduled = new Map<string, NodeJS.Timeout>();
-    function schedule(key: string, delay = 300) {
-        if (scheduled.has(key)) return;
+    let disposed = false;
+    function schedule(key: string, delay = 300, attempts = 0) {
+        if (disposed || scheduled.has(key) || attempts >= 10) return;
         const timer = setTimeout(async () => {
             scheduled.delete(key);
-            // The lease is held by another process's run: catch the next one.
-            if (!await sync(key, true).catch(() => false)) schedule(key, 1200);
+            if (disposed) return;
+            // Only retry when another process actively held the lease; never loop if disabled/deleted/errored.
+            const outcome = await sync(key, true).catch(() => 'skip' as const);
+            if (outcome === 'busy') schedule(key, 1200, attempts + 1);
         }, delay);
         timer.unref?.();
         scheduled.set(key, timer);
@@ -293,6 +330,25 @@ export function applyBalloons(ctx: Context, dependencies: {
         } catch { /* the next round tries again */ }
     }, 5000);
     sweeper.unref?.();
+    ctx.effect(() => () => {
+        disposed = true;
+        clearInterval(sweeper);
+        for (const timer of scheduled.values()) clearTimeout(timer);
+        scheduled.clear();
+    });
+    on('contest/del', (domainId: string, tid: ObjectId) => {
+        const key = `${domainId}/${tid}`;
+        const timer = scheduled.get(key);
+        if (timer) { clearTimeout(timer); scheduled.delete(key); }
+        teamCache.delete(key);
+        enabled.at = 0;
+        void Promise.all([settingsColl.deleteOne({ _id: key }), balloons.deleteMany({ contest: key })]).catch(() => null);
+    });
+    on('domain/delete', (domainId: string) => {
+        const pattern = new RegExp(`^${domainId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`);
+        enabled.at = 0;
+        void Promise.all([settingsColl.deleteMany({ _id: pattern }), balloons.deleteMany({ domainId })]).catch(() => null);
+    });
 
     // ---------------------------------------------------------------- Receipt printers
 
@@ -385,21 +441,24 @@ export function applyBalloons(ctx: Context, dependencies: {
         async report(id, serverId, status, printer, message) {
             const hex = /^balloon-([a-f\d]{24})$/i.exec(id)?.[1];
             if (!hex) return false;
-            const balloon = await balloons.findOne({ _id: new ObjectId(hex), 'ticket.server': serverId, 'ticket.status': 'printing' }) as BalloonDoc | null;
+            const filter = { _id: new ObjectId(hex), 'ticket.server': serverId, 'ticket.status': 'printing' };
+            const balloon = await balloons.findOne(filter) as BalloonDoc | null;
             if (!balloon) return false;
+            let result: { matchedCount?: number };
             if (status === 'released') {
-                await balloons.updateOne({ _id: balloon._id }, { $set: { 'ticket.status': 'pending' }, $unset: { 'ticket.server': '', 'ticket.claimedAt': '' } });
+                result = await balloons.updateOne(filter, { $set: { 'ticket.status': 'pending' }, $unset: { 'ticket.server': '', 'ticket.claimedAt': '' } });
             } else if (status === 'printed') {
-                await balloons.updateOne({ _id: balloon._id }, {
+                result = await balloons.updateOne(filter, {
                     $set: { 'ticket.status': 'printed', 'ticket.printer': printer || balloon.ticket.printer, 'ticket.printedAt': new Date(), 'ticket.attempts': 0 },
                     $inc: { 'ticket.prints': 1 }, $unset: { 'ticket.claimedAt': '', 'ticket.error': '' },
                 });
             } else {
                 const attempts = (balloon.ticket.attempts || 0) + 1;
-                await balloons.updateOne({ _id: balloon._id }, attempts < MAX_TICKET_ATTEMPTS
+                result = await balloons.updateOne(filter, attempts < MAX_TICKET_ATTEMPTS
                     ? { $set: { 'ticket.status': 'pending', 'ticket.attempts': attempts, 'ticket.error': message }, $unset: { 'ticket.server': '', 'ticket.claimedAt': '' } }
                     : { $set: { 'ticket.status': 'failed', 'ticket.attempts': attempts, 'ticket.error': message }, $unset: { 'ticket.claimedAt': '' } });
             }
+            if (!result.matchedCount) return false;
             await bump(balloon.contest);
             return true;
         },
@@ -408,18 +467,25 @@ export function applyBalloons(ctx: Context, dependencies: {
         },
     };
 
-    /** Saves a contest's balloon settings (the balloon page and 赛事中控), changes merged into the saved ones. */
+    /** Saves a contest's balloon settings (the balloon page and 赛事中控), retrying on concurrent revision updates. */
     async function saveSettings(tdoc: Tdoc, input: unknown) {
         const key = contestKey(tdoc);
-        const doc = await loadDoc(key);
-        const before = settingsOf(doc, tdoc);
-        const settings = normalizeBalloonSettings(input, tdoc.pids, before);
-        await settingsColl.updateOne({ _id: key }, { $set: { settings, updatedAt: new Date() }, $inc: { revision: 1 }, $unset: { syncedAt: '' } });
-        // Tickets switched off: those still waiting are not printed later by surprise.
-        if (before.tickets.enabled && !settings.tickets.enabled) await balloons.updateMany({ contest: key, 'ticket.status': 'pending' }, { $set: { 'ticket.status': 'none' } });
-        enabled.at = 0;
-        if (settings.enabled) await sync(key);
-        return settings;
+        for (let attempt = 0; attempt < 6; attempt++) {
+            const doc = await loadDoc(key);
+            const before = settingsOf(doc, tdoc);
+            const settings = normalizeBalloonSettings(input, tdoc.pids, before);
+            const result = await settingsColl.updateOne(
+                { _id: key, revision: doc.revision },
+                { $set: { settings, updatedAt: new Date() }, $inc: { revision: 1 }, $unset: { syncedAt: '' } },
+            );
+            if (!result.matchedCount) continue;
+            // Tickets switched off: those still waiting are not printed later by surprise.
+            if (before.tickets.enabled && !settings.tickets.enabled) await balloons.updateMany({ contest: key, 'ticket.status': 'pending' }, { $set: { 'ticket.status': 'none' } });
+            enabled.at = 0;
+            if (settings.enabled) await sync(key);
+            return settings;
+        }
+        throw new BalloonError('其他管理员正在修改气球设置，请重试', 409);
     }
 
     // ---------------------------------------------------------------- Pages
@@ -536,6 +602,7 @@ export function applyBalloons(ctx: Context, dependencies: {
             const tdoc = await ContestModel.get(this.domain._id, tid);
             if (!tdoc) throw new NotFoundError('Contest not found');
             if (!this.user._id) throw new BalloonError('请登录比赛管理账号', 403);
+            this.checkPriv(PRIV.PRIV_USER_PROFILE);
             if (!this.user.own(tdoc)) this.checkPerm(PERM.PERM_EDIT_CONTEST);
             if (tdoc.rule !== 'acm') throw new BalloonError('气球配送仅支持 ACM 比赛');
             this.tdoc = tdoc;
@@ -555,12 +622,7 @@ export function applyBalloons(ctx: Context, dependencies: {
 
         @param('payload', Types.String)
         async postEnable(_domainId: string, input: string) {
-            const key = contestKey(this.tdoc);
-            const doc = await loadDoc(key);
-            const settings = normalizeBalloonSettings({ enabled: this.payload(input).enabled === true }, this.tdoc.pids, settingsOf(doc, this.tdoc));
-            await settingsColl.updateOne({ _id: key }, { $set: { settings, updatedAt: new Date() }, $inc: { revision: 1 }, $unset: { syncedAt: '' } });
-            enabled.at = 0;
-            if (settings.enabled) await sync(key);
+            await saveSettings(this.tdoc, { enabled: this.payload(input).enabled === true });
             this.response.body = { ok: true };
         }
 

@@ -20,11 +20,16 @@ import {
 } from './types';
 import { applyWriter } from './writer';
 import { openFeed } from './feed';
+import { type HostLookup, validateWebhookUrl } from './ssrf';
 import { readZip, writeZip, ZipError } from './zip';
+
+const MAX_WEBHOOKS_PER_DOMAIN = 20;
+const MAX_WEBHOOKS_PER_USER = 10;
 
 const TYPE_CONTEST = 30;
 const TYPE_CONTEST_CLARIFICATION = 31;
-const SOURCE_TTL_MS = 0; // A GET must never lag an event already delivered to a client.
+// Short shared TTL coalesces concurrent/burst endpoint polls; every write, Hydro record/contest event and writer commit invalidates it immediately.
+const SOURCE_TTL_MS = 1000;
 const AUTH_TTL_MS = 5 * 60_000;
 const logoKey = (name: string) => name.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
 
@@ -35,14 +40,18 @@ interface Caller {
     basic: boolean;
 }
 
-export function applyCcsApi(host: HydroApi, ctx: Context, dependencies: SourceDependencies) {
+export function applyCcsApi(host: HydroApi, ctx: Context, dependencies: SourceDependencies & { webhookLookup?: HostLookup }) {
     const { ContestModel, DocumentModel, DomainModel, Handler, ObjectId, PERM, PRIV, ProblemModel, RecordModel, SettingModel, StorageModel, SystemModel, UserModel } = host;
     const { loadCcsSource, problemLanguages } = createCcsSourceLoader(host);
     /** An ObjectId whose timestamp is `ms` (submissions and clarifications PUT with a time). */
 const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(16).padStart(8, '0') + new ObjectId().toHexString().slice(8));
 
     const store = ccsStore(ctx);
-    const writer = applyWriter(host, ctx, store, dependencies, loadCcsSource);
+    const sources = new Map<string, { expires: number; value: Promise<CcsSource> }>();
+    const writer = applyWriter(host, ctx, store, dependencies, loadCcsSource, dependencies.webhookLookup, (key) => {
+        sources.delete(key);
+        (ctx as unknown as { broadcast: (event: string, ...args: unknown[]) => void }).broadcast('xcpcio/ccs-invalidated', key);
+    });
     const version = JSON.parse(fs.readFileSync(path.join(__dirname, '../../package.json'), 'utf8')).version as string;
     const settingsCollection = ctx.db.collection('xcpcio.enhanced.settings' as never) as unknown as {
         find: (filter: object) => { toArray: () => Promise<{ _id: string; settings?: { ccsApi?: boolean } }[]> };
@@ -50,6 +59,26 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
     const on = ctx.on.bind(ctx) as unknown as (name: string, listener: (...args: any[]) => unknown) => () => void;
     on('app/started', () => store.ensureIndexes().catch(() => null));
     on('xcpcio/ccs-touch', (key: string) => { sources.delete(key); writer.touch(key); });
+    on('xcpcio/ccs-invalidated', (key: string) => { sources.delete(key); });
+    on('record/change', (rdoc: { domainId?: string; contest?: unknown }) => {
+        if (rdoc?.domainId && rdoc?.contest) sources.delete(contestKey(String(rdoc.domainId), String(rdoc.contest)));
+    });
+    on('record/judge', (rdoc: { domainId?: string; contest?: unknown }) => {
+        if (rdoc?.domainId && rdoc?.contest) sources.delete(contestKey(String(rdoc.domainId), String(rdoc.contest)));
+    });
+    on('contest/edit', (tdoc: { domainId?: string; docId?: unknown }) => {
+        if (tdoc?.domainId && tdoc?.docId) sources.delete(contestKey(String(tdoc.domainId), String(tdoc.docId)));
+    });
+    on('contest/del', (domainId: string, tid: unknown) => {
+        const key = contestKey(String(domainId), String(tid));
+        sources.delete(key);
+        void store.deleteContest(String(domainId), String(tid)).catch(() => null);
+    });
+    on('domain/delete', (domainId: string) => {
+        const prefix = `${domainId}/`;
+        for (const key of sources.keys()) if (key.startsWith(prefix)) sources.delete(key);
+        void store.deleteDomain(String(domainId)).catch(() => null);
+    });
     const touch = (key: string) => {
         sources.delete(key);
         writer.touch(key);
@@ -58,7 +87,6 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
 
     // A verified password is remembered briefly: hashing it on every poll would be slow.
     const verified = new Map<string, { uid: number; expires: number; fingerprint: string }>();
-    const sources = new Map<string, { expires: number; value: Promise<CcsSource> }>();
 
     const sourceFor = (tdoc: Tdoc, fresh = false) => {
         const key = contestKey(tdoc.domainId, `${tdoc.docId}`);
@@ -66,8 +94,9 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
         for (const [name, entry] of sources) if (entry.expires <= now) sources.delete(name);
         let entry = sources.get(key);
         if (!entry || fresh) {
-            entry = { expires: now + SOURCE_TTL_MS, value: loadCcsSource(ctx, store, dependencies, tdoc) };
-            entry.value.catch(() => sources.delete(key));
+            const value = loadCcsSource(ctx, store, dependencies, tdoc);
+            entry = { expires: now + SOURCE_TTL_MS, value };
+            value.catch(() => { if (sources.get(key)?.value === value) sources.delete(key); });
             sources.set(key, entry);
         }
         return entry.value;
@@ -223,7 +252,7 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
             if (endpoint === 'event-feed') return this.only(method, ['GET'], () => this.eventFeed(tdoc, access, team));
             if (endpoint === 'scoreboard') return this.only(method, ['GET'], () => this.scoreboard(tdoc, access, team));
             if (endpoint === 'state') {
-                return this.only(method, ['GET'], async () => this.json(200, project((await this.objects(tdoc, access, team)).state, props.state)));
+                return this.only(method, ['GET'], async () => this.json(200, project((await this.objects(tdoc, access, team, false, true)).state, props.state)));
             }
             if (file) return this.only(method, ['GET'], () => this.file(tdoc, access, team, endpoint as Endpoint, oid!, file, name));
             if (oid) return this.object(method, tdoc, access, team, endpoint as Endpoint, decodeURIComponent(oid));
@@ -244,10 +273,11 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
             }));
         }
 
-        private async objects(tdoc: Tdoc, access: AccessContext, team: string | null, fresh = false) {
+        private async objects(tdoc: Tdoc, access: AccessContext, team: string | null, fresh = false, skipCommentary = false) {
             const source = await sourceFor(tdoc, fresh);
-            if (access.role === 'judge' || access.role === 'admin') return objectsOf(source, 'full');
-            const objects = objectsOf(source, access.role === 'team' && team ? `team-${team}` : 'public');
+            const options = skipCommentary ? { skipCommentary: true } : undefined;
+            if (access.role === 'judge' || access.role === 'admin') return objectsOf(source, 'full', options);
+            const objects = objectsOf(source, access.role === 'team' && team ? `team-${team}` : 'public', options);
             // Current privacy settings still apply after the final snapshot is frozen.
             if (access.identity) return objects;
             return { ...objects, organizations: [], groups: objects.groups.filter(group => !group.id.startsWith('school-')),
@@ -273,7 +303,7 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
                             role, identity: role === 'judge' || role === 'admin' || settings.showIdentity,
                             teamContest: !!(tdoc as { allowTeam?: boolean }).allowTeam,
                         };
-                        list.push(project((await this.objects(tdoc, access, null)).contest, endpointProperties(access).contests));
+                        list.push(project((await this.objects(tdoc, access, null, false, true)).contest, endpointProperties(access).contests));
                     } catch { /* not visible to this caller */ }
                 }
                 this.json(200, list);
@@ -282,7 +312,7 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
 
         private async contest(method: string, tdoc: Tdoc, access: AccessContext) {
             if (method === 'GET') {
-                this.json(200, project((await this.objects(tdoc, access, null)).contest, endpointProperties(access).contests));
+                this.json(200, project((await this.objects(tdoc, access, null, false, true)).contest, endpointProperties(access).contests));
                 return;
             }
             if (method !== 'PATCH') return this.only(method, ['GET', 'PATCH'], () => null);
@@ -349,7 +379,7 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
             const user = this.caller.user;
             if (!user) throw new CcsError(404, '未登录');
             const type = access.role === 'admin' ? 'admin' : access.role === 'judge' ? 'judge' : access.role === 'team' ? 'team' : 'staff';
-            const objects = await this.objects(tdoc, access, team);
+            const objects = await this.objects(tdoc, access, team, false, true);
             const personId = objects.persons.some((person) => person.id === `p${user._id}`) ? `p${user._id}` : null;
             this.json(200, project({
                 id: `u${user._id}`, username: user.uname, name: user.displayName || user.uname, type, team_id: team, person_id: personId,
@@ -361,7 +391,7 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
             const view: View = access.role === 'judge' || access.role === 'admin' ? 'full' : 'public';
             const groupId = typeof this.request.query.group_id === 'string' ? this.request.query.group_id : null;
             if (groupId !== null) {
-                const objects = await this.objects(tdoc, access, team);
+                const objects = await this.objects(tdoc, access, team, false, true);
                 if (!objects.groups.some((group) => group.id === groupId)) throw new CcsError(400, '没有这个分组');
             }
             this.json(200, buildScoreboard(source, view, groupId));
@@ -370,7 +400,7 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
         private async collection(method: string, tdoc: Tdoc, access: AccessContext, team: string | null, endpoint: Endpoint) {
             if (method === 'POST') return this.create(tdoc, access, team, endpoint, null);
             if (method !== 'GET') return this.only(method, ['GET', 'POST'], () => null);
-            const objects = await this.objects(tdoc, access, team);
+            const objects = await this.objects(tdoc, access, team, false, endpoint !== 'commentary');
             const list = endpoint === 'contests' ? [objects.contest] : (objects[endpoint as keyof CcsObjects] as unknown as Record<string, unknown>[]);
             if (!Array.isArray(list)) throw new CcsError(404, '没有这个端点');
             const props = endpointProperties(access)[endpoint]!;
@@ -388,7 +418,7 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
             if (method === 'PUT') return this.create(tdoc, access, team, endpoint, id);
             if (method === 'PATCH' || method === 'DELETE') return this.changeAward(method, tdoc, access, endpoint, id);
             if (method !== 'GET') return this.only(method, ['GET', 'PUT', 'PATCH', 'DELETE'], () => null);
-            const objects = await this.objects(tdoc, access, team);
+            const objects = await this.objects(tdoc, access, team, false, endpoint !== 'commentary');
             const list = objects[endpoint as keyof CcsObjects] as unknown as { id: string }[];
             const found = Array.isArray(list) ? list.find((item) => item.id === id) : undefined;
             if (!found) throw new CcsError(404, `没有 id 为 ${id} 的对象`);
@@ -418,7 +448,7 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
         private async created(tdoc: Tdoc, access: AccessContext, team: string | null, endpoint: Endpoint, id: string) {
             const key = contestKey(tdoc.domainId, `${tdoc.docId}`);
             touch(key);
-            const objects = await this.objects(tdoc, access, team, true);
+            const objects = await this.objects(tdoc, access, team, true, endpoint !== 'commentary');
             const found = (objects[endpoint as keyof CcsObjects] as unknown as { id: string }[]).find((item) => item.id === id);
             this.header('Location', `/d/${encodeURIComponent(tdoc.domainId)}/ccsapi/contests/${tdoc.docId}/${endpoint}/${encodeURIComponent(id)}`);
             this.json(201, found ? project(found, endpointProperties(access)[endpoint]) : { id });
@@ -578,7 +608,7 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
 
         private async validTeams(tdoc: Tdoc, access: AccessContext, ids: unknown) {
             if (!Array.isArray(ids) || ids.some((item) => typeof item !== 'string')) throw new CcsError(400, 'team_ids 必须是队伍 id 数组');
-            const teams = new Set((await this.objects(tdoc, access, null)).teams.map((item) => item.id));
+            const teams = new Set((await this.objects(tdoc, access, null, false, true)).teams.map((item) => item.id));
             const unknown = (ids as string[]).find((item) => !teams.has(item));
             if (unknown) throw new CcsError(400, `没有队伍 ${unknown}`);
             return [...new Set(ids as string[])];
@@ -601,7 +631,7 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
             if (endpoint !== 'awards') throw new CcsError(405, `此端点不支持 ${method}`);
             if (access.role !== 'admin') throw new CcsError(403, '只有管理员可以修改奖项');
             const key = contestKey(tdoc.domainId, `${tdoc.docId}`);
-            const current = (await this.objects(tdoc, access, null)).awards.find((award) => award.id === id);
+            const current = (await this.objects(tdoc, access, null, false, true)).awards.find((award) => award.id === id);
             if (!current) throw new CcsError(404, `没有奖项 ${id}`);
             if (method === 'DELETE') {
                 await store.setAward(key, { id, deleted: true });
@@ -619,7 +649,7 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
             await store.setAward(key, { id, citation: 'citation' in body ? body.citation.trim() : current.citation, team_ids: teamIds });
             sources.delete(key);
             touch(key);
-            const objects = await this.objects(tdoc, access, null, true);
+            const objects = await this.objects(tdoc, access, null, true, true);
             this.json(200, project(objects.awards.find((award) => award.id === id)!, endpointProperties(access).awards));
         }
 
@@ -628,7 +658,7 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
             for (const field of ['time', 'contest_time', 'source_id']) if (body[field] !== undefined) throw new CcsError(400, `不能指定 ${field}`);
             if (typeof body.message !== 'string' || !body.message.trim()) throw new CcsError(400, '缺少 message');
             if (!Array.isArray(body.tags) || body.tags.some((tag: unknown) => typeof tag !== 'string')) throw new CcsError(400, 'tags 必须是字符串数组');
-            const objects = await this.objects(tdoc, access, null);
+            const objects = await this.objects(tdoc, access, null, false, true);
             const refs = (field: string, known: Set<string>) => {
                 const value = body[field];
                 if (value === undefined || value === null) return null;
@@ -648,7 +678,7 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
 
         /** Submission sources (jury), organization logos and problem attachments. */
         private async file(tdoc: Tdoc, access: AccessContext, team: string | null, endpoint: Endpoint, oid: string, file: string, name?: string) {
-            const objects = await this.objects(tdoc, access, team);
+            const objects = await this.objects(tdoc, access, team, false, true);
             const id = decodeURIComponent(oid);
             if (endpoint === 'submissions' && file === 'files' && !name) {
                 const source = await sourceFor(tdoc);
@@ -681,10 +711,12 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
                 const registry = logoRegistry();
                 const logoId = registry.names[logoKey(schoolName(organization.name))];
                 const pngPath = logoId && /^[a-f\d]{12}$/.test(logoId) ? path.join(__dirname, '../../logos/png', `${logoId}.png`) : null;
-                if (!pngPath || !fs.existsSync(pngPath)) throw new CcsError(404, '没有校徽');
+                if (!pngPath) throw new CcsError(404, '没有校徽');
+                let png: Buffer;
+                try { png = await fs.promises.readFile(pngPath); } catch { throw new CcsError(404, '没有校徽'); }
                 this.header('Cache-Control', 'public, max-age=86400');
                 this.response.type = 'image/png';
-                this.response.body = fs.readFileSync(pngPath);
+                this.response.body = png;
                 return;
             }
             if (endpoint === 'problems' && file === 'attachments' && name) {
@@ -772,10 +804,11 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
             if (method !== 'POST') return this.only(method, ['GET', 'POST'], () => null);
             const body = this.body();
             if (body.id !== undefined) throw new CcsError(400, 'POST 不能指定 id');
-            let callback: URL;
-            try { callback = new URL(body.url); } catch { throw new CcsError(400, 'url 必须是有效的 http 或 https 地址'); }
-            if (!['http:', 'https:'].includes(callback.protocol) || callback.username || callback.password || callback.hash) throw new CcsError(400, 'url 必须是没有用户信息或片段的 http 或 https 地址');
+            validateWebhookUrl(body.url);
             if (typeof body.token !== 'string' || !/^[\x21-\x7e]{1,1024}$/.test(body.token)) throw new CcsError(400, 'token 须为 1 至 1024 个可打印 ASCII 字符');
+            const existingHooks = await store.webhooks.find({ domainId: this.domain._id }).toArray();
+            if (existingHooks.length >= MAX_WEBHOOKS_PER_DOMAIN) throw new CcsError(400, `当前域最多注册 ${MAX_WEBHOOKS_PER_DOMAIN} 个 webhook`);
+            if (existingHooks.filter((h) => h.owner === user._id).length >= MAX_WEBHOOKS_PER_USER) throw new CcsError(400, `单个账号最多注册 ${MAX_WEBHOOKS_PER_USER} 个 webhook`);
             const endpoints = body.endpoints ?? [];
             const contestIds = body.contest_ids ?? [];
             const known = new Set<string>(['contests', 'contest', 'state', 'judgement-types', 'languages', 'problems', 'groups', 'organizations', 'teams', 'persons', 'accounts', 'submissions', 'judgements', 'runs', 'clarifications', 'awards', 'commentary']);

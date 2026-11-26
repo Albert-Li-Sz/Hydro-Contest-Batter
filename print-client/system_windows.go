@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strings"
 	"syscall"
 	"unicode/utf16"
 	"unsafe"
@@ -98,20 +99,30 @@ func utf16String(p *uint16) string {
 }
 
 func utf16Ptr(text string) *uint16 {
-	p, _ := syscall.UTF16PtrFromString(text)
+	p, err := syscall.UTF16PtrFromString(strings.ReplaceAll(text, "\x00", ""))
+	if err != nil {
+		p, _ = syscall.UTF16PtrFromString("")
+	}
 	return p
 }
 
 func listPrinters() ([]SysPrinter, error) {
 	var needed, count uint32
-	procEnumPrinters.Call(enumLocal|enumConnections, 0, 2, 0, 0, uintptr(unsafe.Pointer(&needed)), uintptr(unsafe.Pointer(&count)))
-	if needed == 0 {
-		return nil, nil
-	}
-	buffer := make([]byte, needed)
-	r, _, err := procEnumPrinters.Call(enumLocal|enumConnections, 0, 2, uintptr(unsafe.Pointer(&buffer[0])), uintptr(needed),
-		uintptr(unsafe.Pointer(&needed)), uintptr(unsafe.Pointer(&count)))
-	if r == 0 {
+	var buffer []byte
+	for attempt := 0; attempt < 3; attempt++ {
+		procEnumPrinters.Call(enumLocal|enumConnections, 0, 2, 0, 0, uintptr(unsafe.Pointer(&needed)), uintptr(unsafe.Pointer(&count)))
+		if needed == 0 {
+			return nil, nil
+		}
+		buffer = make([]byte, needed)
+		r, _, err := procEnumPrinters.Call(enumLocal|enumConnections, 0, 2, uintptr(unsafe.Pointer(&buffer[0])), uintptr(needed),
+			uintptr(unsafe.Pointer(&needed)), uintptr(unsafe.Pointer(&count)))
+		if r != 0 {
+			break
+		}
+		if err == syscall.ERROR_INSUFFICIENT_BUFFER && attempt < 2 {
+			continue
+		}
 		return nil, fmt.Errorf("无法读取打印机列表：%v", err)
 	}
 	defaultName := ""
@@ -183,6 +194,9 @@ type docInfo1 struct {
 
 // printRaw spools bytes the printer understands itself (ESC/POS) as a RAW job: the driver passes them on unchanged.
 func printRaw(printer, title string, data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
 	var handle uintptr
 	if r, _, err := procOpenPrinter.Call(uintptr(unsafe.Pointer(utf16Ptr(printer))), uintptr(unsafe.Pointer(&handle)), 0); r == 0 {
 		return fmt.Errorf("无法打开小票机 %s：%v", printer, err)

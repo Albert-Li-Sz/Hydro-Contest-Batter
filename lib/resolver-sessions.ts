@@ -96,23 +96,32 @@ export class ResolverSessions {
         }
     }
 
-    /** Delete sessions (and their snapshots) nobody has opened or advanced for `maxAgeMs`. */
+    /** Delete sessions (and their snapshots) nobody has opened or advanced for `maxAgeMs`, plus abandoned incomplete writes. */
     async prune(maxAgeMs: number, now = Date.now()) {
-        if (!Number.isFinite(maxAgeMs) || maxAgeMs <= 0) return 0;
-        const rows = await this.sessions.find({ updatedAt: { $lt: new Date(now - maxAgeMs) } }).toArray();
+        const ttlEnabled = Number.isFinite(maxAgeMs) && maxAgeMs > 0;
+        const staleIncompleteCutoff = new Date(now - 3600_000);
+        const query = ttlEnabled
+            ? { $or: [{ updatedAt: { $lt: new Date(now - maxAgeMs) } }, { ready: false, deleting: { $ne: true }, createdAt: { $lt: staleIncompleteCutoff } }] }
+            : { ready: false, deleting: { $ne: true }, createdAt: { $lt: staleIncompleteCutoff } };
+        const rows = await this.sessions.find(query).toArray();
         let deleted = 0;
         for (const row of rows) {
-            if (!row.ready && !row.deleting) continue;
+            const abandonedIncomplete = !row.ready && !row.deleting && new Date(row.createdAt).getTime() < staleIncompleteCutoff.getTime();
+            if (!row.ready && !row.deleting && !abandonedIncomplete) continue;
             // Claim only the version scanned. A concurrent open/move refreshes updatedAt.
-            const claim = await this.sessions.updateOne(
-                { _id: row._id, ready: row.ready, updatedAt: row.updatedAt },
-                { $set: { ready: false, deleting: true } },
-            );
+            const claim = abandonedIncomplete
+                ? await this.sessions.updateOne({ _id: row._id, ready: false, deleting: { $ne: true } }, { $set: { deleting: true } })
+                : await this.sessions.updateOne({ _id: row._id, ready: row.ready, updatedAt: row.updatedAt }, { $set: { ready: false, deleting: true } });
             if (!claim.matchedCount) continue;
             await this.remove(row);
             deleted++;
         }
         return deleted;
+    }
+
+    async removeByScope(filter: { domainId: string; contestId?: string }) {
+        const rows = await this.sessions.find(filter, { projection: { _id: 1 } }).toArray();
+        for (const row of rows) await this.remove(row as ResolverSession);
     }
 
     async list(scope: ResolverScope) {

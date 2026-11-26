@@ -185,6 +185,17 @@ func wrapLine(runs [][2]string, number int, size, width float64) []visualLine {
 	return append(out, current)
 }
 
+func truncateToWidth(text string, s Style, maxWidth float64) string {
+	if maxWidth <= 0 || textWidth(text, s) <= maxWidth {
+		return text
+	}
+	r := []rune(text)
+	for len(r) > 1 && textWidth(string(r)+"…", s) > maxWidth {
+		r = r[:len(r)-1]
+	}
+	return string(r) + "…"
+}
+
 // Layout lays a job out on pages: the header box on every page, the code below it with line
 // numbers and wrapped long lines, and the page number at the bottom.
 func Layout(job Job, paper Paper) []Page {
@@ -229,12 +240,12 @@ func Layout(job Job, paper Paper) []Page {
 	if len(line) > 0 {
 		rowLines = append(rowLines, line)
 	}
-	teamText := job.Header.Team
-	maxTeam := inner - seatWidth - 8
-	for textWidth(teamText, teamStyle) > maxTeam && len([]rune(teamText)) > 1 {
-		r := []rune(teamText)
-		teamText = string(r[:len(r)-2]) + "…"
+	maxHeaderText := inner
+	if seatWidth > 0 {
+		maxHeaderText = inner - seatWidth - 8
 	}
+	contestText := truncateToWidth(job.Contest, contestStyle, maxHeaderText)
+	teamText := truncateToWidth(job.Header.Team, teamStyle, maxHeaderText)
 	headerHeight := pad + 10 + 19 + float64(len(rowLines))*13 + pad
 	if teamText == "" {
 		headerHeight -= 19
@@ -276,7 +287,7 @@ func Layout(job Job, paper Paper) []Page {
 		// Header box.
 		page.Rects = append(page.Rects, RectOp{X: left, Y: top, W: width, H: headerHeight, Width: 1.4})
 		y := top + pad + 8
-		segments(&page, left+pad, y, contestStyle, job.Contest)
+		segments(&page, left+pad, y, contestStyle, contestText)
 		if seatText != "" {
 			bx := right - pad - seatWidth
 			page.Rects = append(page.Rects, RectOp{X: bx, Y: top + pad + 1, W: seatWidth, H: 24, Width: 1.4})
@@ -319,8 +330,9 @@ func Layout(job Job, paper Paper) []Page {
 		// Footer: who it is for and the page.
 		footer := Style{Family: FamilySans, Size: 8, Gray: 0.3}
 		pageText := fmt.Sprintf("第 %d / %d 页", p+1, total)
-		segments(&page, right-textWidth(pageText, footer), paper.Height-paper.Margin+2, footer, pageText)
-		who := strings.TrimSpace(strings.Join([]string{job.Header.Team, seatText}, "  "))
+		pageTextWidth := textWidth(pageText, footer)
+		segments(&page, right-pageTextWidth, paper.Height-paper.Margin+2, footer, pageText)
+		who := truncateToWidth(strings.TrimSpace(strings.Join([]string{job.Header.Team, seatText}, "  ")), footer, width-pageTextWidth-12)
 		segments(&page, left, paper.Height-paper.Margin+2, footer, who)
 		pages = append(pages, page)
 	}

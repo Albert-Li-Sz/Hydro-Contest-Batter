@@ -127,11 +127,17 @@ async function loadCcsSource(ctx: Context, store: CcsStore, dependencies: Source
     const frozen = await store.frozenSource(key);
     if (frozen) return frozen;
     const [settings, jury] = await Promise.all([dependencies.loadSettings(tdoc), dependencies.loadJury(tdoc)]);
+    const statusCursor = ContestModel.getMultiStatus(domainId, { docId: tdoc.docId }) as unknown as {
+        project?: (spec: object) => { toArray: () => Promise<(TeamEntry & { unrank?: boolean })[]> };
+        toArray: () => Promise<(TeamEntry & { unrank?: boolean })[]>;
+    };
     const [rawFull, rawPublic, stored, entries] = await Promise.all([
         dependencies.loadData(tdoc, true, true, true),
         dependencies.loadData(tdoc, false, settings.showIdentity, false),
         store.contest(domainId, tid),
-        ContestModel.getMultiStatus(domainId, { docId: tdoc.docId }).toArray() as Promise<(TeamEntry & { unrank?: boolean })[]>,
+        (typeof statusCursor.project === 'function'
+            ? statusCursor.project({ uid: 1, members: 1, displayName: 1, unrank: 1, attend: 1 })
+            : statusCursor).toArray(),
     ]);
     // CCS retains the original problem IDs, even when the public board hides labels.
     const plain = (data: BoardData, publicView: boolean) => applyBoardRules(applyJury(data, jury, tdoc.pids, publicView), settings, tdoc, Date.now(), true);
@@ -187,7 +193,12 @@ async function loadCcsSource(ctx: Context, store: CcsStore, dependencies: Source
         .find({ rid: { $in: rids } }, { projection: { rid: 1, status: 1, judgeAt: 1, time: 1, 'testCases.status': 1, 'testCases.time': 1 } })
         .toArray() as any[] : [];
     const history = new Map<string, any[]>();
-    for (const doc of historyDocs) history.set(`${doc.rid}`, [...(history.get(`${doc.rid}`) || []), doc]);
+    for (const doc of historyDocs) {
+        const rid = `${doc.rid}`;
+        let list = history.get(rid);
+        if (!list) { list = []; history.set(rid, list); }
+        list.push(doc);
+    }
     const judging = (doc: any): JudgingSource => ({
         status: Number(doc.status),
         startAt: null,
@@ -215,15 +226,29 @@ async function loadCcsSource(ctx: Context, store: CcsStore, dependencies: Source
     });
     // Judging start times the writer saw (Hydro keeps none).
     const starts = await store.judgeStarts(records.flatMap((record) => record.judgings.map((_, index) => `${record.rid}.${index + 1}`)));
-    const tracked = await (ctx.db.collection('xcpcio.monitor.judges' as never) as any).find({}).toArray();
-    const active = tracked.flatMap((p: any) => (p.judges || []).flatMap((j: any) => j.active || []));
-    const recent = tracked.flatMap((p: any) => (p.judges || []).flatMap((j: any) => j.recent || []));
+    const tracked = await (ctx.db.collection('xcpcio.monitor.judges' as never) as any)
+        .find({ updateAt: { $gt: new Date(Date.now() - 20_000) } }).toArray();
+    const activeByRid = new Map<string, any>();
+    const recentByRid = new Map<string, any[]>();
+    for (const proc of tracked) {
+        for (const judge of proc.judges || []) {
+            for (const task of judge.active || []) {
+                if (task.domainId === domainId && !activeByRid.has(task.rid)) activeByRid.set(task.rid, task);
+            }
+            for (const task of judge.recent || []) {
+                if (task.domainId !== domainId || task.durationMs === null) continue;
+                let list = recentByRid.get(task.rid);
+                if (!list) { list = []; recentByRid.set(task.rid, list); }
+                list.push(task);
+            }
+        }
+    }
     for (const record of records) record.judgings.forEach((item, index) => {
         item.startAt = starts.get(`${record.rid}.${index + 1}`) ?? null;
         if (item.startAt !== null) return;
-        const task = item.judgeAt === null ? active.find((t: any) => t.domainId === domainId && t.rid === record.rid)
-            : recent.find((t: any) => t.domainId === domainId && t.rid === record.rid && t.durationMs !== null
-                && t.status === item.status && Math.abs(t.at - item.judgeAt!) < 5000);
+        const task = item.judgeAt === null
+            ? activeByRid.get(record.rid)
+            : (recentByRid.get(record.rid) || []).find((t: any) => t.status === item.status && Math.abs(t.at - item.judgeAt!) < 5000);
         if (task) item.startAt = task.startedAt ?? task.at - task.durationMs;
     });
 
@@ -244,7 +269,9 @@ async function loadCcsSource(ctx: Context, store: CcsStore, dependencies: Source
     const [problems, languages, awardOverrides, comments] = await Promise.all([
         contestProblems(tdoc), contestLanguages(tdoc), store.awardOverrides(key), store.comments(key),
     ]);
-    for (const record of records) if (!languages.some(lang => lang.key === record.lang)) {
+    const knownLangs = new Set(languages.map((lang) => lang.key));
+    for (const record of records) if (!knownLangs.has(record.lang)) {
+        knownLangs.add(record.lang);
         const lang = (SettingModel as any).langs?.[record.lang] || {};
         languages.push({ key: record.lang, display: String(lang.display || record.lang), submittable: false,
             extension: typeof lang.code_file === 'string' && lang.code_file.includes('.') ? lang.code_file.split('.').pop() : null,
