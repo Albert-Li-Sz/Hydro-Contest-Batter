@@ -2,11 +2,11 @@
 // Resolver-Web v1.4.0 (PresentationView) or, for the resolver item, follows a resolver session
 // read-only like Resolver-Web's watch.js. Data comes from the plugin's tokenised data endpoint.
 import { PresentationView } from './render/presentation-view.js';
-import { ResolverView } from './render/resolver-view.js';
+import { ResolverStage, rendererControls } from './render/renderer.js';
 import { HydroScreenExtras } from './hydro-screen-extras.js';
 
 const runtime = JSON.parse(document.getElementById('screen-runtime').textContent);
-const canvas = document.getElementById('screen');
+let canvas = document.getElementById('screen');
 const content = document.getElementById('screen-content');
 const extras = new HydroScreenExtras(content);
 const statusEl = document.getElementById('screen-status');
@@ -62,53 +62,67 @@ function noticeItem(text) {
     return { type: 'message', text };
 }
 
-function applyResolver(data) {
+const styleHolder = document.getElementById('screen-style-controls');
+const styleControls = rendererControls(styleHolder, () => {
+    if (resolver) selectRenderer(resolver, true).catch(error => status(error.message));
+}, '跟随大屏管理');
+
+function selectRenderer(current, retry = false) {
+    return current.stage.select(styleControls.style.value || current.configured || current.game.options?.renderer, retry);
+}
+
+function releaseResolver() {
+    if (resolver) canvas = resolver.stage.dispose();
+    resolver = null;
+    styleHolder.hidden = true;
+}
+
+async function applyResolver(data) {
     if (!data.session) {
-        resolver?.view.dispose?.();
-        resolver = null;
+        releaseResolver();
         state = { item: noticeItem(data.notice || '等待滚榜开始'), data: null, locale: data.locale };
         return;
     }
     state = null;
+    if (!resolver || resolver.session !== data.session) {
+        if (!data.game) throw new Error('观众进度不同步');
+        releaseResolver();
+        const baseRows = data.game.options?.rowsPerScreen || 12;
+        const game = { ...data.game, options: { ...data.game.options, rowsPerScreen: Math.round(baseRows / scale) } };
+        const current = { game, session: data.session, baseRows, steps: game.steps, playback: data.playback, configured: data.renderer };
+        current.stage = new ResolverStage(canvas, game, () => ({ steps: current.steps, index: current.playback.index }),
+            (surface, view, message) => { canvas = surface; current.view = view; styleControls.mounted(surface, view, message); });
+        resolver = current;
+        styleHolder.hidden = false;
+        await selectRenderer(current);
+        return;
+    }
+    const current = resolver;
+    current.configured = data.renderer;
+    const previous = current.playback;
     if (data.delta) {
         const { from, steps } = data.delta;
-        if (!resolver || resolver.session !== data.session || from !== resolver.playback.index ||
-            data.playback.revision !== resolver.playback.revision + 1 || steps.length !== data.playback.index - from) {
+        if (from !== previous.index || data.playback.revision !== previous.revision + 1 || steps.length !== data.playback.index - from) {
             throw new Error('观众进度不同步');
         }
-        // A long forward seek can skip hundreds of frames. Rebuild once in that case.
-        for (const step of steps) resolver.steps.push(step);
-        if (data.playback.currentAction === resolver.playback.currentAction + 1) {
-            for (const step of steps) resolver.view.applyStep(step);
-        } else resolver.view.seek(resolver.steps, data.playback.index);
-        resolver.playback = data.playback;
-        return;
+        for (const step of steps) current.steps.push(step);
+        if (data.playback.currentAction === previous.currentAction + 1) {
+            for (const step of steps) current.view.applyStep(step);
+        } else current.view.seek(current.steps, data.playback.index);
+    } else if (data.game) {
+        const steps = data.game.steps;
+        if (data.playback.revision === previous.revision + 1 && steps.length > current.steps.length && data.playback.currentAction === previous.currentAction + 1) {
+            for (const step of steps.slice(current.steps.length)) current.view.applyStep(step);
+        } else current.view.seek(steps, steps.length - 1);
+        current.steps = steps;
     }
-    if (!data.game) {          // unchanged since the last poll
-        if (resolver) resolver.playback = data.playback;
-        return;
-    }
-    const steps = data.game.steps;
-    const next = data.playback;
-    if (resolver && resolver.session === data.session && next.revision === resolver.playback.revision + 1
-        && steps.length > resolver.steps.length) {
-        // One step forward: animate it as the presenter sees it.
-        for (const step of steps.slice(resolver.steps.length)) resolver.view.applyStep(step);
-    } else {
-        if (!resolver || resolver.session !== data.session) {
-            resolver?.view.dispose?.();
-            const baseRows = data.game.options?.rowsPerScreen || 12;
-            const game = scale === 1 ? data.game : { ...data.game, options: { ...data.game.options, rowsPerScreen: Math.round(baseRows / scale) } };
-            resolver = { view: new ResolverView(canvas, game), session: data.session, baseRows };
-        }
-        resolver.view.seek(steps, steps.length - 1);
-    }
-    Object.assign(resolver, { steps, playback: next });
+    current.playback = data.playback;
+    await selectRenderer(current);
 }
 
 function releaseProgram() {
-    resolver?.view.dispose();
-    resolver = presentation = paintedState = state = loaded = null;
+    releaseResolver();
+    presentation = paintedState = state = loaded = null;
     content.querySelectorAll('video').forEach(video => { video.pause(); video.removeAttribute('src'); video.load(); });
     content.replaceChildren(); delete content.dataset.type;
     extras.key = itemKey = '';
@@ -120,8 +134,8 @@ function applyScale(value) {
     document.documentElement.style.setProperty('--screen-scale', String(scale));
     canvas.dataset.logicalWidth = String(Math.round(1920 / scale));
     if (resolver) {
-        resolver.view.options.rowsPerScreen = Math.round((resolver.baseRows || 12) / scale);
-        resolver.view.resize();
+        resolver.game.options.rowsPerScreen = Math.round((resolver.baseRows || 12) / scale);
+        if (resolver.view) { resolver.view.options.rowsPerScreen = resolver.game.options.rowsPerScreen; resolver.view.resize(); }
     }
     extras.key = ''; paintedState = null;
 }
@@ -246,6 +260,8 @@ async function sendThumb() {
     try {
         let payload = null;
         if (!canvas.hidden && canvas.width) {
+            // Read the WebGL back buffer in the same task that draws it.
+            if (canvas.dataset.renderer === '3d') resolver?.view?.render(performance.now());
             payload = { kind: 'image', data: frameData(canvas, 384, 384 * canvas.height / canvas.width) };
         } else if (!content.hidden) payload = { kind: 'html', data: snapshot() };
         if (!payload) return;
@@ -272,8 +288,7 @@ async function poll() {
         }
         const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(10000) });
         if (response.status === 404) {
-            resolver?.view.dispose?.();
-            resolver = null;
+            releaseResolver();
             state = { item: noticeItem('大屏链接已作废，请向管理员获取新链接'), data: null, locale: state?.locale };
             status('大屏链接已作废，请向管理员获取新链接');
             delay = 30000;
@@ -289,10 +304,9 @@ async function poll() {
         }
         offset = data.serverTime - Date.now();
         if (type === 'resolver') {
-            try { applyResolver(data); }
+            try { await applyResolver(data); }
             catch {
-                resolver?.view.dispose?.();
-                resolver = null;
+                releaseResolver();
                 status('正在重新同步滚榜画面');
                 return;
             }
@@ -325,6 +339,7 @@ function frame(now) {
     if (pairing) return;
     size();
     if (resolver && !state) {
+        if (!resolver.view) return;
         canvas.hidden = false;
         content.hidden = true;
         try {
@@ -334,8 +349,7 @@ function frame(now) {
             canvas.dataset.revision = String(resolver.playback.revision);
             canvas.dataset.index = String(resolver.playback.index);
         } catch {
-            resolver.view.dispose?.();
-            resolver = null;
+            releaseResolver();
             status('画面绘制失败，正在重新同步');
         }
     } else if (state) {
@@ -394,9 +408,9 @@ if (!supported) {
     status('此浏览器不支持网页全屏，请使用浏览器的全屏或 F11');
 }
 fullButton.addEventListener('click', (event) => { event.stopPropagation(); toggleFullscreen(); });
-canvas.addEventListener('click', enterFullscreen);
+document.addEventListener('click', event => { if (event.target === canvas) enterFullscreen(); });
 content.addEventListener('click', enterFullscreen);
-canvas.addEventListener('dblclick', (event) => { if (document.fullscreenElement) { event.preventDefault(); document.exitFullscreen?.(); } });
+document.addEventListener('dblclick', (event) => { if (event.target === canvas && document.fullscreenElement) { event.preventDefault(); document.exitFullscreen?.(); } });
 window.addEventListener('keydown', (event) => {
     if (event.key.toLowerCase() === 'f' && !event.ctrlKey && !event.metaKey && !event.altKey) toggleFullscreen();
     activity();

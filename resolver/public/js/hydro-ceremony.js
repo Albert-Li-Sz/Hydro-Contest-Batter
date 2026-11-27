@@ -1,3 +1,4 @@
+import { exportPptx } from './ceremony-pptx.js';
 import { ceremonyPlayer } from './ceremony-player.js';
 import { printableImage, imageData } from './image-upload.js';
 import { inkOn } from './ink.js';
@@ -16,6 +17,7 @@ let ink = '#ffffff';
 let requestId = 0;
 let debounce;
 let player;
+let pptxBusy = false;
 let boardKey = '';
 let thumbs = [];
 let thumbJob = 0;
@@ -83,6 +85,7 @@ function pageChanged(i, n) {
     byId('ceremony-prev').disabled = i <= 0;
     byId('ceremony-next').disabled = i >= n - 1;
     for (const id of ['ceremony-play', 'ceremony-export']) byId(id).disabled = !n;
+    byId('ceremony-pptx').disabled = !n || pptxBusy;
     thumbs.forEach((thumb, index) => thumb.setAttribute('aria-current', String(index === i)));
     thumbs[i]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
@@ -148,6 +151,7 @@ async function refresh(save = false) {
         if (id !== requestId) return;
         config = next; deck = data; boardOptions(deck.boards); show();
         status.textContent = save ? '设置已保存' : '';
+        return true;
     } catch (error) { if (id === requestId) status.textContent = error.message; }
 }
 form.addEventListener('input', event => {
@@ -193,6 +197,19 @@ async function asset(url, asText = false) {
         reader.onerror = () => reject(new Error('无法嵌入素材')); reader.readAsDataURL(blob);
     });
 }
+byId('ceremony-pptx').onclick = async ({ currentTarget: button }) => {
+    if (pptxBusy) return;
+    clearTimeout(debounce);
+    pptxBusy = button.disabled = true;
+    try {
+        // Resolve pending form edits before measuring the pages we are about to export.
+        if (!await refresh() || !deck.slides.length) return;
+        status.textContent = '正在生成 PowerPoint…';
+        await exportPptx(runtime.base, config, deck, player, background, ink);
+        status.textContent = 'PowerPoint 已生成';
+    } catch (error) { status.textContent = error.message; }
+    finally { pptxBusy = false; button.disabled = !deck?.slides.length; }
+};
 byId('ceremony-export').onclick = async ({ currentTarget: button }) => {
     button.disabled = true;
     try {

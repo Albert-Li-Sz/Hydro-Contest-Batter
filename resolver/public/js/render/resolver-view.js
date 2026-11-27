@@ -187,11 +187,14 @@ export class ResolverView {
     };
     this.width = WIDTH;
     this.height = HEIGHT;
-    this.canvas.width = this.width;
-    this.canvas.height = this.height;
-    this.ctx = canvas.getContext('2d', { alpha: false });
+    // A null surface reuses just the step/checkpoint state for the 3D renderer.
+    if (canvas) {
+      canvas.width = this.width;
+      canvas.height = this.height;
+      this.ctx = canvas.getContext('2d', { alpha: false });
+    }
     this._images = new Map();
-    this._fontReady = initFonts('zh-CN');
+    this._fontReady = canvas ? initFonts('zh-CN') : Promise.resolve();
     this._timeMs = 0;
     this._animationSpeed = 1;
     this._rowScrollRate = 1;
@@ -217,9 +220,10 @@ export class ResolverView {
     this._scrollRow = 0;
     this._checkpoints = new Map();
 
-    this._computeLayout();
-    this.resize();
-    this._preloadImages();
+    if (canvas) {
+      this.resize();
+      this._preloadImages();
+    }
     this._applyInitialState();
     this._setScreen(this.options.startScreen === 'scoreboard' ? 'scoreboard' : 'splash', true);
 
@@ -227,7 +231,7 @@ export class ResolverView {
       if (event?.type === 'storage' && event.key !== DISPLAY_STORAGE_KEY && event.key !== null) return;
       this.resize();
     };
-    if (typeof window !== 'undefined') {
+    if (canvas && typeof window !== 'undefined') {
       window.addEventListener('resize', this._onWindowResize, { passive: true });
       window.addEventListener('resolver-display', this._onWindowResize);
       window.addEventListener('resolver-display-preferences', this._onWindowResize);
@@ -346,7 +350,7 @@ export class ResolverView {
   }
 
   _image(src) {
-    if (!src) return null;
+    if (!src || !this.canvas) return null;
     let rec = this._images.get(src);
     if (!rec) {
       const img = new Image();
@@ -1386,6 +1390,12 @@ export class ResolverView {
   }
 
   // --------------------------------------------------------------- debug API
+
+  // Read-only references for the alternate renderer, updated by the same seek/checkpoint logic.
+  stageState() {
+    return { order: this._order, standings: this._standings, results: this._results, selected: this._selectedTeamIds,
+      submission: this._selectedSubmission, award: this._lastAward, screen: this._screen, scroll: this._scrollRow };
+  }
 
   /** Useful for the standalone test page and integration smoke tests. */
   debugState() {

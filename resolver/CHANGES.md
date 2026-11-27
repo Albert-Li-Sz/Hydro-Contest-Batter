@@ -108,3 +108,8 @@
 - `public/js/playback-model.js` 按行号定位奖区：取该奖级各队获奖高亮中最低的一行，停在光标第一次到达这一行之前，也就是奖区前一名的边界。没有行号的旧会话沿用 2.0.0 的规则。新增 `teamJump()`，从光标所在行前进或后退 10 行；前进最多停在榜首一行之前。
 - `public/js/play.js` 与 `templates/xcpcio_resolver_play.html` 增加 G、I：1.5 秒内双按前进或回退 10 队，前进时快速揭晓（再按 J 直接抵达，Esc 停止），回退立即生效。双按判定按键分别计时。
 - `public/js/render/presentation-ports.js` 与 `presentation-view.js` 接收大屏设备的缩放倍数：榜单类画面（带 `teamsPerScreen` 的 ICPC Tools 画面）按倍数减少每屏行数，缓存键包含倍数。其余画布画面不受缩放影响。
+
+## 2.3 的调整
+
+- 滚榜会话记录显示样式和封榜前可见提交的时间、队伍、题目与结果。三维版共用原版的步骤、名次和进度，主持端与观众端均可切换显示样式。
+- 冠亚季军名单随最后一步揭示。三维舞台在本地加载 Three.js，WebGL 不可用时回退到原版。

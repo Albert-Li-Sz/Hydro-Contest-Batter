@@ -1,6 +1,6 @@
 import { actionIndicesFor, startIndexFor, nextAutomaticAction, awardStops, nextAwardStop, teamJump, hasRows, confirmPrevious } from './playback-model.js';
 import { AutomaticAdvance } from './automatic-advance.js';
-import { ResolverView } from './render/resolver-view.js';
+import { ResolverStage, rendererControls } from './render/renderer.js';
 import { readJSONResponse } from './http.js';
 
 // HydroXCPCIO: authenticated per-user sessions and domain-aware API paths.
@@ -55,6 +55,12 @@ const btnFast = document.getElementById('btn-fast');
 
 let game = null;
 let view = null;
+let rendererStage;
+const styleHolder = document.getElementById('resolver-style-controls');
+const styleControls = styleHolder && rendererControls(styleHolder, kind => {
+  stopAdvance();
+  rendererStage?.select(kind, true).catch(error => toast(error.message));
+});
 let steps = [];
 let actionIndices = [];
 let actionPos = -1;
@@ -211,7 +217,7 @@ function lastActionAtOrBefore(rawIndex) {
 }
 
 function rebuildTo(targetIndex, { instant = true } = {}) {
-  if (!view) view = new ResolverView(canvas, game);
+  if (!view) return;
   index = -1;
   actionPos = -1;
   lastAppliedStep = null;
@@ -514,6 +520,12 @@ function boot() {
         /* fall back to system fonts */
       }
 
+      rendererStage = new ResolverStage(canvas, game, () => ({ steps, index }), (surface, installed, message) => {
+        view = installed;
+        styleControls?.mounted(surface, installed, message);
+        if (message) toast(message);
+      });
+      await rendererStage.select(game.options?.renderer);
       window.ICPCResolver = {
         get game() {
           return game;

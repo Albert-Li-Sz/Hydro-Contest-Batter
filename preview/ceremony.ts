@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Environment } from 'nunjucks';
 import type { BoardData } from '../lib/board';
 import { ceremonyConfig, ceremonyDefaults, ceremonySlides, ceremonyThemes } from '../lib/ceremony-slides';
+import { ceremonyKey, ceremonyPptx, parseCeremonyLayout, pptxType } from '../lib/ceremony-pptx';
 import { resolverCodeBase } from '../lib/resolver-data';
 import { decodePoster } from '../lib/screens-data';
 import { toScriptJson, type BoardSettings } from '../lib/settings';
@@ -13,7 +14,7 @@ export function createCeremonyPreview(env: Environment, version: string, logos: 
     let background: ReturnType<typeof decodePoster> | null = null;
     let backgroundAt = 0;
     return async (req: IncomingMessage, res: ServerResponse, url: URL, data: BoardData, settings: BoardSettings) => {
-        if (url.pathname !== base && url.pathname !== base + '/background') return false;
+        if (![base, base + '/background', base + '/pptx'].includes(url.pathname)) return false;
         res.setHeader('Cache-Control', 'no-store');
         const json = (v: unknown) => res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(v));
         if (req.method === 'POST') {
@@ -37,9 +38,17 @@ export function createCeremonyPreview(env: Environment, version: string, logos: 
                 const source = await results.readSource(data, settings, config.source);
                 if (!source) throw new Error('快照不存在');
                 const deck = ceremonySlides(source, config, logos);
-                if (body.save) saved = config;
-                json(deck);
+                if (url.pathname.endsWith('/pptx')) {
+                    const layout = parseCeremonyLayout(body.layout, deck, background ? backgroundAt : 0);
+                    const bg = background?.mime === 'image/webp' && body.fallback ? decodePoster(body.fallback, 6 * 1024 ** 2) : background;
+                    const file = await ceremonyPptx(deck, config, layout, bg || undefined);
+                    res.writeHead(200, { 'Content-Type': pptxType, 'Content-Disposition': 'attachment; filename="awards.pptx"' }).end(file);
+                } else {
+                    if (body.save) saved = config;
+                    json({ ...deck, key: ceremonyKey(deck) });
+                }
             }
+        } else if (url.pathname.endsWith('/pptx')) { res.writeHead(405, { Allow: 'POST' }).end();
         } else if (url.pathname.endsWith('/background')) {
             if (!background) res.writeHead(404).end();
             else res.writeHead(200, { 'Content-Type': background.mime }).end(background.data);

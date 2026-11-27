@@ -171,7 +171,7 @@ export function createScreensPreview(env: Environment, logoNames: Record<string,
                 if (!session) json({ ...head, notice: item.sessionId ? '滚榜会话已结束或删除，请重新投屏' : '等待主持人投到观众屏' });
                 else {
                     const number = (key: string) => url.searchParams.has(key) ? Number(url.searchParams.get(key)) : undefined;
-                    json({ ...head, session: session._id, ...await sessions.audience(session, url.searchParams.get('session') || undefined, number('revision'), number('index')) });
+                    json({ ...head, renderer: item.variant, session: session._id, ...await sessions.audience(session, url.searchParams.get('session') || undefined, number('revision'), number('index')) });
                 }
                 return true;
             }

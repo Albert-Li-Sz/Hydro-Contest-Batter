@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ContestModel, Context, Handler, NotFoundError, ObjectId, param, PERM, PRIV, Tdoc, Types, ValidationError } from 'hydrooj';
 import { ceremonyConfig, ceremonyDefaults, ceremonySlides, ceremonyThemes, type CeremonyConfig } from './ceremony-slides';
+import { ceremonyKey, ceremonyPptx, parseCeremonyLayout, pptxType } from './ceremony-pptx';
 import type { ResultsData } from './results';
 import type { ResultOption } from './results-page';
 import { decodePoster, imageBytes } from './screens-data';
@@ -17,7 +18,10 @@ export function applyCeremony(ctx: Context, results: { readSource(tdoc: Tdoc, id
     const logos = JSON.parse(fs.readFileSync(path.join(__dirname, '../logos/index.json'), 'utf8')).names;
     ctx.on('contest/del', (domain, tid) => { void collection.deleteOne({ _id: `${domain}/${tid}` }).catch(() => null); });
     ctx.on('domain/delete', domain => { void collection.deleteMany({ _id: new RegExp('^' + domain.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '/') }).catch(() => null); });
-    class CeremonyHandler extends Handler {
+    function readConfig(raw: string) {
+        try { return ceremonyConfig(JSON.parse(raw)); } catch { throw new ValidationError('config', '幻灯片设置无效'); }
+    }
+    class CeremonyAccess extends Handler {
         tdoc!: Tdoc;
         key!: string;
         @param('tid', Types.ObjectId)
@@ -30,6 +34,8 @@ export function applyCeremony(ctx: Context, results: { readSource(tdoc: Tdoc, id
             this.tdoc = contest;
             this.key = `${contest.domainId}/${tid}`;
         }
+    }
+    class CeremonyHandler extends CeremonyAccess {
         @param('source', Types.String, true)
         async get(_domain: string, source?: string) {
             const saved = await collection.findOne({ _id: this.key }, { projection: { background: 0 } });
@@ -45,14 +51,33 @@ export function applyCeremony(ctx: Context, results: { readSource(tdoc: Tdoc, id
         @param('config', Types.String)
         @param('save', (v: unknown) => Types.Boolean[0](v), true)
         async post(_domain: string, raw: string, save = false) {
-            let config;
-            try { config = ceremonyConfig(JSON.parse(raw)); } catch { throw new ValidationError('config', '幻灯片设置无效'); }
+            const config = readConfig(raw);
             const deck = ceremonySlides(await results.readSource(this.tdoc, config.source), config, logos);
             if (save) await collection.updateOne({ _id: this.key }, { $set: { config } }, { upsert: true });
-            this.response.body = deck;
+            this.response.body = { ...deck, key: ceremonyKey(deck) };
         }
     }
-    class BackgroundHandler extends CeremonyHandler {
+    class PptxHandler extends CeremonyAccess {
+        @param('config', Types.String)
+        @param('layout', Types.String)
+        @param('fallback', Types.String, true)
+        async post(_domain: string, raw: string, layout: string, fallback?: string) {
+            const config = readConfig(raw);
+            const [source, doc] = await Promise.all([results.readSource(this.tdoc, config.source), collection.findOne({ _id: this.key })]);
+            const deck = ceremonySlides(source, config, logos);
+            let measured;
+            try { measured = parseCeremonyLayout(layout, deck, doc?.backgroundAt || 0); }
+            catch (error) { throw new ValidationError('layout', (error as Error).message); }
+            let bg = doc?.background && { data: imageBytes(doc.background.data), mime: doc.background.mime };
+            if (bg?.mime === 'image/webp' && fallback) {
+                try { bg = decodePoster(fallback, 6 * 1024 ** 2); } catch { throw new ValidationError('fallback', '背景图片无效'); }
+            }
+            this.binary(await ceremonyPptx(deck, config, measured, bg));
+            this.response.type = pptxType;
+            this.response.disposition = 'attachment; filename="awards.pptx"';
+        }
+    }
+    class BackgroundHandler extends CeremonyAccess {
         async get() {
             const doc = await collection.findOne({ _id: this.key });
             if (!doc?.background) throw new NotFoundError('未设置背景');
@@ -71,5 +96,6 @@ export function applyCeremony(ctx: Context, results: { readSource(tdoc: Tdoc, id
         }
     }
     ctx.Route('contest_xcpcio_ceremony', '/contest/:tid/ceremony', CeremonyHandler);
+    ctx.Route('contest_xcpcio_ceremony_pptx', '/contest/:tid/ceremony/pptx', PptxHandler);
     ctx.Route('contest_xcpcio_ceremony_background', '/contest/:tid/ceremony/background', BackgroundHandler);
 }

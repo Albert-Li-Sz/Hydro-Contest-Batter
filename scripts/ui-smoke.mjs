@@ -15,6 +15,7 @@ import { chromium } from 'playwright-core';
 import { recordingWorkflow, venueWorkflow } from './recording-workflow-check.mjs';
 import { captureContinuity } from './capture-continuity-check.mjs';
 import { closingCeremony } from './closing-ceremony-check.mjs';
+import { resolver3D } from './resolver-3d-check.mjs';
 import { resolverAudience } from './resolver-audience-check.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -553,6 +554,7 @@ try {
         try { await configuration(context, base); } finally { await context.close(); }
     }
     if (mode === 'venue') await venueWorkflow(browser, base, contest);
+    if (!mode || mode === 'resolver3d') await resolver3D(browser, base);
     if (!mode || mode === 'resolver') console.log('Resolver audience', JSON.stringify(await resolverAudience(browser, base)));
     if (!mode || mode === 'live') await broadcastStyles(browser, base);
     if (!mode || mode === 'interactions' || mode === 'recording') await interactions(browser, base);

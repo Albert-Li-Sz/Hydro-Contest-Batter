@@ -80,7 +80,7 @@
       "source": "public/js/display-settings.js",
       "destination": "resolver/public/js/display-settings.js",
       "sha256": "d0637f1b0c6903db9033c40590b3b346f3679035aca18af03a89e7748b5e8c77",
-      "modifiedSha256": "be6ad6374151aeace91ed50a8b0f41794d823e3108ed6353d57a480c26825f10"
+      "modifiedSha256": "542887a905594f6e52759bab8c498d92569cd60b5be71006bdb58fe8e8a477c3"
     },
     {
       "source": "public/js/freeze.js",
@@ -110,7 +110,7 @@
       "source": "public/js/play.js",
       "destination": "resolver/public/js/play.js",
       "sha256": "f567d13c8cf76352d046dbe9a3e98ddd0c097c2e46b093c25da3f719fd09f65f",
-      "modifiedSha256": "c473f1e59076d474bb337b699472476613b2d10c7e945d07461a509f1842042d"
+      "modifiedSha256": "2ef498cde4900b5dc2a5392bedc839c625d887af0113ef83f7142a6159ed65ae"
     },
     {
       "source": "public/js/playback-model.js",
@@ -134,7 +134,7 @@
       "source": "public/js/render/resolver-view.js",
       "destination": "resolver/public/js/render/resolver-view.js",
       "sha256": "a7ad7808df01fee371f753b5161452bd24c5800a58cf62cba7f7305b3bc689b1",
-      "modifiedSha256": "c0c565b5a6d23d6631c1902a2af8cc0040b84abc3cbcc850e437a39213b316d4"
+      "modifiedSha256": "dfa58dd71826e39211a6189a5f70ceffc5c9423af7abaefa9bd41e6c3ca8fc8b"
     },
     {
       "source": "public/js/render/shaded-rect.js",
@@ -176,7 +176,7 @@
       "source": "server/lib/engine.js",
       "destination": "resolver/server/lib/engine.js",
       "sha256": "b74872b78f03b96d06a0c40e94464f26d19326c6200808d9bb007e94bb39b0e1",
-      "modifiedSha256": "c0ac9ff330c796d98dcdb038b431de7610348fdd8feaa00bf9211099aaf34f9a"
+      "modifiedSha256": "e91de0ec213a8609601840222dd2319ddcf4844a0de7a1970b58be65e520e088"
     },
     {
       "source": "server/lib/limits.js",
