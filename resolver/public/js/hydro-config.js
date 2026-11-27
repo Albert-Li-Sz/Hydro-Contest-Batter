@@ -1,6 +1,6 @@
 import { ratioMeter } from './hydro-ui.js';
-import { ResolverView } from './render/resolver-view.js';
-import { actionIndicesFor } from './playback-model.js';
+import { ResolverStage } from './render/renderer.js';
+import { actionIndicesFor, startIndexFor } from './playback-model.js';
 
 const runtime = JSON.parse(document.getElementById('resolver-runtime').textContent);
 const form = document.getElementById('resolver-form');
@@ -8,6 +8,7 @@ const message = document.getElementById('message');
 const startButton = document.getElementById('start-btn');
 const previewStatus = document.getElementById('preview-status');
 let view;
+let previewStage;
 let game;
 let actions = [];
 let position = 0;
@@ -134,8 +135,9 @@ function showPreviewPosition() {
 }
 
 function resetPreview() {
-    if (!game) return;
-    const index = game.steps.findIndex((step) => step.type === 'presentation' && step.screen === 'scoreboard');
+    if (!game || !view) return;
+    const index = game.options.renderer === '3d' ? startIndexFor(game)
+        : game.steps.findIndex((step) => step.type === 'presentation' && step.screen === 'scoreboard');
     position = Math.max(0, actions.indexOf(index));
     view.seek(game.steps, actions[position]);
     showPreviewPosition();
@@ -143,10 +145,10 @@ function resetPreview() {
 
 function clearPreview() {
     game = null;
-    view?.dispose();
-    view = null;
+    previewStage?.dispose();
+    previewStage = view = null;
     const canvas = document.getElementById('preview-screen');
-    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    canvas.width = canvas.width;
     showPreviewPosition();
 }
 
@@ -185,14 +187,23 @@ async function refreshPreview() {
         if (number !== requestNumber) return;
         updateOverview(data.overview);
         if (data.config) updateAwards(selectedBoard(), data.config);
-        view?.dispose();
+        clearPreview();
         game = data.game;
         actions = actionIndicesFor(game.steps);
-        view = new ResolverView(document.getElementById('preview-screen'), game);
+        position = 0;
+        let fallback = '';
+        previewStage = new ResolverStage(document.getElementById('preview-screen'), game,
+            () => ({ steps: game.steps, index: actions[position] ?? -1 }), (_surface, installed, reason) => {
+                view = installed;
+                fallback = reason;
+                if (reason) previewStatus.textContent = reason;
+            });
+        await previewStage.select(game.options.renderer);
+        if (number !== requestNumber) return;
         await view.ready();
         if (number !== requestNumber) return;
         resetPreview();
-        previewStatus.textContent = '预览已更新';
+        previewStatus.textContent = fallback || '预览已更新';
         previewStatus.dataset.state = 'ready';
         startButton.disabled = false;
     } catch (error) {
@@ -308,12 +319,12 @@ document.getElementById('refresh-preview').addEventListener('click', refreshPrev
 document.getElementById('refresh-sessions').addEventListener('click', loadSessions);
 document.getElementById('preview-reset').addEventListener('click', resetPreview);
 document.getElementById('preview-prev').addEventListener('click', () => {
-    if (!game || position <= 0) return;
+    if (!view || position <= 0) return;
     view.seek(game.steps, actions[--position]);
     showPreviewPosition();
 });
 document.getElementById('preview-next').addEventListener('click', () => {
-    if (!game || position >= actions.length - 1) return;
+    if (!view || position >= actions.length - 1) return;
     view.applyStep(game.steps[actions[++position]]);
     showPreviewPosition();
 });
@@ -325,7 +336,7 @@ function frame(now) {
     lastFrame = now;
     requestAnimationFrame(frame);
 }
-window.addEventListener('pagehide', () => { previewController?.abort(); view?.dispose(); });
+window.addEventListener('pagehide', () => { previewController?.abort(); previewStage?.dispose(); });
 showPreviewPosition();
 refreshPreview();
 loadSessions();

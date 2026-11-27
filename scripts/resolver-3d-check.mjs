@@ -16,6 +16,9 @@ export async function resolver3D(browser, base) {
         await host.getByLabel('滚榜样式').selectOption('3d');
         await host.locator('[name=freezeMode]').selectOption('custom');
         await host.locator('[name=freezeMinutes]').fill('250');
+        await host.locator('#preview-screen[data-renderer="3d"][data-act="1"]').waitFor(timeout);
+        await host.locator('#preview-next').click();
+        await host.locator('#preview-screen[data-act="2"]').waitFor(timeout);
         await host.locator('#start-btn').click();
         await active(host, '3d');
         const proof = await host.evaluate(async () => {

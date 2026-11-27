@@ -126,6 +126,8 @@ export class ResolverView3D {
         } catch (error) { this.dispose(); throw error; }
     }
 
+    ready() { return document.fonts.ready; }
+
     resetCue() {
         this.act = this.options.startScreen === 'scoreboard' ? 2 : 1;
         this.revealed = null;
