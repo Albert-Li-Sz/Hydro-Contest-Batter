@@ -7,14 +7,16 @@ Hydro OJ 的 ACM 办赛插件。工作人员可以在 Hydro 内配置赛制与�
 
 [快速安装](#快速安装) · [比赛操作手册](https://albert-li-sz.github.io/Hydro-Contest-Better/) · [媒体机安装教程](https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.html) · [版本下载](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/latest)
 
-## v2.2.0 更新
+## v2.3 办赛功能
 
-- **直播导播**单独上屏一支队伍时，底部可以选「校名队伍卡」（校徽、校名、队名、队员与教练、座位号）或「曲线时间线」（提交时间线叠加过题面积与排名折线，封榜后改为虚线），也可以不展示。双队对比、四分屏等多队同时上屏时，底部栏和成就图自动隐藏。学校、教练和座位遵循「向所有观众显示学校」。[单队底部栏](https://albert-li-sz.github.io/Hydro-Contest-Better/#single-team-bottom-bar)
-- **操作手册**改为文档站布局：分组目录、本页目录、深浅色切换、代码一键复制，手机上用抽屉目录。[比赛操作手册](https://albert-li-sz.github.io/Hydro-Contest-Better/)
+- **赛前准备与交题**　批量粘贴座位/IP，按比赛核对缺失机位，允许选手在指定网段自行登记。管理员可用本机 CSV/TSV 打印 A4 密码条。选手在已绑定的比赛机运行 `submit a.cpp`、`submit status` 或 `submit print a.cpp`。[机位与命令行](docs/usage.md#选手命令行-submit)
+- **榜单与奖项**　金银铜可混用固定队数和比例，打星队可按分榜规则领取奖牌。优胜奖可设最低过题数，CCPC 题号可按队数和比例中较小的门槛公开。可预约赛后自动解封，观众可切换女队榜、用正则置顶队伍或回放指定时点。[奖项规则](docs/usage.md#规则)
+- **现场与直播**　气球台可按队伍和题目定位待送气球。导播可识别和刷新在线 OBS 浏览器来源，也可为每队榜单行开启提交时间轴。[直播操作](docs/usage.md#直播)
+- **滚榜与颁奖**　主持页和观众大屏可在原版 2D 与四幕 3D 之间切换。颁奖页可将当前名单和版式导出为可编辑的 PowerPoint。[颁奖幻灯片](docs/usage.md#颁奖幻灯片)
 
 ## 快速安装
 
-需要 Hydro 5.x 和 Node.js 22 或更高版本。以运行 Hydro 的系统用户执行以下 Linux 命令。使用自定义 profile、容器或其他进程管理器时，请按部署方式选择安装步骤。[安装与升级图解](https://albert-li-sz.github.io/Hydro-Contest-Better/#install)
+需要 Hydro 5.x 和 Node.js 22 或更高版本。以下命令以已发布的 v2.2.0 安装包为例，由运行 Hydro 的系统用户执行。使用自定义 profile、容器或其他进程管理器时，请按部署方式选择安装步骤。[安装与升级图解](https://albert-li-sz.github.io/Hydro-Contest-Better/#install)
 
 ```sh
 release=https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/download/v2.2.0
@@ -46,11 +48,11 @@ sha256sum -c "$package.sha256" && tar -xzf "$package"
 
 ## 开发与许可
 
-使用项目声明的 pnpm 版本执行 `pnpm install --frozen-lockfile`、`pnpm build:print-client` 和 `pnpm build`。`pnpm preview` 启动演示比赛，`pnpm test`、`pnpm typecheck` 和 `pnpm test:ui` 分别验证业务逻辑、Hydro API 和浏览器交互。[验证记录](docs/verification.md)
+使用项目声明的 pnpm 版本执行 `pnpm install --frozen-lockfile`、`pnpm build:print-client`、`pnpm build:submit-client` 和 `pnpm build`。`pnpm preview` 启动演示比赛，`pnpm test`、`pnpm typecheck` 和 `pnpm test:ui` 分别验证业务逻辑、Hydro API 和浏览器交互。[验证记录](docs/verification.md)
 
 本项目自研代码采用 MIT 许可证。第三方集成组件、字体、标识及参考素材分别保留各自原有许可与权利归属，不适用本项目的 MIT 许可：
 
-- **Hydro 适配与第三方开源组件**：XCPCIO、Resolver-Web、ICPC Live、reactions-generator、pinyin-pro、fix-webm-duration、Noto Sans SC 均保留各自上游许可；早期源自 Hydro `scoreboard-xcpcio` 的集成代码保留其来源声明。
+- **Hydro 适配与第三方开源组件**　XCPCIO、Resolver-Web、Three.js、ICPC Live、reactions-generator、pinyin-pro、fix-webm-duration、Noto Sans SC 均保留各自上游许可。早期源自 Hydro `scoreboard-xcpcio` 的集成代码保留其来源声明。
 - **ICPC Tools 许可限制声明**：Resolver 与大屏中包含源自 ICPC Tools 的引擎、绘图及资源文件，受 `ICPC Software License` 约束（禁止未经 ICPC Foundation 书面许可的商业或创收使用，且授权方可撤销），与本项目 MIT 许可相互独立。
 - **证书赛事模板、个人手写签名与字体免责声明**：`lib/certificates/event-art/`、`lib/certificates/event-fonts/` 与 `resolver/public/js/certificate-event/` 中附带的 2026 ICPC 沈阳区域赛抬头、徽标、个人手写签名样例及嵌入的 Arial 字体子集，均归原权利人（ICPC Foundation、相关签署人及 Monotype/字体权利人）所有，**不属于本项目 MIT 授权范围**，仅作排版与替换功能参考演示。赛事主办方在正式签发证书前，务必在证书编辑器中替换或清除所有第三方徽标、默认个人签名与专有字体，严禁未经授权用于对外颁证或冒用官方名义。
 

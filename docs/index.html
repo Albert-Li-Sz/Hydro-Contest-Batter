@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Hydro Contest Better v2.2.0 办赛手册。了解如何安装升级、核对观众视角与选手视角、配对并遥控场馆大屏、主持带队伍照片的滚榜、制作离线颁奖幻灯片，以及配置答疑、气球、打印、直播和证书。">
+  <meta name="description" content="Hydro Contest Better v2.3 办赛手册。了解如何安装升级、核对观众视角与选手视角、配对并遥控场馆大屏、切换二维或三维滚榜、导出可编辑的颁奖 PowerPoint，以及配置答疑、气球、打印、直播和证书。">
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#1b1b1f" media="(prefers-color-scheme: dark)">
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
@@ -25,7 +25,7 @@
         <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/usage.md">完整文档</a>
       </nav>
       <div class="nav-tools">
-        <a class="version-pill" href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.2.0" title="下载 v2.2.0">v2.2.0</a>
+        <a class="version-pill" href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/latest" title="查看已发布版本">版本下载</a>
         <button class="icon-btn theme-toggle" type="button" aria-label="切换深色模式"><svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 1.5v2M12 20.5v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1.5 12h2M20.5 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg></button>
         <a class="icon-btn" href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better" aria-label="GitHub 仓库" title="GitHub 仓库"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.07 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3"/></svg></a>
       </div>
@@ -82,10 +82,10 @@
     <div class="content">
     <main id="manual">
       <header class="hero">
-        <a class="hero-badge" href="#single-team-bottom-bar"><span>v2.2.0</span>直播单队画面新增校名队伍卡与排名走势</a>
+        <a class="hero-badge" href="#prepare"><span>v2.3</span>赛前机位、分榜奖项与闭幕式操作</a>
         <h1><span class="name">Hydro Contest Better</span><br>比赛操作手册</h1>
         <p class="tagline">Hydro OJ 的 ACM 办赛插件。从安装插件、配置比赛，到现场投屏、气球配送、打印、直播、赛后滚榜和闭幕式颁奖。</p>
-        <p class="meta">适用于插件 v2.2.0 · Hydro 5.x · Node.js 22+ · 截图使用演示比赛数据，点击配图可查看原图</p>
+        <p class="meta">适用于插件 v2.3 · Hydro 5.x · Node.js 22+ · 截图使用演示比赛数据，点击配图可查看原图</p>
         <div class="actions">
           <a class="btn btn-brand" href="#configuration">开始配置比赛</a>
           <a class="btn btn-alt" href="#install">安装与升级</a>
@@ -119,7 +119,7 @@
       <section id="install" aria-labelledby="install-heading">
         <h2 id="install-heading">安装与升级</h2>
         <p>使用运行 Hydro 的系统账号执行命令。需要 Hydro 5.x、Node.js 22 或以上。用 PM2 管理 Hydro 时，默认进程名为 <code>hydrooj</code>。</p>
-        <p>从发布页下载 <code>hydro-scoreboard-xcpcio-plus-2.2.0.tgz</code> 和同名 <code>.sha256</code> 文件，放在同一个目录。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.2.0">v2.2.0 下载</a></p>
+        <p>下载所需发布版本的插件包和同名 <code>.sha256</code> 文件，放在同一个目录。以下安装命令以已发布的 v2.2.0 为例。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.2.0">v2.2.0 下载</a></p>
 
         <h3>校验并解压</h3>
         <pre><code>sha256sum -c hydro-scoreboard-xcpcio-plus-2.2.0.tgz.sha256
@@ -211,7 +211,9 @@ pm2 status hydrooj</code></pre>
           <a href="./images/manual/scoreboard-settings.jpg"><img src="./images/manual/scoreboard-settings.jpg" width="1190" height="746" loading="lazy" alt="榜单与奖项设置中的同分规则、奖牌名额和自动分榜选项"></a>
           <figcaption>赛前先在「榜单规则与奖项」设定同分规则和奖牌名额，再选择需要生成的分榜。</figcaption>
         </figure>
-        <p><strong>打星选手</strong>以星号显示，不占正式名次、奖牌或奖杯。能否获得一血由各榜的「允许打星选手获一血奖」决定。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/usage.md#规则">完整计分与奖项规则</a></p>
+        <p>在比例模式下，金、银、铜每档都可单独选「%」或「队」。勾选「允许打星队获奖牌」后，至少过一题的打星队按严格领先它的正式队数加一判断奖区。名次仍显示星号，正式队的名额与比例分母保持原值。打星队的一血资格和优胜奖的最低过题数可分别设置。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/usage.md#规则">完整计分与奖项规则</a></p>
+        <p>CCPC 隐藏题号可以选固定队数、百分比，或「两者取较小」。例如 120 支队伍设置 50 队或 20%，第 24 支队通过时公开该题。在「结束后自动解封」填分钟数即可安排最终成绩的公开时刻，留空表示手动，填 0 表示结束即解封。修改赛程后，控制页会更新预计时刻。</p>
+        <p>启用「向所有观众显示学校」，且账号或队伍含 <code>girl</code>、<code>isGirl</code> 或 <code>女队</code> 标记时，观众可切换「女队」分榜。榜单的「高级筛选」支持按学校、队名、队员、教练和座位写正则，多条规则可任选或全部匹配，再选择置顶或仅显示。筛选保留原名次，可导入、导出文本。拖动进度条能回放比赛，例如 <code>?progress-ratio=5000</code> 定位到半程。</p>
         <p>赛前核对常用开关时，可按<a href="#configuration">比赛配置图解</a>逐项检查。</p>
         <h3 id="audience">检查观众视角与选手视角</h3>
         <p>比赛所有者或有「编辑比赛」权限的管理员可在增强榜点「观众视角」。公开榜尚未开放时也能预览。先检查队伍的公开显示名、学校和分榜，再核对封榜结果和 CCPC 已公开的题号。比赛进行中，观众看不到提交列表。点「返回管理视角」即可回到原分榜。</p>
@@ -221,6 +223,8 @@ pm2 status hydrooj</code></pre>
 
       <section id="presence" aria-labelledby="presence-heading">
         <h2 id="presence-heading">机位签到与监控</h2>
+        <p>系统管理员在「用户、队伍与座位 → 座位与 IP」可粘贴两列账号与座位号，或账号与 IP，列间用 Tab 分隔。选比赛后点覆盖统计可核对已录、未录和未匹配名单，已知网段时可仅填末段 IP，按 Enter 进入下一行。点「打印密码条」，在浏览器选择含「账号、口令」或「Account,Password」表头的 CSV/TSV，按本场队名、学校与座位打印带裁切线的 A4 密码条。口令只在本机读取。</p>
+        <p>比赛管理员在「收集机位 IP」填写允许的网段后，可将本场免登录登记链接交给选手。选手在比赛机输入本队账号即可登记，页面显示队名。收集在开赛前十分钟截止，已手工绑定的机位受到保护。插件的 <code>timeZone</code> 设置会场时区，默认 <code>Asia/Shanghai</code>。</p>
         <p>在比赛侧边栏打开「机位签到与监控」。座位图按考场排列，每格显示一支队伍，颜色表示在线、可能离线、离线或未登录。启用画面采集后，格内显示「采集中」「已连接未采集」或「未连接」。只要独立采集窗口持续共享屏幕，选手切换标签、最小化或关闭比赛页都保持「采集中」。</p>
         <ol>
           <li>开赛前让选手登录并打开比赛页面。页面顶部的「签到」显示已打开比赛页面的队伍数，虚线格子是还没签到的队伍。</li>
@@ -282,6 +286,7 @@ pm2 status hydrooj</code></pre>
       <section id="balloons" aria-labelledby="balloons-heading">
         <h2 id="balloons-heading">气球配送</h2>
         <p>在比赛侧边栏打开「气球配送与小票」，点「开启气球配送」。插件为每支队伍每道题的第一次通过生成一个带编号的气球，不需要 Hydro 气球颜色。封榜后的气球默认暂缓，直到解除封榜才发放（可改为继续发放）。重测撤销通过时，气球自动撤销。</p>
+        <p>展开「队伍 × 题目气球总览」查看每格的待配送、已送达、封榜暂缓和已撤销状态。点击「待配送」数字即可定位第一格待送气球。</p>
         <h3>基本模式</h3>
         <ol>
           <li>用 onsite-toolkit 导入座位号。考场取座位号去掉末尾数字的部分，例如 <code>A-12</code> 属于 A 区。</li>
@@ -325,6 +330,8 @@ pm2 status hydrooj</code></pre>
           <figcaption>在 OBS 中添加浏览器来源后，把宽高填为 1920 × 1080，再按需复制自定义 CSS。</figcaption>
         </figure>
         <p>字幕页的 <strong>Title</strong> 点「+」先新建一条空字幕，再点编辑选择 SVG 模板（内置 ICPC 下三分之一条模板，也可在「媒体文件」上传）并填写数据，保存后即可显示；未选模板时点显示会提示原因。<strong>Picture</strong> 和滚动条中的图片可填写完整网址、以 <code>/</code> 开头的站内路径，或直接填写「媒体文件」里的文件名，保存后自动换成文件地址。</p>
+        <h3>查看和遥控 OBS 来源</h3>
+        <p>「直播画面客户端」列出每块在线画面的编号、尺寸、像素比和当前场景。用「识别」让画面显示编号，用「刷新」重新载入，随后在本行核对回执。在导播台的「榜单」勾选「每行提交时间轴」，可以在各队下方同时查看通过、首解、错误与封榜区间。</p>
         <h3 id="single-team-bottom-bar">单队底部栏</h3>
         <p>导播台「队伍画面」的单队区块和「画面采集」页都有底部栏开关，共三档，选择保存在本浏览器；「赛事分析」把队伍送上屏时沿用同一选择。在「队伍画面」切换时，正在播出的单队画面立即更新。</p>
         <dl class="entries">
@@ -353,6 +360,14 @@ pm2 status hydrooj</code></pre>
 
       <section id="print" aria-labelledby="print-heading">
         <h2 id="print-heading">比赛打印</h2>
+        <h3 id="submit-client">选手命令行 submit</h3>
+        <p>选手可在比赛题目页下载 Linux、macOS 或 Windows 的 amd64 / arm64 安装包。解压并执行 <code>./submit install</code>（Windows 使用 <code>.\submit.exe install</code>）。安装包自带本站域地址，选手机须已通过 onsite-toolkit 绑定 IP。</p>
+        <pre><code>submit info
+submit a.cpp
+submit solution.cpp -p B -l cpp
+submit status
+submit print a.cpp</code></pre>
+        <p>文件名和扩展名可提供题号和语言。同时参加多场比赛时，可用 <code>--tid 比赛编号</code> 指定交题、评测查询和打印的比赛。</p>
         <ol>
           <li>比赛开启「允许打印」。系统管理员在 <code>/manage</code> 进入「打印设备与队列」，添加打印电脑，选择服务的比赛和座位前缀。</li>
           <li>在打印电脑下载适配系统和架构的客户端。运行后粘贴后台生成的 <code>hydro-print:</code> 连接信息。Linux 与 macOS 的系统打印依赖 CUPS。</li>
@@ -420,6 +435,7 @@ pm2 status hydrooj</code></pre>
 
       <section id="resolver" aria-labelledby="resolver-heading">
         <h2 id="resolver-heading">赛后滚榜</h2>
+        <p>配置页可选默认的原版 2D 或三维 3D。三维滚榜依次播放序幕、提交回放与队伍巡礼、翻牌揭晓与升榜、领奖台。主持人在「画面设置」可随时切换 2D / 3D、机位和音效。大屏可以跟随主持会话或单独选定样式。两种画面共用同一步进度，浏览器缺少 WebGL 时会切回 2D。</p>
         <p>在滚榜播放页打开「颁奖台本」，按本场会话的揭晓顺序查看候场、上台和特别奖名单。可直接打印，彩排会话的台本标有「仅供彩排」。</p>
         <ol>
           <li>在比赛侧边栏打开「滚榜预演与播放」。赛前可彩排。正式滚榜应在比赛结束、相关提交评测或重测完成之后进行。</li>
@@ -427,7 +443,7 @@ pm2 status hydrooj</code></pre>
           <li>核对封榜点和奖项。比赛没有封榜时间时，选择「本场滚榜自定义」，填写最后多少分钟封榜。核对分榜、学校显示、每屏行数和播放速度。</li>
           <li>在「队伍照片」批量选图，按账号、UID 或队名匹配，照片自动裁成 4:3 并尽量保住头部。核对缩略图和未匹配文件，每支队伍也可以单独替换（在取景框里调整）或删除照片。</li>
           <li>点击「开始滚榜」生成会话。获奖画面展示队伍照片。按 <kbd>J</kbd> 推进到下一奖区的边界，再按一次立即抵达，<kbd>Esc</kbd> 停止。<kbd>G</kbd> / <kbd>I</kbd> 双按前进或回退 10 队。键盘和鼠标右键回退须在 1.5 秒内连按两次，工具栏「上一步」单击生效。在主持端点「投到观众屏」，打开生成的观众链接，即可在另一台电脑投屏。</li>
-          <li>滚榜结束后，在增强榜页或比赛配置与工作台点击「解除封榜」公开全部结果（比赛结束后可用，不可撤销）。比赛结束后封榜不会自动解除。</li>
+          <li>滚榜结束后，在增强榜页或比赛配置与工作台点击「解除封榜」公开全部结果（比赛结束后可用，不可撤销）。已配置自动解封时，到点后会公开成绩并生成快照。</li>
         </ol>
         <figure class="guide-shot">
           <a href="./images/manual/resolver-setup.jpg"><img src="./images/manual/resolver-setup.jpg" width="1190" height="718" loading="lazy" alt="滚榜配置显示彩排、封榜点、待揭晓提交数和奖牌名额"></a>
@@ -453,6 +469,7 @@ pm2 status hydrooj</code></pre>
           <figcaption>选择重测前的快照与当前成绩对比，确认变化后再导出成绩和获奖名单。</figcaption>
         </figure>
         <h3 id="ceremony">颁奖幻灯片</h3>
+        <p>需要在 PowerPoint 调整名单时，先核对预览，再点「导出 PowerPoint」。下载的 16:9 PPTX 按预览的分栏、字号和换行排版，文字可直接编辑。背景和校徽随文件保存，中文字体使用播放机已有字体。</p>
         <p>在成绩页或赛事工作台打开「颁奖幻灯片」。选择当前成绩或已保存的快照，勾选榜单后按奖项分页。每页上方是按奖级着色的中英文奖项牌匾，下方的半透明底板列出名次、校徽、队名，可选学校和队员，分栏按实际文字长度自动选择。可在 8 套主题间切换，或上传背景，并勾选页眉页脚需要避让的左、中、右三格。在「名单」里按奖项核对队伍和页码，在预览缩略条里翻页，确认后保存设置。</p>
         <p>「全屏播放」支持方向键、空格、翻页笔和鼠标单击。按 <kbd>B</kbd> 切换黑屏，<kbd>Home</kbd> 和 <kbd>End</kbd> 跳到首尾。「下载离线网页」会把成绩、图片和播放脚本保存到同一个 HTML 文件，使用投屏电脑的系统字体，复制后可断网播放。</p>
         <figure class="guide-shot">
