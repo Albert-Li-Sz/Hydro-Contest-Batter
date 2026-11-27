@@ -57,6 +57,20 @@ export async function boardFilterCheck(browser, base) {
         await panel.getByText('清除筛选', { exact: true }).click();
         await rows.filter({ hasText: '星火队' }).waitFor();
         assert.equal(await rows.count(), all);
+        const control = await context.newPage();
+        await control.goto(base + '/contest/demo/control?phase=sealed');
+        const minutes = control.getByLabel('结束后自动解封（分钟）');
+        await minutes.waitFor();
+        for (const value of ['30', '0', '']) {
+            const readback = control.waitForResponse(response => new URL(response.url()).pathname.endsWith('/control/data'));
+            await minutes.fill(value);
+            await minutes.press('Tab');
+            assert.equal((await (await readback).json()).board.autoUnfreezeMinutes, value === '' ? null : Number(value));
+            await control.reload();
+            await minutes.waitFor();
+            assert.equal(await minutes.inputValue(), value);
+            assert.equal(await control.getByText(/将于 .* 自动解封/).count(), value === '' ? 0 : 1);
+        }
     } finally {
         await context.close();
     }
