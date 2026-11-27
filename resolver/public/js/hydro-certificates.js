@@ -1,3 +1,4 @@
+import { imageData, printableImage } from './image-upload.js';
 // 证书: the results snapshot certificates are issued from, the sheet of names they print, their layout, and
 // issuing and handing them out. Certificates keep the values they were issued with; issuing again replaces only
 // those whose values changed.
@@ -233,30 +234,6 @@ async function logoCatalog() {
         schoolNames = (await response.json()).names;
     }
     return schoolNames;
-}
-
-async function imageData(blob) {
-    if (blob.size > 6 * 1024 * 1024) throw new Error('图片最大 6 MB');
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    let binary = '';
-    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    return btoa(binary);
-}
-
-/**
- * Every image is drawn again before upload: the canvas turns it upright (EXIF), into sRGB (Display P3, Adobe RGB,
- * CMYK) and within `longest`, so the PDF prints what the editor shows. A JPEG stays a JPEG instead of a large PNG.
- */
-async function printableImage(blob, longest, type = 'image/png') {
-    const bitmap = await createImageBitmap(blob);
-    try {
-        if (bitmap.width * bitmap.height > 40_000_000) throw new Error('图片超过 4000 万像素，请缩小后再上传');
-        const scale = Math.min(1, longest / Math.max(bitmap.width, bitmap.height));
-        const canvas = el('canvas', { width: Math.max(1, Math.round(bitmap.width * scale)), height: Math.max(1, Math.round(bitmap.height * scale)) });
-        canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-        const output = blob.type === 'image/jpeg' ? 'image/jpeg' : type;
-        return await new Promise((resolve, reject) => canvas.toBlob((out) => out ? resolve(out) : reject(new Error('无法读取图片')), output, .96));
-    } finally { bitmap.close(); }
 }
 
 function schoolPicker(side, caption, save) {

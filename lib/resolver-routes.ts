@@ -1,7 +1,8 @@
+import { imageBytes } from './screens-data';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-    ContestModel, Context, Handler, NotFoundError, ObjectId, param, PERM, PRIV, Tdoc, Types,
+    ContestModel, Context, Handler, NotFoundError, ObjectId, param, PERM, PRIV, Tdoc, Types, UserModel,
 } from 'hydrooj';
 import { type BoardData, enhanceBoard } from './board';
 import { specialAwardResults } from './special-awards';
@@ -11,17 +12,28 @@ import { defaultResolverConfig, parseResolverConfig, prepareResolver, ResolverEr
 import { ResolverSessions, ResolverSession, ResolverScope } from './resolver-sessions';
 import { ceremonyScript } from './ceremony';
 
+import type { ContestLinks } from './links';
+import { ResolverPhotos, photoUrl } from './resolver-photos';
+
 export function applyResolver(ctx: Context, dependencies: {
     /** Sessions idle for longer than this are deleted together with their snapshots. */
     sessionDays: number;
+    links: ContestLinks<Tdoc>;
     loadSettings: (tdoc: Tdoc) => Promise<BoardSettings>;
     loadData: (tdoc: Tdoc, realtime: boolean, identity: boolean, staffResults: boolean) => Promise<BoardData>;
 }) {
+    const photos = new ResolverPhotos(ctx.db);
+    const key = (tdoc: Tdoc) => `${tdoc.domainId}/${tdoc.docId}`;
+    const photoBase = (tdoc: Tdoc) => `/d/${encodeURIComponent(tdoc.domainId)}/contest/${tdoc.docId}/resolver`;
+    dependencies.links.add({ id: 'resolver-photos', label: '滚榜队伍照片',
+        status: tdoc => photos.status(key(tdoc)), revoke: tdoc => photos.rotate(key(tdoc)) });
+    ctx.on('contest/del', (domain, tid) => photos.remove(`${domain}/${tid}`));
+    ctx.on('domain/delete', (domain) => photos.remove(new RegExp(`^${domain.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`)));
     const sessions = new ResolverSessions(ctx.db);
     const logoNames = JSON.parse(fs.readFileSync(path.join(__dirname, '../logos/index.json'), 'utf8')).names;
     const codeBase = resolverCodeBase(JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8')).version);
     const sessionTtl = dependencies.sessionDays * 24 * 3600 * 1000;
-    ctx.on('app/started', () => Promise.all([sessions.ensureIndexes(), sessions.prune(sessionTtl)]).catch((error) => console.warn('[xcpcio] 滚榜索引或清理失败', error)));
+    ctx.on('app/started', () => Promise.all([photos.ensureIndexes(), sessions.ensureIndexes(), sessions.prune(sessionTtl)]).catch((error) => console.warn('[xcpcio] 滚榜索引或清理失败', error)));
     ctx.on('contest/del', (domainId, tid) => { void sessions.removeByScope({ domainId, contestId: String(tid) }).catch(() => null); });
     ctx.on('domain/delete', (domainId) => { void sessions.removeByScope({ domainId }).catch(() => null); });
 
@@ -40,7 +52,7 @@ export function applyResolver(ctx: Context, dependencies: {
         const config = parseResolverConfig(input, defaults);
         try {
             return prepareResolver(data, boards, config, {
-                contestId: String(tdoc.docId), ended, capturedAt: new Date(), logoNames,
+                contestId: String(tdoc.docId), ended, capturedAt: new Date(), logoNames, photos: await photos.urls(key(tdoc), photoBase(tdoc)),
                 special: specialAwardResults(enhanceBoard(data, settings, { identity: true }), settings),
             });
         } catch (error) {
@@ -105,12 +117,14 @@ export function applyResolver(ctx: Context, dependencies: {
     class ResolverConfigHandler extends ResolverHandler {
         async get() {
             const { settings, data, boards, ended } = await this.source();
+            const users = await UserModel.getList(this.tdoc.domainId, data.teams.map(team => Number(team.team_id)));
             this.response.template = 'xcpcio_resolver_config.html';
             this.response.body = {
                 tdoc: this.tdoc, assetBase: resolverAssetBase, codeBase, settingsUrl: `${this.base.slice(0, -'/resolver'.length)}/xcpcio-settings`, contestUrl: this.base.slice(0, -'/resolver'.length),
                 runtimeJson: toScriptJson({
                     base: this.base, contestUrl: this.base.slice(0, -'/resolver'.length),
-                    title: data.contest.contest_name, boards, ended,
+                    title: data.contest.contest_name, boards, ended, photos: await photos.urls(key(this.tdoc), this.base),
+                    teams: data.teams.map(team => ({ uid: team.team_id, account: users[Number(team.team_id)]?.uname, name: team.name })),
                     initialStats: {
                         teamCount: data.teams.length,
                         officialCount: data.teams.filter((team) => !team.group.includes('unofficial')).length,
@@ -122,6 +136,44 @@ export function applyResolver(ctx: Context, dependencies: {
                     config: defaultResolverConfig(settings, ended), sessionDays: dependencies.sessionDays,
                 }),
             };
+        }
+    }
+
+    class PhotoEditHandler extends ResolverHandler {
+        @param('uid', Types.Int)
+        @param('image', Types.String, true)
+        async post(_domain: string, uid: number, image?: string) {
+            const contest = key(this.tdoc);
+            if (!image) {
+                await photos.delete(contest, String(uid));
+                this.response.body = { url: null };
+                return;
+            }
+            const entry = await ContestModel.getStatus(this.tdoc.domainId, this.tdoc.docId, uid);
+            if (!entry?.attend) throw new ResolverError('队伍未参加这场比赛');
+            this.response.body = { url: photoUrl(this.base, await photos.put(contest, String(uid), image, this.user._id)) };
+        }
+    }
+
+    class PhotoViewHandler extends Handler {
+        noCheckPermView = true;
+        @param('tid', Types.ObjectId)
+        @param('file', Types.String)
+        @param('check', (value: unknown) => Types.Boolean[0](value), true)
+        async get(_domain: string, tid: ObjectId, file: string, check = false) {
+            const id = /^([a-f0-9]{32})\.jpg$/.exec(file)?.[1];
+            const contest = `${this.domain._id}/${tid}`;
+            this.response.addHeader('Cache-Control', 'private, no-store');
+            if (check) {
+                if (!id || !await photos.exists(contest, id)) throw new NotFoundError('Photo not found');
+                this.response.body = { valid: true };
+                return;
+            }
+            const photo = id && await photos.get(contest, id);
+            if (!photo) throw new NotFoundError('Photo not found');
+            this.response.addHeader('X-Content-Type-Options', 'nosniff');
+            this.response.type = photo.mime;
+            this.response.body = imageBytes(photo.data);
         }
     }
 
@@ -204,6 +256,8 @@ export function applyResolver(ctx: Context, dependencies: {
     }
 
     ctx.Route('contest_resolver', '/contest/:tid/resolver', ResolverConfigHandler);
+    ctx.Route('contest_resolver_photos', '/contest/:tid/resolver/photos', PhotoEditHandler);
+    ctx.Route('contest_resolver_photo', '/contest/:tid/resolver/photos/:file', PhotoViewHandler);
     ctx.Route('contest_resolver_preview', '/contest/:tid/resolver/preview', ResolverPreviewHandler);
     ctx.Route('contest_resolver_sessions', '/contest/:tid/resolver/sessions', ResolverSessionsHandler);
     ctx.Route('contest_resolver_play', '/contest/:tid/resolver/sessions/:sid', ResolverPlayHandler);

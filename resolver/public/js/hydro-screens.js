@@ -292,3 +292,6 @@ $('reset-confirm').addEventListener('close', async () => {
 });
 $('screen-preview').addEventListener('close', () => $('screen-preview-frame').removeAttribute('src'));
 addEventListener('beforeunload', (event) => { if (dirty || saving) event.preventDefault(); });
+
+import { deviceAdmin } from './screen-device-admin.js';
+deviceAdmin(runtime, el, showError);

@@ -88,7 +88,7 @@ export function parseResolverConfig(raw: unknown, defaults: ResolverConfig): Res
 
 export function prepareResolver(
     data: BoardData, boards: ResolverBoard[], config: ResolverConfig,
-    context: { contestId: string; ended: boolean; capturedAt: Date; logoNames: Record<string, string>; special?: SpecialResult[] },
+    context: { contestId: string; ended: boolean; capturedAt: Date; logoNames: Record<string, string>; photos?: Record<string, string>; special?: SpecialResult[] },
 ): ResolverPayload {
     const board = boards.find((item) => item.id === config.boardId);
     if (!board) throw new ResolverError('所选分榜已不存在，请刷新配置页');
@@ -110,7 +110,7 @@ export function prepareResolver(
         const unrank = team.group.includes('unofficial') || (config.mode === 'official' && !members.has(team.team_id));
         return {
             id: team.team_id, name: team.name, displayName: config.showSchool && school ? `${team.name}（${school}）` : team.name,
-            organizationName: school, unrank, ...team.school_key ? { schoolKey: team.school_key } : {},
+            photo: context.photos?.[team.team_id], organizationName: school, unrank, ...team.school_key ? { schoolKey: team.school_key } : {},
             ...team.members?.length ? { members: team.members } : {},
             logo: logoId && /^[a-f\d]{12}$/.test(logoId) ? `${resolverAssetBase}/logos/${logoId}.webp` : `${resolverAssetBase}/assets/img/icpc-logo.png`,
         };

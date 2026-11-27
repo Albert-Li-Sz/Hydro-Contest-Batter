@@ -53,6 +53,10 @@
       </div>
     </section>
   </form>
+  <section class="section visible" id="team-photos">
+    <div class="section__header resolver-heading"><h2 class="section__title">队伍照片</h2><label class="button">批量选择照片<input id="photo-files" class="resolver-file-input" type="file" accept="image/*" multiple></label></div>
+    <div class="section__body"><p id="photo-progress" role="status"></p><ul id="photo-unmatched"></ul><div id="photo-teams" class="resolver-photo-teams"></div></div>
+  </section>
   <section class="section visible" id="sessions"><div class="section__header resolver-heading"><h2 class="section__title">我的滚榜会话<button class="xc-help" type="button" id="session-retention" aria-label="会话保留时间帮助">?</button></h2><button type="button" class="button" id="refresh-sessions">刷新列表</button></div><div class="section__body"><div id="session-list" aria-live="polite"></div></div></section>
   <dialog id="resolver-delete-confirm" aria-labelledby="resolver-delete-title"><form method="dialog"><h2 id="resolver-delete-title">删除滚榜会话</h2><p>删除此会话的固定快照及已保存进度？</p><div class="resolver-actions"><button class="button" value="cancel">取消</button><button class="button primary" value="delete">确认删除</button></div></form></dialog>
   <p class="resolver-muted">Resolver-Web v1.4.0 · <a href="{{ assetBase }}/licenses/ICPC-Software-License.txt">ICPC Software License</a> · <a href="{{ assetBase }}/licenses/Resolver-Web-Apache-2.0.txt">Apache-2.0</a></p>

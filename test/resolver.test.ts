@@ -389,3 +389,77 @@ it('matches every recorded modified upstream file hash', () => {
         expect(createHash('sha256').update(bytes).digest('hex'), entry.destination).toBe(entry.modifiedSha256);
     }
 });
+
+import { matchPhoto } from '../resolver/public/js/photo-matching.js';
+import { actionIndicesFor, awardStops, nextAwardStop, confirmPrevious } from '../resolver/public/js/playback-model.js';
+import { usableAsset } from '../resolver/server/lib/engine.js';
+import { decodeTeamPhoto, ResolverPhotos, photoUrl } from '../lib/resolver-photos';
+
+describe('队伍照片和主持控制', () => {
+    const teams = [{ uid: '-3', name: '星河', account: 'Team.One' }, { uid: '2', name: '星河', account: 'ABC' }];
+    it('matches account, uid and unique names after normalization, and leaves ambiguity for the operator', () => {
+        expect(matchPhoto('ＴＥＡＭ．ＯＮＥ.JPG', teams)).toBe('-3');
+        expect(matchPhoto('－３.webp', teams)).toBe('-3');
+        expect(matchPhoto('星河.png', teams)).toBeNull();
+        expect(matchPhoto('星河.png', teams.slice(1))).toBe('2');
+        expect(matchPhoto('none.jpg', teams)).toBeNull();
+    });
+    it('accepts precisely the contest-scoped photo capability path and snapshots it', async () => {
+        const base = '/d/system/contest/0123456789abcdef01234567/resolver';
+        const link = photoUrl(base, 'a'.repeat(32));
+        expect(usableAsset(link)).toBe(link);
+        for (const path of [link + '?next=x', link + '/x', link.replace('.jpg', '.svg'), link.replace('/system/', '/../'), link.replace('system', '%2e%2e'), link.replace('system', 'a%2Fb'), link.replace('photos/', 'images/')]) {
+            expect(usableAsset(path)).toBeNull();
+        }
+        const file = readFileSync(new URL('../logos/' + JSON.parse(readFileSync(new URL('../logos/index.json', import.meta.url), 'utf8')).names['南京晓庄学院'] + '.webp', import.meta.url)).toString('base64');
+        expect(decodeTeamPhoto(file)).toMatchObject({ width: 1024, height: 1024, mime: 'image/webp' });
+        expect(() => decodeTeamPhoto(Buffer.from('not a photo').toString('base64'))).toThrow();
+        const store = new ResolverPhotos(previewDatabase().db);
+        await store.ensureIndexes();
+        const id = await store.put('s/c', '1', file, 4);
+        const payload = prepareResolver(demoData(), resolverBoards(demoData(), settings, true), config,
+            { ...context, photos: await store.urls('s/c', base) });
+        expect(payload.game.contest.teams.find(t => t.id === '1')?.photo).toBe(photoUrl(base, id));
+        expect(await store.get('other/c', id)).toBeNull();
+        await store.rotate('s/c');
+        expect(await store.get('s/c', id)).toBeNull();
+        expect((await store.urls('s/c', base))['1']).not.toEqual(payload.snapshot.teams[0].photo);
+        await store.delete('s/c', '1'); expect(await store.urls('s/c', base)).toEqual({});
+    });
+    it.each(['retire', 'publish'])('recovers a photo replacement interrupted at %s on a new store instance', async phase => {
+        const { db } = previewDatabase();
+        const file = readFileSync(new URL('../logos/' + JSON.parse(readFileSync(new URL('../logos/index.json', import.meta.url), 'utf8')).names['南京晓庄学院'] + '.webp', import.meta.url));
+        const first = new ResolverPhotos(db);
+        const previous = await first.put('s/c', '-1', file.toString('base64'), 1);
+        const collection = db.collection('xcpcio.resolver.photos');
+        const update = collection.updateOne.bind(collection);
+        vi.spyOn(collection, 'updateOne').mockImplementation(((filter: any, ...args: any[]) => {
+            if (phase === 'publish' ? filter.staged : filter.uid === '-1') throw new Error('connection interrupted');
+            return (update as Function)(filter, ...args);
+        }) as typeof collection.updateOne);
+        const failing = new ResolverPhotos({ collection: () => collection } as any);
+        await expect(failing.put('s/c', '-1', file.toString('base64'), 2)).rejects.toThrow('interrupted');
+        if (phase === 'publish') expect(await first.get('s/c', previous)).toBeNull();
+        const restarted = new ResolverPhotos(db);
+        const url = (await restarted.urls('s/c', '/resolver'))['-1'];
+        const id = url.split('/').pop()!.slice(0, -4);
+        expect(await restarted.get('s/c', previous)).toBeNull();
+        expect(await restarted.get('s/c', id)).toMatchObject({ uid: '-1', updatedBy: 2 });
+        expect(await restarted.status('s/c')).toMatchObject({ count: 1 });
+        expect(await collection.countDocuments({ contestKey: 's/c' })).toBe(1);
+    });
+    it('stops on the previous visible action in reveal order, omitting setup and non-tier awards', () => {
+        const game = prepare().game;
+        game.contest.awards = [{ id: 'bronze-medal', teamIds: ['b', 'c'] }, { id: 'high-honors', teamIds: ['h'] },
+            { id: 'first-solve-a', teamIds: ['x'] }, { id: 'silver-medal', teamIds: ['s'] }, { id: 'winner', teamIds: ['s'] }];
+        game.steps = [{ type: 'presentation', screen: 'scoreboard' }, { type: 'selectTeam', role: 'setup', teamIds: ['b'] },
+            ...['x', 'h', 'b', 'c', 's'].flatMap(id => [{ type: 'scroll' }, { type: 'delay' }, { type: 'selectTeam', teamIds: [id] }])];
+        const actions = actionIndicesFor(game.steps);
+        expect(awardStops(game)).toEqual([5, 8, 14]);
+        expect(nextAwardStop(game, actions, actions.indexOf(5))).toBe(8);
+        expect(nextAwardStop(game, actions, actions.indexOf(14))).toBeNull();
+        expect(confirmPrevious(null, 0)).toBe(false);
+        expect(confirmPrevious(0, 1500)).toBe(true);
+        expect(confirmPrevious(20, 1521)).toBe(false);
+    });
+});

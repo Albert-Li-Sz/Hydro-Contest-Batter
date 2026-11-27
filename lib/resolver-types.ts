@@ -8,6 +8,7 @@ export interface ResolverTeam {
     unrank: boolean;
     /** Team contests: member names, shown on the team's award page. */
     members?: string[];
+    photo?: string;
     logo: string;
 }
 

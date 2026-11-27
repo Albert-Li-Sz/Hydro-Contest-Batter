@@ -95,3 +95,9 @@
 ## CCPC 新榜单模式的大屏
 
 - `public/js/render/java-contest.js` 的 `getAllSubmissions()` 读取大屏数据中的 `hiddenFrom`：CCPC 封榜前隐藏题号时，从该列起每列是各队自己的位置而不是同一道题，不再为这些列计算一血；`getProblemSummary()` 对这些列返回 0，实时榜单底部与方块榜的各题汇总不再把不同的题合计在一起。判题队列、队伍判题和其他 ICPC Tools 画面因此只在已公开题号的列上显示一血。
+
+## 2.0.0 队伍照片与奖区控制
+
+- `server/lib/engine.js` 接受比赛内的滚榜照片地址。`public/js/render/resolver-view.js` 在选中队伍时预载照片，在获奖画面使用会话里的地址。已在播放的获奖页每 5 秒轻量核对照片凭据，作废后回退到比赛标志。
+- `public/js/playback-model.js` 与可打印台本共用奖级顺序，定位各奖区首支队伍的前一个可操作步骤，并提供带时钟参数的双按判定。
+- `public/js/play.js` 与 `templates/xcpcio_resolver_play.html` 增加 J、工具栏「下一奖区」及快捷键帮助。再次按 J 直接抵达，Esc 暂停。键盘和右键回退需在 1.5 秒内连按两次。

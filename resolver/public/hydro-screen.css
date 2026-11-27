@@ -16,7 +16,7 @@ body.fullscreen.idle #screen { cursor: none; }
 
 #screen[hidden], #screen-content[hidden] { display: none; }
 #screen-content {
-  --unit: clamp(10px, min(1.42vw, 2.4vh), 30px);
+  --unit: calc(clamp(10px, min(1.42vw, 2.4vh), 30px) * var(--screen-scale, 1));
   box-sizing: border-box; height: 100%; padding: 1.5vh 1vw 1vh; display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
   background: #000;
   color: #fff; font: 400 var(--unit)/1.24 "Helvetica Plain", "PingFang SC", "Microsoft YaHei", "Contest Noto Sans SC", Helvetica, Arial, sans-serif;
@@ -104,6 +104,14 @@ body.fullscreen.idle #screen { cursor: none; }
 #screen-content[data-type=poster]:has(.screen-poster) .screen-page { display: none; }
 #screen-content[data-type=poster]:has(.screen-poster) .screen-body { padding: 0; }
 @media (max-aspect-ratio: 6/5) {
-  #screen-content { --unit: clamp(10px, 2.45vw, 24px); }
+  #screen-content { --unit: calc(clamp(10px, 2.45vw, 24px) * var(--screen-scale, 1)); }
   #screen-content .screen-table td, #screen-content .screen-table th { padding: .44em .24em; }
 }
+
+body[data-program]:not([data-program=resolver]) #screen { transform:scale(var(--screen-scale, 1)); }
+#screen-pair { position:fixed; inset:0; display:grid; place-content:center; justify-items:center; gap:2vh; color:#fff; background:#101826; font:500 clamp(18px,3vw,52px)/1.2 system-ui,sans-serif; }
+#screen-pair h1 { font:inherit; margin:0; }
+#screen-code { font:700 clamp(40px,12vw,220px)/1.2 ui-monospace,monospace; letter-spacing:.06em; }
+#screen-site { font-size:.72em; }
+#screen-identify { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); max-width:90%; padding:.4em .8em; background:#081421ed; color:#fff; text-align:center; overflow-wrap:anywhere; font:700 clamp(32px,8vw,150px)/1.2 system-ui,sans-serif; pointer-events:none; }
+#screen-pair[hidden], #screen-identify[hidden] { display:none; }

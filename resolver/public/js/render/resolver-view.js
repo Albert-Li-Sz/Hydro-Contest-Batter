@@ -363,6 +363,25 @@ export class ResolverView {
     return rec.ready ? rec.img : null;
   }
 
+  _teamPhoto(src) {
+    const photo = this._image(src);
+    if (!photo || !src.startsWith('/d/') || !src.includes('/resolver/photos/')) return photo;
+    const rec = this._images.get(src);
+    const now = performance.now();
+    // A photo can be replaced while its award is on screen. Recheck the capability
+    // without downloading the image again, and retain the current frame if offline.
+    rec.checkAfter ??= now + 5000;
+    if (now >= rec.checkAfter) {
+      rec.checkAfter = Infinity;
+      fetch(src + '?check=1', { cache: 'no-store', headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(5000) })
+        .then(response => {
+          if (response.status === 404 || response.status === 410) { rec.ready = false; rec.failed = true; }
+        })
+        .catch(() => {}).finally(() => { rec.checkAfter = performance.now() + 5000; });
+    }
+    return photo;
+  }
+
   _imageRecord(src) {
     if (!src) return null;
     let rec = this._images.get(src);
@@ -572,6 +591,7 @@ export class ResolverView {
       case 'selectTeam':
         this._selectedSubmission = null;
         this._selectedTeamIds = Array.isArray(step.teamIds) ? step.teamIds.slice() : [];
+        if (this._selectedTeamIds.length === 1 && !instant) this._image(this.teamsById.get(this._selectedTeamIds[0])?.photo);
         this._selectType = step.selectType || 'NORMAL';
         break;
       case 'selectSubmission':
@@ -697,6 +717,7 @@ export class ResolverView {
       }
     }
     this.finishReplay();
+    if (this._selectedTeamIds.length === 1) this._image(this.teamsById.get(this._selectedTeamIds[0])?.photo);
   }
 
   _setAward(step) {
@@ -1186,7 +1207,7 @@ export class ResolverView {
     if (!team) return;
 
     // Java falls back to the contest logo when the team has no photo.
-    const photo = this._image(team.photo) || this._contestLogo();
+    const photo = this._teamPhoto(team.photo) || this._contestLogo();
     if (photo) {
       drawImageContain(ctx, photo, 0, 0, this.width, this.height * 0.7);
     }

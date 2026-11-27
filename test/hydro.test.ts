@@ -42,9 +42,10 @@ vi.mock('hydrooj', () => {
         NotFoundError: class extends Error {}, ValidationError: class extends Error {}, ForbiddenError: class extends Error {},
         ContestModel: {
             get: vi.fn(async (domainId: string, tid: any) => ({ ...state.contest, domainId, docId: tid })),
+            getStatus: vi.fn(async (_domain: string, _tid: any, uid: number) => state.entries.find(entry => entry.uid === uid)),
             getMultiStatus: vi.fn(() => { const cursor: any = { project: () => cursor, toArray: async () => state.entries }; return cursor; }),
             isDone: () => state.ended, isLocked: () => state.locked,
-            canShowScoreboard(this: any, tdoc: any) { return state.started || this.user.own(tdoc) || this.user.hasPerm(2n); },
+            canShowScoreboard(this: any, tdoc: any, allowPermOverride = true) { return state.started || (allowPermOverride && (this.user.own(tdoc) || this.user.hasPerm(2n))); },
         },
         RecordModel: { getMulti: vi.fn(() => ({ toArray: async () => state.records })) },
         TaskModel: { count: vi.fn(async () => 2) },
@@ -65,6 +66,7 @@ function setup(saved = new Map<string, any>(), config: Record<string, unknown> =
     let view: any;
     let middleware: any;
     const collection = {
+        distinct: async () => [],
         findOne: async ({ _id }: { _id: string }) => saved.get(_id),
         updateOne: async ({ _id }: { _id: string }, { $set }: any) => { saved.set(_id, structuredClone($set)); },
         find: () => { const cursor: any = { project: () => cursor, sort: () => cursor, limit: () => cursor, toArray: async () => [] }; return cursor; },
@@ -72,7 +74,7 @@ function setup(saved = new Map<string, any>(), config: Record<string, unknown> =
     };
     const ctx: any = {
         db: { collection: (name: string) => (name === 'status' ? { find: () => ({ toArray: async () => state.judges }) }
-            : name.startsWith('xcpcio.resolver.') || name.startsWith('xcpcio.ccs.') || name === 'xcpcio.screens' || name.startsWith('xcpcio.live')
+            : name.startsWith('xcpcio.resolver.') || name.startsWith('xcpcio.ccs.') || name.startsWith('xcpcio.screens') || name === 'xcpcio.ceremony' || name.startsWith('xcpcio.live')
             || name === 'xcpcio.presence' || name === 'iplogin' ? resolverDb.db.collection(name as any) : collection) },
         Route: (name: string, _path: string, handler: any) => { routes.set(name, handler); },
         Connection: (name: string, _path: string, handler: any) => { routes.set(name, handler); },
@@ -103,6 +105,7 @@ function setup(saved = new Map<string, any>(), config: Record<string, unknown> =
         hooks: ctx.on,
         injectUI: ctx.injectUI,
         broadcast: ctx.broadcast,
+        route: (name: string) => new (routes.get(name))(),
         routeNames: () => [...routes.keys()],
     };
 }
@@ -1067,4 +1070,110 @@ describe('Hydro Resolver routes', () => {
         expect(metadata.config).toMatchObject({ goldCount: 0, firstSolve: true });
     });
 
+});
+
+describe('闭幕式观众与设备路由', () => {
+    it('限制观众视角为管理员，关闭公开榜也能访问，HTML 和 JSON 始终使用公开投影', async () => {
+        state.locked = true; state.ended = false;
+        state.entries[0].journal = [record(state.contest.lockAt.getTime() / 1000 + 10)];
+        state.users[1].displayName = '张三';
+        const app = setup(new Map(), { publicByDefault: false }); await app.init();
+        const member = app.settings(), admin = app.settings();
+        const display = (user: any, json = false, realtime = false) => app.view().display.call(user, { tdoc: state.contest, json, realtime });
+        member.request.querystring = 'view=audience';
+        await expect(display(member)).rejects.toThrow('Forbidden');
+        member.user._id = 0;
+        await expect(display(member, true)).rejects.toThrow('login');
+        admin.user.hasPerm = () => true;
+        admin.request.querystring = 'view=manager';
+        await display(admin);
+        expect(admin.response.body.audienceUrl).toContain('view=audience');
+        await display(admin, true, true);
+        expect(JSON.stringify(admin.response.body)).toContain('南京晓庄学院');
+        admin.request.querystring = 'json=true&view=audience&realtime=true';
+        await display(admin, false, true);
+        expect(admin.response.body).toMatchObject({ hideSubmissions: true, realtime: false, settingsUrl: null, realtimeUrl: null, unlock: null, audienceUrl: null });
+        expect(admin.response.body.managerUrl).toContain('view=manager');
+        expect(JSON.parse(admin.response.body.runtimeJson).dataSource).toMatch(/json=true&view=audience#/);
+        await display(admin, true, true);
+        expect(admin.response.body.teams[0].name).toBe('张三');
+        expect(JSON.stringify(admin.response.body)).not.toMatch(/南京晓庄学院|测试选手/);
+        expect(admin.response.body.submissions[0].status).toBe('FROZEN');
+        await admin.prepare('system', state.contest.docId);
+        await admin.post('system', JSON.stringify({ ...defaultSettings, publicAccess: true, showIdentity: true }));
+        const guest = app.publicBoard();
+        await guest.prepare('system', state.contest.docId); await guest.get('system', true, false);
+        await display(admin, true);
+        expect(admin.response.body).toEqual(guest.response.body);
+        expect(admin.response.body.teams[0].organization).toBe('南京晓庄学院');
+        state.started = false;
+        await expect(display(admin, true)).rejects.toThrow('比赛开始后');
+    });
+    it('protects slides and photo changes, serves an opaque photo anonymously and persists ceremony appearance independently', async () => {
+        const app = setup(); await app.init();
+        const tid = state.contest.docId;
+        const owner = async (name: string) => {
+            const h = app.route(name);
+            await expect(h.prepare('system', tid)).rejects.toThrow('Forbidden');
+            h.user.own = () => true; await h.prepare('system', tid);
+            return h;
+        };
+        const ceremony = await owner('contest_xcpcio_ceremony');
+        const config = { theme: 'red', boards: ['all'], header: 8 };
+        await ceremony.post('system', JSON.stringify(config), true);
+        expect(ceremony.response.body.title).toBe(state.contest.title);
+        const logos = JSON.parse(fs.readFileSync(path.join(__dirname, '../logos/index.json'), 'utf8')).names;
+        const image = fs.readFileSync(path.join(__dirname, '../logos/' + logos['南京晓庄学院'] + '.webp'));
+        const background = await owner('contest_xcpcio_ceremony_background');
+        await background.post('system', image.toString('base64'));
+        await background.get(); expect(background.response.body).toEqual(image);
+        await ceremony.get('system');
+        const saved = JSON.parse(ceremony.response.body.runtimeJson);
+        expect(saved.config).toMatchObject(config); expect(saved.background).toContain('/ceremony/background');
+        const edit = await owner('contest_resolver_photos');
+        await expect(edit.post('system', 77, image.toString('base64'))).rejects.toThrow('未参加');
+        state.entries[0].attend = 1;
+        await edit.post('system', 1, image.toString('base64'));
+        const file = edit.response.body.url.split('/').pop();
+        const guest = app.route('contest_resolver_photo'); guest.user._id = 0;
+        expect(guest.noCheckPermView).toBe(true); await guest.get('system', tid, file);
+        expect(guest.response.body).toEqual(image);
+        await edit.post('system', 1);
+        await expect(guest.get('system', tid, file, true)).rejects.toThrow();
+    });
+    it('uses the same frozen board for fixed-token and cookie screens and isolates the two credentials', async () => {
+        state.locked = true;
+        const app = setup(); await app.init();
+        const tid = state.contest.docId;
+        const admin = app.screens(); admin.user.own = () => true;
+        await admin.prepare('system', tid); await admin.get();
+        const token = JSON.parse(admin.response.body.runtimeJson).linkBase.split('/').pop();
+        let cookie: string | undefined;
+        const jar = { get: () => cookie, set: vi.fn((_key, value) => { cookie = value; }) };
+        const pair = app.route('xcpcio_screen_pair');
+        pair.context = { cookies: jar, secure: true }; pair.request.ip = '127.0.0.1';
+        await pair.post();
+        expect(jar.set).toHaveBeenCalledWith('xcpcio_screen', expect.stringMatching(/^[0-9a-f]{64}$/), expect.objectContaining({
+            httpOnly: true, secure: true, path: '/xcpcio-screen', maxAge: 365 * 86400000,
+        }));
+        const devices = app.route('contest_xcpcio_screen_devices');
+        await expect(devices.prepare('system', tid)).rejects.toThrow('Forbidden');
+        devices.user.own = () => true;
+        await devices.prepare('system', tid);
+        await devices.post('system', JSON.stringify({ action: 'claim', code: pair.response.body.code, name: '大屏', type: 'scoreboard' }));
+        const fixed = app.screens('_data'), bound = app.route('xcpcio_screen_data');
+        bound.context = { cookies: jar }; bound.request.ip = '127.0.0.1'; bound.request.query = { client: '{"width":1920}' };
+        await fixed.prepare('system', tid, token, 'scoreboard'); await fixed.get('system');
+        await bound.get();
+        const { serverTime: a, ...one } = fixed.response.body;
+        const { serverTime: b, paired, device, ...two } = bound.response.body;
+        expect(two).toEqual(one); expect(paired).toBe(true);
+        expect(JSON.stringify(bound.response.body)).not.toContain(token);
+        await devices.get();
+        expect(devices.response.body.devices).toMatchObject([{ id: device.id, online: true, client: { width: 1920 } }]);
+        await devices.post('system', JSON.stringify({ action: 'delete', id: device.id }));
+        await bound.get(); expect(bound.response.body).toEqual({ paired: false });
+        await fixed.prepare('system', tid, token, 'scoreboard'); await fixed.get('system');
+        expect(fixed.response.body.type).toBe('scoreboard');
+    });
 });

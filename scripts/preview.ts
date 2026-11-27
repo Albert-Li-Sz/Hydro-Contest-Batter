@@ -8,6 +8,8 @@ import { displaySpecialAwards } from '../lib/special-awards';
 import { demoData, demoRoster } from '../test/fixture';
 import { defaultProfileFields, rosterFields } from '../lib/roster';
 import { teamData, wideData } from '../preview/fixtures';
+import { ContestLinks } from '../lib/links';
+import { createCeremonyPreview } from '../preview/ceremony';
 import { createResolverPreview } from '../preview/resolver';
 import { createScreensPreview } from '../preview/screens';
 import { createLivePreview } from '../preview/live';
@@ -42,16 +44,18 @@ const logoNames = JSON.parse(await fs.readFile(path.join(root, 'logos/index.json
 const pluginVersion = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8')).version;
 // Resolver and screen previews share one in-memory store so the audience screen can follow a session.
 const previewDb = previewDatabase().db;
-const resolverPreview = createResolverPreview(env, logoNames, pluginVersion, previewDb);
+const demoLinks = new ContestLinks();
+const resolverPreview = createResolverPreview(env, logoNames, pluginVersion, previewDb, demoLinks);
 const reactionsPreview = createReactionsPreview(env, pluginVersion);
 const screensPreview = createScreensPreview(env, logoNames, pluginVersion, previewDb, () => clarificationPreview.announcements().map((item) => ({
     subject: item.subject, text: item.content, at: item.docId.getTimestamp().getTime(),
-})), reactionsPreview.visible, reactionsPreview.layouts);
+})), reactionsPreview.visible, reactionsPreview.layouts, demoLinks, reactionsPreview.playSample);
 const monitorPreview = createMonitorPreview(env, pluginVersion, demoData);
 const presencePreview = createPresencePreview(env, pluginVersion, demoData);
 const overviewPreview = createOverviewPreview(env, pluginVersion);
 const resultsPreview = createResultsPreview(env, pluginVersion, previewDb);
-const managePreview = createManagePreview(env, pluginVersion);
+const ceremonyPreview = createCeremonyPreview(env, pluginVersion, logoNames, resultsPreview);
+const managePreview = createManagePreview(env, pluginVersion, demoLinks);
 // 气球配送 tickets print on the receipt printers of the print servers preview, which takes them from it.
 const balloonsPreview = createBalloonsPreview(env, pluginVersion, demoData, () => printersPreview.receiptPrinters());
 const printersPreview = createPrintersPreview(env, pluginVersion, demoData, () => balloonsPreview.receipts);
@@ -87,11 +91,13 @@ const server = http.createServer(async (request, response) => {
         const url = new URL(request.url || '/', 'http://localhost');
         // ?fixture=team: a team contest (Hydro 5.1), teams with members.
         const displayData = url.searchParams.get('fixture') === 'wide' ? wideData() : url.searchParams.get('fixture') === 'team' ? teamData() : data;
+        const audience = url.searchParams.get('view') === 'audience';
+        const manager = url.searchParams.get('view') === 'manager';
         const displayDefaults = { ...defaults, hideSubmissions: url.searchParams.get('running') === '1',  tdoc: { title: displayData.contest.contest_name } };
         const boardResponse = () => {
             // As index.ts applyBoardRules: ?running=1 is before the freeze, where the CCPC board hides labels.
             // 裁判操作 apply to the demo contest's board as in Hydro (realtime is the staff view).
-            const judged = displayData === data ? applyJury(displayData, juryPreview.state(), juryPreview.pids, url.searchParams.get('realtime') !== 'true') : displayData;
+            const judged = displayData === data ? applyJury(displayData, juryPreview.state(), juryPreview.pids, audience || url.searchParams.get('realtime') !== 'true') : displayData;
             let shown = settings.ignoreAfterAccept ? dropAfterAccept(judged) : judged;
             if (settings.ccpcBoard.enabled && url.searchParams.get('running') === '1' && url.searchParams.get('frozen') !== '1') shown = hideProblemLabels(shown, settings.ccpcBoard);
             const board = enhanceBoard(shown, settings, { identity: settings.showIdentity });
@@ -107,6 +113,7 @@ const server = http.createServer(async (request, response) => {
         if (await monitorPreview(request, response, url)) return;
         if (await presencePreview(request, response, url)) return;
         if (await overviewPreview(request, response, url)) return;
+        if (await ceremonyPreview(request, response, url, displayData, settings)) return;
         if (await resultsPreview.handle(request, response, url, displayData, settings)) return;
         if (await certificatesPreview.handle(request, response, url)) return;
         if (await juryPreview.handle(request, response, url)) return;
@@ -146,7 +153,7 @@ const server = http.createServer(async (request, response) => {
         if (url.pathname === `${base}/scoreboard` && settings.replaceNative) {
             response.writeHead(302, { Location: `${settings.publicAccess ? publicUrl : boardUrl}${url.search}` }).end(); return;
         }
-        if (url.pathname === boardUrl && settings.publicAccess && url.searchParams.get('realtime') !== 'true') {
+        if (url.pathname === boardUrl && !audience && !manager && settings.publicAccess && url.searchParams.get('realtime') !== 'true') {
             response.writeHead(302, { Location: `${publicUrl}${url.search}` }).end(); return;
         }
         if (url.pathname === publicUrl) {
@@ -156,14 +163,20 @@ const server = http.createServer(async (request, response) => {
                 response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(boardResponse())); return;
             }
             response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(env.render('xcpcio_plus_board.html', {
-                ...displayDefaults, ...manifest, settingsUrl: null,
+                ...displayDefaults, ...manifest, settingsUrl: null, audienceUrl: `${boardUrl}?view=audience${boardQuery}`,
                 runtimeJson: toScriptJson({ dataSource: `${publicUrl}?json=true${boardQuery}#allInOne=true`, refreshInterval: 5000 }),
             })); return;
         }
         if (url.pathname === boardUrl) {
+            if (url.searchParams.get('json') === 'true' || request.headers.accept?.includes('application/json')) {
+                response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(boardResponse())); return;
+            }
             response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(env.render('xcpcio_plus_board.html', {
-                ...displayDefaults, ...manifest, settingsUrl, unlock: unlocked ? null : { url: `${base}/scoreboard`, ready: true },
-                runtimeJson: toScriptJson({ dataSource: `/api/board?json=true${boardQuery}#allInOne=true`, refreshInterval: 5000 }),
+                ...displayDefaults, ...manifest, settingsUrl: audience ? null : settingsUrl,
+                audienceUrl: audience ? null : `${boardUrl}?view=audience${boardQuery}`, managerUrl: audience ? `${boardUrl}?view=manager${boardQuery}` : null,
+                hideSubmissions: audience && url.searchParams.get('running') === '1',
+                unlock: audience || unlocked ? null : { url: `${base}/scoreboard`, ready: true },
+                runtimeJson: toScriptJson({ dataSource: `${boardUrl}?json=true${audience ? '&view=audience' : '&view=manager'}${boardQuery}#allInOne=true`, refreshInterval: 5000 }),
             })); return;
         }
         if (url.pathname.startsWith('/hydro-xcpcio/') || url.pathname.startsWith('/hydro-resolver/') || url.pathname.startsWith('/hydro-live/')) {

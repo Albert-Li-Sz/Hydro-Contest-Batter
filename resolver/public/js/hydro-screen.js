@@ -10,7 +10,15 @@ const canvas = document.getElementById('screen');
 const content = document.getElementById('screen-content');
 const extras = new HydroScreenExtras(content);
 const statusEl = document.getElementById('screen-status');
-const isResolver = runtime.type === 'resolver';
+let type = runtime.type;
+let scale = 1;
+let pairing = !!runtime.device;
+let identifyTimer;
+let identifyUntil = 0;
+let reloadAt = 0;
+const pairPanel = document.getElementById('screen-pair');
+const identify = document.getElementById('screen-identify');
+
 let state = null;          // last presentation payload
 let offset = 0;            // server clock minus local clock
 let itemKey = '';
@@ -31,7 +39,7 @@ function status(text) {
 function size() {
     // Render at the physical resolution of the screen, capped at 4K.
     const ratio = Math.min(window.devicePixelRatio || 1, 3);
-    const width = Math.min(3840, Math.round(window.innerWidth * ratio));
+    const width = Math.min(3840, Math.round(window.innerWidth * ratio / scale));
     const height = Math.round(width * window.innerHeight / window.innerWidth);
     // ResolverView sizes its own canvas from the display settings.
     if (!(resolver && !state) && (canvas.width !== width || canvas.height !== height)) {
@@ -79,18 +87,73 @@ function applyResolver(data) {
     } else {
         if (!resolver || resolver.session !== data.session) {
             resolver?.view.dispose?.();
-            resolver = { view: new ResolverView(canvas, data.game), session: data.session };
+            const baseRows = data.game.options?.rowsPerScreen || 12;
+            const game = scale === 1 ? data.game : { ...data.game, options: { ...data.game.options, rowsPerScreen: Math.round(baseRows / scale) } };
+            resolver = { view: new ResolverView(canvas, game), session: data.session, baseRows };
         }
         resolver.view.seek(steps, steps.length - 1);
     }
     Object.assign(resolver, { steps, playback: next });
 }
 
+function releaseProgram() {
+    resolver?.view.dispose();
+    resolver = presentation = paintedState = state = loaded = null;
+    content.querySelectorAll('video').forEach(video => { video.pause(); video.removeAttribute('src'); video.load(); });
+    content.replaceChildren(); delete content.dataset.type;
+    extras.key = itemKey = '';
+    content.hidden = canvas.hidden = true;
+    for (const key of ['session', 'index', 'revision']) delete canvas.dataset[key];
+}
+function applyScale(value) {
+    scale = value;
+    document.documentElement.style.setProperty('--screen-scale', String(scale));
+    canvas.dataset.logicalWidth = String(Math.round(1920 / scale));
+    if (resolver) {
+        resolver.view.options.rowsPerScreen = Math.round((resolver.baseRows || 12) / scale);
+        resolver.view.resize();
+    }
+    extras.key = ''; paintedState = null;
+}
+function switchDevice(data) {
+    const device = data.device;
+    if (type !== data.type) { releaseProgram(); type = data.type; }
+    pairing = false; pairPanel.hidden = true;
+    document.body.dataset.program = type;
+    if (scale !== device.scale) applyScale(device.scale);
+    document.title = device.name;
+    if (device.identifyUntil > data.serverTime && identifyUntil !== device.identifyUntil) {
+        identifyUntil = device.identifyUntil; identify.textContent = device.name; identify.hidden = false;
+        clearTimeout(identifyTimer); identifyTimer = setTimeout(() => { identify.hidden = true; }, 5000);
+    }
+    const key = 'xcpcio-screen-reload/' + device.id;
+    if (device.reloadAt && reloadAt !== device.reloadAt && sessionStorage.getItem(key) !== String(device.reloadAt)) {
+        reloadAt = device.reloadAt; sessionStorage.setItem(key, String(reloadAt)); location.reload();
+    }
+}
+async function requestPair() {
+    const response = await fetch(runtime.pairUrl, { method: 'POST', headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || '配对失败');
+    if (data.paired) { pairing = false; return true; }
+    releaseProgram(); type = null;
+    identify.hidden = true; pairPanel.hidden = false;
+    document.body.dataset.program = 'pair'; document.title = '大屏配对';
+    document.getElementById('screen-code').textContent = data.code;
+    document.getElementById('screen-site').textContent = location.host;
+    status(''); failures = 0;
+    return false;
+}
 async function poll() {
-    let delay = isResolver ? 1000 : 3000;
+    let delay = type === 'resolver' ? 1000 : 3000;
     try {
+        if (pairing && !await requestPair()) return;
         const url = new URL(runtime.dataUrl, location.href);
-        if (isResolver && resolver) {
+        if (runtime.device) url.searchParams.set('client', JSON.stringify({
+            width: innerWidth, height: innerHeight, screenWidth: screen.width, screenHeight: screen.height,
+            dpr: devicePixelRatio, fullscreen: !!document.fullscreenElement, version: runtime.version,
+        }));
+        if (type === 'resolver' && resolver) {
             url.searchParams.set('revision', resolver.playback.revision);
             url.searchParams.set('session', resolver.session);
             url.searchParams.set('index', resolver.playback.index);
@@ -106,8 +169,13 @@ async function poll() {
         }
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
+        if (runtime.device) {
+            if (!data.paired) { pairing = true; await requestPair(); return; }
+            switchDevice(data);
+            delay = type === 'resolver' ? 1000 : 3000;
+        }
         offset = data.serverTime - Date.now();
-        if (isResolver) {
+        if (type === 'resolver') {
             try { applyResolver(data); }
             catch {
                 resolver?.view.dispose?.();
@@ -121,9 +189,10 @@ async function poll() {
         if (key !== itemKey) { itemKey = key; itemStartedAt = performance.now(); }
         failures = 0;
         status('');
-    } catch {
+    } catch (error) {
+        if (pairing) status(error.message);
         // Keep the last picture; only mention the problem when it persists.
-        if (++failures >= 3) status('连接中断，保留当前画面并持续重试');
+        if (++failures >= 3 && !pairing) status('连接中断，保留当前画面并持续重试');
         delay = Math.min(15000, 1000 * 2 ** Math.min(failures, 4));
     } finally {
         setTimeout(poll, delay);
@@ -134,6 +203,7 @@ function frame(now) {
     const dt = Math.min(64, Math.max(0, now - lastFrame));
     lastFrame = now;
     requestAnimationFrame(frame);
+    if (pairing) return;
     size();
     if (resolver && !state) {
         canvas.hidden = false;

@@ -14,13 +14,14 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { recordingWorkflow, venueWorkflow } from './recording-workflow-check.mjs';
 import { captureContinuity } from './capture-continuity-check.mjs';
+import { closingCeremony } from './closing-ceremony-check.mjs';
 import { resolverAudience } from './resolver-audience-check.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const contest = '/contest/demo';
 const screen = `${contest}/screen/preview0000000000000000000000000000000000000000`;
 const themed = [
-    `${contest}/scoreboard/xcpcio-plus`, `${contest}/xcpcio-settings`, `${contest}/resolver`, `${contest}/screens`,
+    `${contest}/scoreboard/xcpcio-plus`, `${contest}/scoreboard/xcpcio-plus?view=audience&running=1`, `${contest}/ceremony`, `${contest}/xcpcio-settings`, `${contest}/resolver`, `${contest}/screens`,
     `${contest}/live`, `${contest}/live/capture`, `${contest}/monitor`, `${contest}/presence`, `${contest}/overview`, `${contest}/balloons`,
     '/manage/xcpcio-users', '/manage/xcpcio-users#seats', '/manage/xcpcio-judges', '/manage/xcpcio-rejudge', '/manage/xcpcio-printers',
     `${contest}/clarification-desk`, ...['recordings', 'settings', 'tests'].map((tab) => `${contest}/live/capture#${tab}`),
@@ -28,7 +29,7 @@ const themed = [
     `${contest}/jury`, `${contest}/integrity`, `${contest}/certificates`, `${contest}/certificates/mine`,
     `${contest}/results`, `${contest}/control`, ...['access', 'venue', 'media', 'recording', 'work'].map(key => `${contest}/control#${key}`), `${contest}/rejudge-review`,
 ];
-const plain = [`${contest}/live-capture/me?as=1`, `${contest}/problems?as=1`, `${contest}/presence?phase=before`,
+const plain = ['/xcpcio-screen', `${contest}/live-capture/me?as=1`, `${contest}/problems?as=1`, `${contest}/presence?phase=before`,
     ...['controls', 'capture', 'scoreboard', 'ticker', 'teamSpotlight', 'contestInfo'].map((page) => `${contest}/live/admin/${page}`), `${contest}/live/admin`];
 const screens = ['scoreboard', 'leaders', 'tiles', 'first-solves', 'queue', 'clock', 'countdown', 'message', 'resolver', 'problem-stats',
     'rank-trend', 'outcomes', 'groups', 'logo-wall', 'team-intro', 'problem-colors', 'floor', 'balloons', 'announce', 'judges', 'poster',
@@ -339,7 +340,10 @@ async function interactions(browser, base) {
         const scope = seatPage.getByLabel('范围');
         await scope.selectOption({ index: 1 });
         await seatPage.waitForTimeout(1000);
-        check(where, (await seatPage.locator('.manage-links .manage-link').count()) === 4, 'the contest shows no link kinds');
+        const kinds = await seatPage.locator('.manage-links .manage-link').evaluateAll(items => items.map(el => el.firstChild.textContent));
+        for (const label of ['大屏', '大屏设备', '滚榜队伍照片', '气球台', '直播 overlay', '画面采集设备']) {
+            check(where, kinds.includes(label), 'missing link kind ' + label);
+        }
         await seatPage.locator('.manage-filters button', { hasText: '重复座位' }).click();
         await seatPage.waitForTimeout(800);
         const duplicates = await seatPage.locator('.manage-seats tbody .seat-cell.is-duplicate').count();
@@ -537,6 +541,7 @@ try {
     if (!mode || mode === 'resolver') console.log('Resolver audience', JSON.stringify(await resolverAudience(browser, base)));
     if (!mode || mode === 'live') await broadcastStyles(browser, base);
     if (!mode || mode === 'interactions' || mode === 'recording') await interactions(browser, base);
+    if (!mode || mode === 'ceremony') await closingCeremony(browser, base, path.dirname(statePath));
     if (process.env.BASELINE_PREVIEW) console.log('Resolver v1.18.0', JSON.stringify(await resolverAudience(browser, process.env.BASELINE_PREVIEW, true)));
 } finally {
     await browser?.close();

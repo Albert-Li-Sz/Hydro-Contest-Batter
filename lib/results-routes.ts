@@ -171,6 +171,24 @@ export function applyResults(ctx: Context, dependencies: {
         return restoreRejudge(await readCurrent(), new Date(job.createdAt).getTime(), original);
     }
 
+    async function readSource(tdoc: Tdoc, source: string, current = () => load(tdoc), history = () => rejudgeHistory(tdoc)) {
+        if (source === 'current') return current();
+        if (/^history:[a-f0-9]{24}$/.test(source)) return readRejudge(tdoc, source.slice(8), await history(), current);
+        const result = await store.read(scopeFor(tdoc), source);
+        if (!result) throw new NotFoundError('本场比赛没有这个成绩快照');
+        return result;
+    }
+    async function sources(tdoc: Tdoc, history = () => rejudgeHistory(tdoc)): Promise<ResultOption[]> {
+        const [snapshots, jobs] = await Promise.all([store.list(scopeFor(tdoc)), history()]);
+        const captured = new Set(snapshots.map((snapshot) => snapshot.jobId).filter(Boolean));
+        return [
+            { id: 'current', name: '当前成绩' }, ...snapshots.map(snapshotOption),
+            ...jobs.filter((job) => !captured.has(String(job._id))).map((job) => ({
+                id: `history:${job._id}`, name: `重测前还原 · ${String(job._id).slice(-6)} · ${optionDate(new Date(job.createdAt))}`,
+            })),
+        ];
+    }
+
     class ResultsHandler extends Handler {
         tdoc!: Tdoc;
         private current?: Promise<ResultsData>;
@@ -189,14 +207,8 @@ export function applyResults(ctx: Context, dependencies: {
         private readCurrent = () => (this.current ||= load(this.tdoc));
         private readHistory = () => (this.history ||= rejudgeHistory(this.tdoc));
 
-        protected async readSource(source: string) {
-            if (source === 'current') return this.readCurrent();
-            if (/^history:[a-f0-9]{24}$/.test(source)) {
-                return readRejudge(this.tdoc, source.slice('history:'.length), await this.readHistory(), this.readCurrent);
-            }
-            const result = await store.read(scopeFor(this.tdoc), source);
-            if (!result) throw new NotFoundError('本场比赛没有这个成绩快照');
-            return result;
+        protected readSource(source: string) {
+            return readSource(this.tdoc, source, this.readCurrent, this.readHistory);
         }
 
         @param('board', Types.String, true)
@@ -206,16 +218,9 @@ export function applyResults(ctx: Context, dependencies: {
         @param('saved', Types.String, true)
         async get(_domainId: string, board = 'all', before = '', after = 'current', filter = '', saved = '') {
             const tdoc = this.tdoc;
-            const [snapshots, history, earlier, later] = await Promise.all([
-                store.list(scopeFor(tdoc)), this.readHistory(), before ? this.readSource(before) : undefined, this.readSource(after),
+            const [options, earlier, later] = await Promise.all([
+                sources(tdoc, this.readHistory), before ? this.readSource(before) : undefined, this.readSource(after),
             ]);
-            const captured = new Set(snapshots.map((snapshot) => snapshot.jobId).filter(Boolean));
-            const options: ResultOption[] = [
-                { id: 'current', name: '当前成绩' }, ...snapshots.map(snapshotOption),
-                ...history.filter((job) => !captured.has(String(job._id))).map((job) => ({
-                    id: `history:${job._id}`, name: `重测前还原 · ${String(job._id).slice(-6)} · ${optionDate(new Date(job.createdAt))}`,
-                })),
-            ];
             this.response.template = 'xcpcio_results.html';
             this.response.body = resultsPage({
                 tdoc, codeBase: resolverCodeBase(pkg.version), contestUrl: baseFor(tdoc), submissionsUrl: `/d/${encodeURIComponent(tdoc.domainId)}/record/`,
@@ -441,5 +446,5 @@ export function applyResults(ctx: Context, dependencies: {
         await capture(tdoc, id, 'manual', { label, operator });
         return id;
     }
-    return { beforeRejudge, reviewSummary, snapshot: snapshotNow };
+    return { beforeRejudge, reviewSummary, snapshot: snapshotNow, readSource, sources };
 }

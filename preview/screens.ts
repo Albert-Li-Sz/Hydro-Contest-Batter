@@ -7,27 +7,65 @@ import type { BoardSettings } from '../lib/settings';
 import { awardsFor, toScriptJson } from '../lib/settings';
 import { resolverBoards, resolverCodeBase } from '../lib/resolver-data';
 import { hideProblemLabels } from '../lib/ccpc-board';
+import { ScreenDevices, screenClient, deviceItem } from '../lib/screen-devices';
+import type { ContestLinks } from '../lib/links';
 import { ResolverSessions } from '../lib/resolver-sessions';
 import {
     decodePoster, defaultScreenConfig, groupSources, hiddenBeforeStart, intervalTypes, maxPosterImages, presentationItem,
-    reactionPlaylist, saveScreenConfig, screenCategories, screenData, ScreenError, screenLabels, screenProjection, ScreenType, screenTypes, screenVariants, standingsTypes,
+    eligibleScreenReaction, reactionPlaylist, saveScreenConfig, screenCategories, screenData, ScreenError, screenLabels, screenProjection, ScreenType, screenTypes, screenVariants, standingsTypes,
 } from '../lib/screens-data';
 
 /** Local preview of the big-screen pages. Mirrors lib/screens-routes.ts without Hydro or MongoDB. */
 export function createScreensPreview(env: Environment, logoNames: Record<string, string>, version: string, db: Context['db'],
     announcements: () => { subject: number; text: string; at: number }[] = () => [],
-    publicVideos = (_layoutId?: string) => [] as {layoutId:string; teamUid:number; firstSolve:boolean; accepted:boolean; url:string; team:string; problem:string}[],
-    reactionLayouts = () => [] as { id: string; name: string }[]) {
+    publicVideos = (_layoutId?: string) => [] as {id:string;layoutId:string; teamUid:number; firstSolve:boolean; accepted:boolean; url:string; team:string; problem:string}[],
+    reactionLayouts = () => [] as { id: string; name: string }[],
+    links?: ContestLinks, playVideo?: (req: IncomingMessage, res: ServerResponse) => void) {
     const codeBase = resolverCodeBase(version);
     const sessions = new ResolverSessions(db);
     const base = '/contest/demo';
     let config = defaultScreenConfig();
     let token = 'preview0000000000000000000000000000000000000000';
+    const devices = new ScreenDevices(db);
+    const indexes = devices.ensureIndexes();
+    const contestKey = 'system/demo';
+    links?.add({ id: 'screens', label: '大屏', status: async () => ({ count: 1, issuedAt: null }),
+        revoke: async () => { token = randomBytes(24).toString('hex'); return 1; } });
+    links?.add({ id: 'screen-devices', label: '大屏设备', status: () => devices.status(contestKey), revoke: () => devices.revoke(contestKey) });
     const images = new Map<string, ReturnType<typeof decodePoster>>();
     return async (request: IncomingMessage, response: ServerResponse, url: URL, data: BoardData, settings: BoardSettings) => {
-        const json = (value: unknown, status = 200) => response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(value));
+        if (!url.pathname.startsWith(base + '/screen') && !url.pathname.startsWith('/xcpcio-screen')) return false;
+        await indexes;
+        const cookie = /(?:^|;\s*)xcpcio_screen=([a-f0-9]{64})(?:;|$)/.exec(request.headers.cookie || '')?.[1];
+        const setCookie = (value: string) => response.setHeader('Set-Cookie', 'xcpcio_screen=' + value + '; Max-Age=31536000; Path=/xcpcio-screen; HttpOnly; SameSite=Lax');
+        let commands: object | null = null;
+        const json = (value: unknown, status = 200) => response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(commands ? { ...value as object, ...commands } : value));
         const boards = resolverBoards(data, settings, settings.showIdentity);
         try {
+            const site = '/xcpcio-screen';
+            if (url.pathname === base + '/screens/devices') {
+                if (request.method === 'POST') {
+                    let text = ''; for await (const chunk of request) { text += chunk; if (text.length > 8000) throw new ScreenError('设备请求过大'); }
+                    json(await devices.action(contestKey, JSON.parse(JSON.parse(text).payload), boards.map(b => b.id)));
+                } else json({ devices: await devices.list(contestKey) });
+                return true;
+            }
+            if (url.pathname === site) {
+                response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(env.render('xcpcio_screen_device.html', {
+                    codeBase, title: '大屏设备', runtimeJson: toScriptJson({ device: true, version, dataUrl: site + '/data', pairUrl: site + '/pair' }),
+                }));
+                return true;
+            }
+            if (url.pathname === site + '/pair' && request.method === 'POST') {
+                const result = await devices.pair(cookie, request.socket.remoteAddress || '');
+                if ('cookie' in result && result.cookie) setCookie(result.cookie);
+                json('code' in result ? { code: result.code, expiresAt: result.expiresAt } : { paired: true }); return true;
+            }
+            if (url.pathname.startsWith(site + '/k/')) {
+                const cookie = await devices.redeem(url.pathname.slice((site + '/k/').length));
+                if (!cookie) throw new ScreenError('启动链接已失效', 404);
+                setCookie(cookie); response.writeHead(302, { Location: site, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }).end(); return true;
+            }
             if (url.pathname === `${base}/screens`) {
                 if (request.method === 'POST') {
                     let text = '';
@@ -78,23 +116,43 @@ export function createScreensPreview(env: Environment, logoNames: Record<string,
                 return true;
             }
             const match = /^\/contest\/demo\/screen\/([^/]+)\/([a-z-]+)(\/data|\/images\/([a-f\d]{24}))?$/.exec(url.pathname);
-            if (!match) return false;
-            if (match[1] !== token || !screenTypes.includes(match[2] as ScreenType)) throw new ScreenError('大屏链接无效或已作废', 404);
-            const type = match[2] as ScreenType;
-            if (match[4]) {
-                const file = type === 'poster' && config.items.poster.images.includes(match[4]) ? images.get(match[4]) : undefined;
+            const pairedRoute = url.pathname.startsWith(site + '/');
+            if (!match && !pairedRoute) return false;
+            const device = pairedRoute ? await devices.authenticate(cookie) : null;
+            if (pairedRoute && !device) {
+                if (url.pathname === site + '/data') json({ paired: false }); else json({ error: '设备未配对' }, 404);
+                return true;
+            }
+            if (match && (match[1] !== token || !screenTypes.includes(match[2] as ScreenType))) throw new ScreenError('大屏链接无效或已作废', 404);
+            const type = device?.type || match![2] as ScreenType;
+            const mediaBase = device ? site : `${base}/screen/${token}/${type}`;
+            const item = deviceItem(type, config.items[type], device?.boardId);
+            const image = match?.[4] || (device && /^\/xcpcio-screen\/images\/([a-f0-9]{24})$/.exec(url.pathname)?.[1]);
+            if (image) {
+                const file = type === 'poster' && config.items.poster.images.includes(image) ? images.get(image) : undefined;
                 if (!file) throw new ScreenError('图片不存在', 404);
                 response.writeHead(200, { 'Content-Type': file.mime, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' }).end(file.data);
                 return true;
             }
-            if (!match[3]) {
+            if (device && url.pathname !== site + '/data') {
+                const id = decodeURIComponent(url.pathname.slice((site + '/videos/').length));
+                const teams = item.boardId === 'all' ? null : new Set(boards.find(b => b.id === item.boardId)?.teamIds || []);
+                const video = type === 'reactions' && url.pathname.startsWith(site + '/videos/') && publicVideos(item.layoutId || undefined)
+                    .find(v => v.id === id && eligibleScreenReaction(v, item, teams));
+                if (!video || !playVideo) throw new ScreenError('视频不可播放', 404);
+                playVideo(request, response); return true;
+            }
+            if (device) {
+                await devices.heartbeat(device, screenClient(JSON.parse(url.searchParams.get('client') || '{}'), request.socket.remoteAddress || '', request.headers['user-agent'] || ''));
+                commands = { paired: true, device: { id: device._id, name: device.name, scale: device.scale, reloadAt: device.reloadAt, identifyUntil: device.identifyUntil } };
+            }
+            if (match && !match[3]) {
                 response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(env.render('xcpcio_screen_view.html', {
                     codeBase, title: `${data.contest.contest_name} · ${screenLabels[type]}`,
                     runtimeJson: toScriptJson({ type, dataUrl: `${url.pathname}/data${url.search}` }),
                 }));
                 return true;
             }
-            const item = config.items[type];
             const head = { type, locale: config.locale, serverTime: Date.now(), title: data.contest.contest_name };
             if (url.searchParams.get('phase') === 'upcoming' && hiddenBeforeStart.has(type)) {
                 json({ ...head, notice: '比赛尚未开始' });
@@ -114,8 +172,8 @@ export function createScreensPreview(env: Environment, logoNames: Record<string,
             if (!board) { json({ ...head, notice: '所选分榜已不存在，请在大屏管理页重新选择' }); return true; }
             let payload: unknown;
             const problems = data.contest.problem_id as string[];
-            if (type === 'poster') payload = item.images.map((id) => `${base}/screen/${token}/poster/images/${id}`);
-            else if (type === 'reactions') payload = reactionPlaylist(publicVideos(item.layoutId || undefined), item, boardId === 'all' ? null : new Set(board?.teamIds));
+            if (type === 'poster') payload = item.images.map((id) => `${mediaBase}/images/${id}`);
+            else if (type === 'reactions') payload = reactionPlaylist(publicVideos(item.layoutId || undefined).map(v => ({ ...v, url: device ? mediaBase + '/videos/' + encodeURIComponent(v.id) : v.url })), item, boardId === 'all' ? null : new Set(board?.teamIds));
             else if (type === 'clarifications') payload = announcements().map((item) => ({
                 ...item, subject: item.subject === -1 ? '技术' : problems[item.subject - 101] || '',
             }));

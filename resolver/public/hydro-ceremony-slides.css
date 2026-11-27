@@ -1,0 +1,27 @@
+.ceremony-layout { display:grid; grid-template-columns:minmax(210px, 1fr) minmax(0, 3fr); gap:1rem; align-items:start; }
+.ceremony-layout .section { min-width:0; }
+#ceremony-form label { display:block; margin-bottom:.65rem; }
+#ceremony-form fieldset { border:0; padding:0; margin:0 0 .65rem; }
+#ceremony-form fieldset label { display:inline-block; margin:0 .7rem .2rem 0; }
+.ceremony-fields { display:grid; grid-template-columns:1fr 1fr; gap:.6rem; }
+.ceremony-stage { display:grid; place-items:center; width:100%; aspect-ratio:16/9; background:#000; outline-offset:2px; }
+.ceremony-stage:fullscreen, .ceremony-offline .ceremony-stage { height:100vh; width:100vw; }
+.ceremony-offline { margin:0; background:#000; overflow:hidden; }
+.ceremony-slide { --paper:#121b2d; --type:#fff5df; --accent:#e1bd77; position:relative; container-type:inline-size; display:flex; align-items:stretch; flex-direction:column; box-sizing:border-box; width:100%; aspect-ratio:16/9; overflow:hidden; color:var(--type); font:normal 400 16px/1.25 system-ui,"Microsoft YaHei","PingFang SC",sans-serif; background:var(--paper) center/cover no-repeat; }
+.ceremony-slide[data-theme=red] { --paper:#6a1823; --type:#fff4db; --accent:#f1cb7b; }
+.ceremony-slide[data-theme=blue] { --paper:#113a5a; --type:#edfaff; --accent:#8ad8e7; }
+.ceremony-slide[data-theme=light] { --paper:#faf5e9; --type:#272728; --accent:#785a2e; }
+.ceremony-slide::before { content:""; position:absolute; inset:2.2% 1.4%; border:1px solid var(--accent); opacity:.55; pointer-events:none; }
+.ceremony-slide[data-background]::before { display:none; }
+.ceremony-stage:fullscreen .ceremony-slide, .ceremony-offline .ceremony-slide { width:min(100vw, 177.7778vh); }
+.ceremony-slide header { display:flex; justify-content:space-between; align-items:baseline; gap:1em; padding:0 5%; font-size:1.75cqw; }
+.ceremony-slide h2 { font:700 4.3cqw/1.12 Georgia,"Songti SC","SimSun",serif; margin:.3em 5% .45em; color:inherit; }
+.ceremony-slide .ceremony-winners { flex:1; min-height:0; display:grid; align-content:center; grid-template-columns:repeat(var(--columns),minmax(0,1fr)); padding:0 5%; column-gap:2.2cqw; row-gap:.85cqw; }
+.ceremony-winner { display:flex; align-items:center; gap:.7cqw; min-width:0; }
+.ceremony-winner img { width:1.8em; height:1.8em; object-fit:contain; flex:none; }
+.ceremony-winner strong, .ceremony-winner small { display:block; overflow-wrap:anywhere; line-height:1.15; }
+.ceremony-winner small { font-size:.66em; margin-top:.15em; }
+.ceremony-slide footer { padding:.7% 5% 0; text-align:right; font-size:1.4cqw; }
+.ceremony-stage[data-black] .ceremony-slide { visibility:hidden; }
+.ceremony-preview .resolver-actions { margin:.8rem 0; display:flex; gap:.4rem; flex-wrap:wrap; }
+@media (max-width:760px) { .ceremony-layout { grid-template-columns:1fr; } }

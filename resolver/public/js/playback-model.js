@@ -40,3 +40,46 @@ export function nextAutomaticAction(game, actions, position) {
   if (step?.phase !== 'fast' && !enteringManual && !(step?.role === 'intro-bottom' && game.steps[nextIndex]?.phase === 'fast')) return null;
   return { index: nextIndex, delay: fastForwardDelayFor(game, index, nextIndex) };
 }
+
+/** Reveal order shared with the host's printable script. */
+export function tierOrder(award) {
+  const id = award.id;
+  if (id === 'honors') return 1;
+  if (id === 'high-honors') return 2;
+  if (id === 'highest-honors') return 3;
+  if (award.awardType === 'medal' || /^medal-|-medal$/.test(id)) return /bronze/.test(id) ? 4 : /silver/.test(id) ? 5 : 6;
+  if (/^podium-|^rank-|^winner$/.test(id) || award.awardType === 'winner' || award.awardType === 'rank') return 7;
+  return 0;
+}
+
+export function awardStops(game) {
+  const tiers = new Map();
+  for (const award of game.contest.awards || []) {
+    const tier = tierOrder(award);
+    if (!tier || award.displayMode === 'ignore') continue;
+    for (const id of award.teamIds) {
+      if (!tiers.has(id)) tiers.set(id, new Set());
+      tiers.get(id).add(tier);
+    }
+  }
+  const actions = actionIndicesFor(game.steps);
+  const reached = new Set();
+  const stops = new Set();
+  for (let i = 1; i < actions.length; i++) {
+    const step = game.steps[actions[i]];
+    if (step.type !== 'selectTeam' || step.teamIds?.length !== 1) continue;
+    for (const tier of tiers.get(step.teamIds[0]) || []) {
+      if (!reached.has(tier)) stops.add(actions[i - 1]);
+      reached.add(tier);
+    }
+  }
+  return [...stops];
+}
+
+export function nextAwardStop(game, actions, position, stops = awardStops(game)) {
+  return stops.find(index => index > (actions[position] ?? -1)) ?? null;
+}
+
+export function confirmPrevious(armedAt, now) {
+  return armedAt !== null && now >= armedAt && now - armedAt <= 1500;
+}

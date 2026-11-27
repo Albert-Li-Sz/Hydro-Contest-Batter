@@ -110,13 +110,13 @@
       "source": "public/js/play.js",
       "destination": "resolver/public/js/play.js",
       "sha256": "f567d13c8cf76352d046dbe9a3e98ddd0c097c2e46b093c25da3f719fd09f65f",
-      "modifiedSha256": "cb3993e74ac2922284ebf458c02c0a71f3374af9091bdedcb36a3dc1e375e5b6"
+      "modifiedSha256": "427ca0ab6eb52fb0635c8898b4f26a770076f930f77eb31e2a2a031e1f623aa4"
     },
     {
       "source": "public/js/playback-model.js",
       "destination": "resolver/public/js/playback-model.js",
       "sha256": "b0abe992806ed2da7895bfcda33ef152b1f4c6e5f1971a3a9b2d2c9d22e90623",
-      "modifiedSha256": "b0abe992806ed2da7895bfcda33ef152b1f4c6e5f1971a3a9b2d2c9d22e90623"
+      "modifiedSha256": "01c4265c34e83b9bd016b0368e2bc7203a033f7200e25db4ef1c665eb86cdc3c"
     },
     {
       "source": "public/js/playback-options.js",
@@ -134,7 +134,7 @@
       "source": "public/js/render/resolver-view.js",
       "destination": "resolver/public/js/render/resolver-view.js",
       "sha256": "a7ad7808df01fee371f753b5161452bd24c5800a58cf62cba7f7305b3bc689b1",
-      "modifiedSha256": "6dc4db9853b5fc0b908f604e2d0861dcca45a171a33d94da6938bffb97fd1b39"
+      "modifiedSha256": "c0c565b5a6d23d6631c1902a2af8cc0040b84abc3cbcc850e437a39213b316d4"
     },
     {
       "source": "public/js/render/shaded-rect.js",
@@ -170,13 +170,13 @@
       "source": "public/play.html",
       "destination": "templates/xcpcio_resolver_play.html",
       "sha256": "b99524cc2d9c548b978de1bb6d6efd39b12f5debf907bf5e693cd3a8683b30b7",
-      "modifiedSha256": "2b6def8c800deec198acc762be0ba29c566cae7c3d1dc29967f989631440bfdf"
+      "modifiedSha256": "c4203be467da5ad6b12986b153bd8d9d6015f8cfa24687ef1dc23e6e6301cb93"
     },
     {
       "source": "server/lib/engine.js",
       "destination": "resolver/server/lib/engine.js",
       "sha256": "b74872b78f03b96d06a0c40e94464f26d19326c6200808d9bb007e94bb39b0e1",
-      "modifiedSha256": "83eedf8a1d06d1397b827d0bc17c08031961fe0242fb8ce92eb386c18f42e6b7"
+      "modifiedSha256": "f1a0b38f0c86fda08dca0a1fd6c3b5dd236ee3a5b58c7e4d33ae277ecc8082d4"
     },
     {
       "source": "server/lib/limits.js",

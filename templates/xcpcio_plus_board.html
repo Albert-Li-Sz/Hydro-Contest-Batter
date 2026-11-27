@@ -9,6 +9,8 @@
       <div><h1 class="section__title">{{ tdoc.title }}</h1></div>
       <div class="xp-page-actions">
         {% if realtimeUrl %}<a class="button" href="{{ realtimeUrl }}">查看实时榜</a>{% endif %}
+        {% if audienceUrl %}<a class="button xp-view-switch" href="{{ audienceUrl }}">观众视角</a>{% endif %}
+        {% if managerUrl %}<a class="button xp-view-switch" href="{{ managerUrl }}">返回管理视角</a>{% endif %}
         {% if frozenUrl %}<a class="button" href="{{ frozenUrl }}">返回封榜视图</a>{% endif %}
         {% if publicUrl %}<a class="button" href="{{ publicUrl }}">免登录榜单</a>{% endif %}
         {% if settingsUrl %}<a class="button" href="{{ settingsUrl }}">榜单规则与奖项</a>{% endif %}

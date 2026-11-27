@@ -61,7 +61,7 @@ export function applyControl(ctx: Context, dependencies: {
             review,
             links: {
                 settings: `${base}/xcpcio-settings`, board: `${base}/scoreboard/xcpcio-plus`, publicBoard: board.publicAccess ? `${base}/xcpcio-public` : null,
-                results: `${base}/results`, certificates: `${base}/certificates`, jury: `${base}/jury`, integrity: `${base}/integrity`, review: `${base}/rejudge-review`, resolver: `${base}/resolver`, screens: `${base}/screens`,
+                results: `${base}/results`, ceremony: `${base}/ceremony`, certificates: `${base}/certificates`, jury: `${base}/jury`, integrity: `${base}/integrity`, review: `${base}/rejudge-review`, resolver: `${base}/resolver`, screens: `${base}/screens`,
                 reactions: `${base}/reactions/manage`, balloons: `${base}/balloons`, live: dependencies.live ? `${base}/live` : null, capture: dependencies.capture ? `${base}/live/capture` : null,
                 presence: `${base}/presence`, monitor: `${base}/monitor`, overview: `${base}/overview`, desk: `${base}/clarification-desk`,
                 printers: systemAdmin ? '/manage/xcpcio-printers' : null, rejudge: systemAdmin ? '/manage/xcpcio-rejudge' : null,

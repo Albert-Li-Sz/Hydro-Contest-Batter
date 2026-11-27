@@ -236,7 +236,15 @@ function parseTimestamp(value) {
 }
 
 /** Only keep logos/photos the browser can actually load (data: or http(s):). */
-function usableAsset(value) {
+export function usableAsset(value) {
+  if (typeof value === 'string' && value.startsWith('/d/')) {
+    const photo = /^\/d\/([^/?#\\]+)\/contest\/(?:[\da-f]{24}|demo)\/resolver\/photos\/[\da-f]{32}\.jpg$/.exec(value);
+    if (!photo) return null;
+    try {
+      const domain = decodeURIComponent(photo[1]);
+      return /^[\p{L}\p{N}._-]+$/u.test(domain) && domain !== '.' && domain !== '..' ? value : null;
+    } catch { return null; }
+  }
   // HydroXCPCIO: bundled logos and icons are served under the plugin prefix.
   if (typeof value === 'string' && /^\/hydro-resolver\/(?:logos\/[a-f\d]{12}\.webp|assets\/img\/[a-z-]+\.png)$/.test(value)) return value;
   if (value == null) return null;

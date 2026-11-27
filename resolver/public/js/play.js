@@ -1,4 +1,4 @@
-import { actionIndicesFor, startIndexFor, nextAutomaticAction } from './playback-model.js';
+import { actionIndicesFor, startIndexFor, nextAutomaticAction, awardStops, nextAwardStop, confirmPrevious } from './playback-model.js';
 import { AutomaticAdvance } from './automatic-advance.js';
 import { ResolverView } from './render/resolver-view.js';
 import { readJSONResponse } from './http.js';
@@ -71,8 +71,36 @@ const FS_HOT_ZONE_PX = 150; // distance from the bottom edge that reveals the ba
 const FS_HIDE_DELAY_MS = 450;
 
 const teamById = new Map();
+let awardTarget = null;
+let skipToTarget = false;
+let stops = [];
+let armedAt = null;
+function stopAdvance() {
+  awardTarget = null;
+  skipToTarget = false;
+  fastForward.stop();
+}
+function nextAdvance() {
+  if (!game) return null;
+  if (awardTarget === null) return nextAutomaticAction(game, actionIndices, actionPos);
+  if (index >= awardTarget) { awardTarget = null; return null; }
+  return { index: skipToTarget ? awardTarget : actionIndices[actionPos + 1], delay: skipToTarget ? 0 : 65 };
+}
+function goToAward() {
+  if (!game || !connected) return;
+  armedAt = null;
+  if (awardTarget !== null) {
+    skipToTarget = true;
+    fastForward.schedule();
+    return;
+  }
+  stopAdvance();
+  awardTarget = nextAwardStop(game, actionIndices, actionPos, stops);
+  if (awardTarget === null) { toast('已到最后一个奖区'); return; }
+  fastForward.start();
+}
 const fastForward = new AutomaticAdvance({
-  next: () => game ? nextAutomaticAction(game, actionIndices, actionPos) : null,
+  next: nextAdvance,
   advance: (target) => moveTo(target, { automatic: true }),
   changed: () => { if (game) updateHud(); },
 });
@@ -82,12 +110,12 @@ function connectionStatus(online) {
   playerRoot.classList.toggle('disconnected', !online);
   const badge = document.getElementById('hud-connection');
   if (badge) badge.textContent = online ? '进度已保存' : '连接中断 · 已暂停，等待同步';
-  if (!online) fastForward.stop();
+  if (!online) stopAdvance();
   updateHud();
 }
 
 function showError(message) {
-  fastForward.stop();
+  stopAdvance();
   ended = true;
   clearTimeout(pollTimer);
   loadingEl.hidden = true;
@@ -201,7 +229,7 @@ function goToStart() {
 }
 
 async function moveTo(targetIndex, { instant = false } = {}) {
-  if (instant) fastForward.stop();
+  if (instant) stopAdvance();
   if (!game || ended || !connected || transitioning || !actionIndices.includes(targetIndex)) return false;
   mutationEpoch++;
   transitioning = true;
@@ -219,7 +247,7 @@ async function moveTo(targetIndex, { instant = false } = {}) {
       return false;
     }
     if (response.status === 409) {
-      fastForward.stop();
+      stopAdvance();
       revision = data.playback.revision;
       rebuildTo(data.playback.index);
       toast('进度已在另一个页面更新，已暂停并同步');
@@ -254,7 +282,7 @@ async function syncPlayback() {
       if ([401, 403, 404].includes(response.status)) { syncing = false; showError('滚榜会话已删除或权限失效，请返回配置页'); return; }
       const data = await readJSONResponse(response);
       if (!transitioning && epoch === mutationEpoch && revision === before && data.playback.revision !== revision) {
-        fastForward.stop();
+        stopAdvance();
         revision = data.playback.revision;
         rebuildTo(data.playback.index);
       }
@@ -277,7 +305,8 @@ function applyActionAt(pos) {
 
 async function goNext() {
   if (!game) return;
-  fastForward.stop();
+  armedAt = null;
+  stopAdvance();
   if (actionPos + 1 >= actionIndices.length) {
     mode = 'end';
     updateHud();
@@ -288,9 +317,16 @@ async function goNext() {
   return moved;
 }
 
-function goPrevious() {
-  fastForward.stop();
+function goPrevious(guarded = false) {
+  stopAdvance();
   if (!game || actionPos <= 0) return;
+  const now = performance.now();
+  if (guarded === true && !isPreview && !confirmPrevious(armedAt, now)) {
+    armedAt = now;
+    toast('再按一次撤回上一步');
+    return;
+  }
+  armedAt = null;
   return moveTo(actionIndices[actionPos - 1], { instant: true, relative: -1 });
 }
 
@@ -301,7 +337,7 @@ let confirmResolve = null;
 function confirmAction({ title, message, ok }) {
   if (isPreview || !confirmEl) return Promise.resolve(true);
   confirmResolve?.(false);
-  fastForward.stop();
+  stopAdvance();
   document.getElementById('confirm-title').textContent = title;
   document.getElementById('confirm-message').textContent = message;
   document.getElementById('confirm-ok').textContent = ok;
@@ -438,6 +474,7 @@ function boot() {
     })
     .then(async (data) => {
       game = data;
+      stops = awardStops(game);
       steps = Array.isArray(data.steps) ? data.steps : [];
       actionIndices = actionIndicesFor(steps);
       revision = data.playback?.revision ?? 0;
@@ -521,12 +558,13 @@ function frame(now) {
 // Wiring ---------------------------------------------------------------
 
 btnRestart?.addEventListener('click', restart);
-btnPrev?.addEventListener('click', goPrevious);
+btnPrev?.addEventListener('click', () => goPrevious());
+document.getElementById('btn-award')?.addEventListener('click', goToAward);
 btnNext?.addEventListener('click', goNext);
 btnHelp?.addEventListener('click', () => toggleHelp());
 document.getElementById('help-close')?.addEventListener('click', () => toggleHelp(false));
 btnFull?.addEventListener('click', toggleFullscreen);
-btnFast?.addEventListener('click', () => fastForward.active ? fastForward.stop() : fastForward.start());
+btnFast?.addEventListener('click', () => fastForward.active ? stopAdvance() : fastForward.start());
 
 // Stage clicks follow ICPC Tools: click/tap advances, right click goes back one step.
 const stageEl = document.getElementById('stage');
@@ -534,14 +572,14 @@ stageEl?.addEventListener('pointerdown', (event) => {
   if (playerRoot.classList.contains('display-open') || event.button !== 0 || event.ctrlKey || event.metaKey) return;
   goNext();
 });
-window.addEventListener('resolver-calibrating', () => fastForward.stop());
+window.addEventListener('resolver-calibrating', () => stopAdvance());
 window.addEventListener('offline', () => connectionStatus(false));
 window.addEventListener('online', () => syncPlayback());
-window.addEventListener('pagehide', () => { fastForward.stop(); clearTimeout(pollTimer); });
+window.addEventListener('pagehide', () => { stopAdvance(); clearTimeout(pollTimer); });
 window.addEventListener('pageshow', (event) => { if (event.persisted && game && !ended) syncPlayback(); });
 stageEl?.addEventListener('contextmenu', (event) => {
   event.preventDefault();
-  if (!playerRoot.classList.contains('display-open')) goPrevious();
+  if (!playerRoot.classList.contains('display-open')) goPrevious(true);
 });
 document.getElementById('confirm-ok')?.addEventListener('click', () => closeConfirm(true));
 document.getElementById('confirm-cancel')?.addEventListener('click', () => closeConfirm(false));
@@ -589,7 +627,7 @@ window.addEventListener('keydown', (event) => {
   if (isTypingTarget(event.target)) return;
   if (event.ctrlKey || event.metaKey || event.altKey) return;
   if (key === 'Escape') {
-    if (fastForward.active) { fastForward.stop(); toast('自动滚榜已暂停'); return; }
+    if (fastForward.active) { stopAdvance(); toast('自动滚榜已暂停'); return; }
     if (!helpEl.hidden) {
       toggleHelp(false);
       return;
@@ -607,7 +645,7 @@ window.addEventListener('keydown', (event) => {
   if ([' ', 'Enter'].includes(key) && event.target instanceof Element && event.target.closest('button, a')) return;
   if (key === ' ' || key === 'Spacebar') {
     event.preventDefault();
-    if (event.shiftKey) goPrevious();
+    if (event.shiftKey) { if (!event.repeat) goPrevious(true); }
     else goNext();
     return;
   }
@@ -619,9 +657,10 @@ window.addEventListener('keydown', (event) => {
   }
   if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace', 'r', 'R', 'b', 'B'].includes(key)) {
     event.preventDefault();
-    goPrevious();
+    if (!event.repeat) goPrevious(true);
     return;
   }
+  if (key.toLowerCase() === 'j') { event.preventDefault(); if (!event.repeat) goToAward(); return; }
   if (key === 'Home' || key === '0') {
     event.preventDefault();
     restart();

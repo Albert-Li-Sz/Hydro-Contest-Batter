@@ -3,6 +3,7 @@
  * invite to the staging area and whom to call on stage, as the 2026 ICPC World Finals Rules describe the
  * ceremony. Awards that come with a team's reveal (最快解题奖, special awards) are announced where it is resolved.
  */
+import { tierOrder } from '../resolver/public/js/playback-model.js';
 import type { ResolverPayload } from './resolver-types';
 import { computeCells } from '../resolver/server/lib/engine.js';
 
@@ -16,16 +17,6 @@ export interface ScriptSegment {
     teams: ScriptTeam[];
 }
 
-// Least to most prestigious: the order tiers are reached when revealing from the bottom.
-const tierOrder = (award: GameAward) => {
-    const id = award.id;
-    if (id === 'honors') return 1;
-    if (id === 'high-honors') return 2;
-    if (id === 'highest-honors') return 3;
-    if (award.awardType === 'medal' || /^medal-|-medal$/.test(id)) return /bronze/.test(id) ? 4 : /silver/.test(id) ? 5 : 6;
-    if (/^podium-|^rank-|^winner$/.test(id) || award.awardType === 'winner' || award.awardType === 'rank') return 7;
-    return 0;
-};
 const stageTier = (order: number) => order >= 3;
 
 export function ceremonyScript(payload: Pick<ResolverPayload, 'snapshot' | 'game' | 'config'>) {

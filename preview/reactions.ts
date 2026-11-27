@@ -19,6 +19,17 @@ export function createReactionsPreview(env: Environment, version: string) {
     const at = Date.now();
     const url = base + '/sample.mp4';
     const sampleVideo = readFileSync(path.join(__dirname, '../resolver/public/assets/reaction-template/portrait-demo.mp4'));
+    function playSample(request: IncomingMessage, response: ServerResponse) {
+        const data = sampleVideo,
+            range = readRange(request.headers.range, data.length);
+        response
+            .writeHead(range ? 206 : 200, {
+                'Accept-Ranges': 'bytes',
+                'Content-Type': 'video/mp4',
+                ...(range ? { 'Content-Range': `bytes ${range.start}-${range.end}/${data.length}` } : {}),
+            })
+            .end(range ? data.subarray(range.start, range.end + 1) : data);
+    }
     const videos = [
         { rid: 's-2', teamUid: 102, team: '星河队', school: '南京晓庄学院', problem: 'A', firstSolve: true, offset: 0 },
         { rid: 's-5', teamUid: 105, team: '飞鸟队', school: '工程学院', problem: 'C', firstSolve: false, offset: 5000 },
@@ -112,15 +123,7 @@ export function createReactionsPreview(env: Environment, version: string) {
                 if (!file) json({ error: '图样不存在' }, 404);
                 else response.writeHead(200, { 'Content-Type': file.mime }).end(file.data);
             } else if (route === '/sample.mp4') {
-                const data = sampleVideo,
-                    range = readRange(request.headers.range, data.length);
-                response
-                    .writeHead(range ? 206 : 200, {
-                        'Accept-Ranges': 'bytes',
-                        'Content-Type': 'video/mp4',
-                        ...(range ? { 'Content-Range': `bytes ${range.start}-${range.end}/${data.length}` } : {}),
-                    })
-                    .end(range ? data.subarray(range.start, range.end + 1) : data);
+                playSample(request, response);
             } else if (route === '/manage/data') {
                 const list = target.searchParams.has('page') ? pageRows(videos, target.searchParams, true) : { videos };
                 json({
@@ -219,7 +222,7 @@ export function createReactionsPreview(env: Environment, version: string) {
     }
     return {
         handle,
-        visible,
+        visible, playSample,
         layouts: () => layouts.map(({ id, name }) => ({ id, name })),
         summary,
         setPublic: (enabled: boolean) => {

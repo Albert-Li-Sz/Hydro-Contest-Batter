@@ -7,3 +7,4 @@ export function computeCells(contest: ResolverContest, options?: { frozen?: bool
 };
 /** Loose shape: the big-screen adapter passes the normalized contest straight back to the renderer. */
 export function normalizeContest(input: Record<string, unknown>): Record<string, any>;
+export function usableAsset(value: unknown): string | null;

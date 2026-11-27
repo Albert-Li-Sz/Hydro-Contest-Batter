@@ -1,0 +1,33 @@
+{% set page_name = 'contest_xcpcio_ceremony' %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<link rel="stylesheet" href="{{ codeBase }}/hydro-config.css">
+<link id="ceremony-css" rel="stylesheet" href="{{ codeBase }}/hydro-ceremony-slides.css">
+<div class="row resolver-config ceremony-editor" id="hydro-resolver-config"><div class="medium-12 columns">
+  <section class="section visible"><div class="section__header resolver-heading">
+    <div><h1 class="section__title">颁奖幻灯片</h1><p class="resolver-muted">{{ tdoc.title }}</p></div>
+    <div class="resolver-actions"><a class="button" href="results">成绩快照与导出</a><a class="button" href="control#work">赛事工作台</a></div>
+  </div></section>
+  <div class="ceremony-layout">
+    <form id="ceremony-form" class="section visible"><div class="section__body">
+      <label>成绩来源<select class="select" name="source"></select></label>
+      <fieldset><legend>榜单</legend><div id="ceremony-boards"></div></fieldset>
+      <label>奖项顺序<select class="select" name="reverse"><option value="">特别奖至奖杯</option><option value="reverse">奖杯至特别奖</option></select></label>
+      <div class="ceremony-fields"><label>每页队数<input class="textbox" type="number" name="target" min="1" max="16" required></label><label>容差<input class="textbox" type="number" name="tolerance" min="0" max="4" required></label></div>
+      <fieldset><legend>显示内容</legend><label><input type="checkbox" name="showTitle"> 比赛标题</label><label><input type="checkbox" name="showSchool"> 学校</label><label><input type="checkbox" name="showMembers"> 队员</label></fieldset>
+      <label>主题<select class="select" name="theme"></select></label>
+      <label>自定义背景<input type="file" id="ceremony-background" accept="image/*"></label><button id="clear-background" class="button" type="button" hidden>移除背景</button>
+      <div class="ceremony-fields"><label>页眉留空（%）<input class="textbox" type="number" name="header" min="0" max="25" required></label><label>页脚留空（%）<input class="textbox" type="number" name="footer" min="0" max="25" required></label></div>
+      <button class="button primary" type="submit">保存设置</button>
+    </div></form>
+    <section class="section visible ceremony-preview"><div class="section__header resolver-heading"><h2 class="section__title">播放预览</h2><span id="ceremony-count" aria-live="polite"></span></div>
+      <div class="section__body"><div class="ceremony-stage" id="ceremony-stage" tabindex="0" aria-label="颁奖幻灯片播放"></div>
+        <div class="resolver-actions"><button id="ceremony-prev" class="button">上一页</button><button id="ceremony-next" class="button">下一页</button><button id="ceremony-play" class="button primary">全屏播放</button><button id="ceremony-export" class="button">下载离线网页</button></div>
+        <div role="status" id="ceremony-status"></div>
+      </div>
+    </section>
+  </div>
+</div></div>
+<script id="ceremony-runtime" type="application/json">{{ runtimeJson | safe }}</script>
+<script type="module" src="{{ codeBase }}/js/hydro-ceremony.js"></script>
+{% endblock %}

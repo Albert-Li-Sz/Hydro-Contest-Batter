@@ -11,6 +11,7 @@ import {
 import {
     type Account, ManageError, normalizeTeamEdit, normalizeUserEdit, PRIV_EDIT_SYSTEM, PRIV_JUDGE, protectedReason, searchPattern, uidList,
 } from '../lib/manage/users';
+import type { ContestLinks } from '../lib/links';
 import { createSeatsPreview } from './seats';
 
 /** The preview administrator's password for delete confirmations (local preview only). */
@@ -22,7 +23,7 @@ interface PreviewUser extends Account { mail: string; displayName: string; schoo
  * Local preview of the /manage pages (lib/manage-routes.ts) with in-memory accounts, teams, judges
  * and records, so the pages run without Hydro or MongoDB.
  */
-export function createManagePreview(env: Environment, version: string) {
+export function createManagePreview(env: Environment, version: string, demoLinks?: ContestLinks) {
     const codeBase = resolverCodeBase(version);
     const day = 86400_000;
     const now = Date.now();
@@ -119,7 +120,7 @@ export function createManagePreview(env: Environment, version: string) {
     const isJudge = (user: PreviewUser) => user.priv !== -1 && !!(user.priv & PRIV_JUDGE);
     const page = <T>(rows: T[], number: number) => rows.slice((number - 1) * 50, number * 50);
 
-    const seatsPreview = createSeatsPreview(users, teams, contests, (password) => verify(password));
+    const seatsPreview = createSeatsPreview(users, teams, contests, (password) => verify(password), demoLinks);
 
     async function operate(name: string, payload: any) {
         const seatResult = seatsPreview.operate(name, payload);
@@ -325,7 +326,7 @@ export function createManagePreview(env: Environment, version: string) {
                 }));
                 return true;
             }
-            const body = data(url.pathname, url.searchParams);
+            const body = await data(url.pathname, url.searchParams);
             if (!body) return false;
             json(body);
         } catch (error) {

@@ -3,6 +3,7 @@ import type { Context } from 'hydrooj';
 /** Preview/test storage only. Production always uses Hydro's MongoDB service. */
 export function previewDatabase() {
     const tables = new Map<string, Map<string, Record<string, any>>>();
+    const unique = new Map<string, { fields: string[]; sparse: boolean }[]>();
     const field = (row: Record<string, any>, key: string): any => key.split('.').reduce((value, part) => value?.[part], row);
     const changeField = (row: Record<string, any>, key: string, value: unknown, remove = false) => {
         const parts = key.split('.');
@@ -33,6 +34,7 @@ export function previewDatabase() {
         Object.entries(filter).every(([key, value]) => {
             if (key === '$or') return (value as Record<string, any>[]).some((part) => matches(row, part));
             const actual = field(row, key);
+            if (value instanceof RegExp) return value.test(actual);
             if (value instanceof Date) return actual instanceof Date && actual.getTime() === value.getTime();
             if (value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).every((name) => name in operators)) {
                 return Object.entries(value).every(([name, expected]) => operators[name](actual, expected));
@@ -43,17 +45,39 @@ export function previewDatabase() {
         collection(name: string) {
             if (!tables.has(name)) tables.set(name, new Map());
             const table = tables.get(name)!;
+            function checkUnique(row: Record<string, any>) {
+                for (const index of unique.get(name) || []) {
+                    if (index.sparse && index.fields.every(key => field(row, key) === undefined)) continue;
+                    for (const other of table.values()) if (other._id !== row._id && index.fields.every(key => field(other, key) === field(row, key))) {
+                        throw Object.assign(new Error('Duplicate key'), { code: 11000 });
+                    }
+                }
+            }
+            function write(row: Record<string, any>, update: Record<string, any>) {
+                const next = structuredClone(row);
+                updateRow(next, update);
+                checkUnique(next);
+                table.set(next._id, next);
+                return next;
+            }
             return {
-                async createIndex() { return 'preview'; },
+                async createIndex(fields: Record<string, number>, options?: { unique?: boolean; sparse?: boolean }) {
+                    if (options?.unique) {
+                        const indexes = unique.get(name) || [];
+                        const keys = Object.keys(fields);
+                        if (!indexes.some(index => index.fields.join('/') === keys.join('/'))) unique.set(name, [...indexes, { fields: keys, sparse: !!options.sparse }]);
+                    }
+                    return 'preview';
+                },
                 async insertOne(row: Record<string, any>) {
                     if (table.has(row._id)) throw Object.assign(new Error('Duplicate key'), { code: 11000 });
-                    table.set(row._id, structuredClone(row));
+                    checkUnique(row); table.set(row._id, structuredClone(row));
                     return { insertedId: row._id };
                 },
                 async insertMany(rows: Record<string, any>[]) {
                     for (const row of rows) {
                         if (table.has(row._id)) throw Object.assign(new Error('Duplicate key'), { code: 11000 });
-                        table.set(row._id, structuredClone(row));
+                        checkUnique(row); table.set(row._id, structuredClone(row));
                     }
                     return { insertedCount: rows.length };
                 },
@@ -77,30 +101,33 @@ export function previewDatabase() {
                         async toArray() { return rows; },
                     };
                 },
+                async updateMany(filter: Record<string, any>, update: Record<string, any>) {
+                    let modifiedCount = 0;
+                    for (const row of table.values()) if (matches(row, filter)) { write(row, update); modifiedCount++; }
+                    return { matchedCount: modifiedCount, modifiedCount };
+                },
                 async updateOne(filter: Record<string, any>, update: Record<string, any>, options: { upsert?: boolean } = {}) {
                     const row = [...table.values()].find((item) => matches(item, filter));
                     if (!row && options.upsert) {
                         const inserted = structuredClone({ ...filter, ...update.$setOnInsert });
-                        updateRow(inserted, update);
-                        table.set(inserted._id, inserted);
+                        write(inserted, update);
                         return { matchedCount: 0, upsertedCount: 1 };
                     }
                     if (!row) return { matchedCount: 0 };
-                    updateRow(row, update);
-                    return { matchedCount: 1 };
+                    write(row, update);
+                    return { matchedCount: 1, modifiedCount: 1 };
                 },
                 async findOneAndUpdate(filter: Record<string, any>, update: Record<string, any>, options: { returnDocument?: string; upsert?: boolean } = {}) {
                     let row = [...table.values()].find((item) => matches(item, filter));
                     if (!row && options.upsert) {
                         row = structuredClone({ ...filter, ...update.$setOnInsert }) as Record<string, any>;
-                        table.set(row._id, row);
-                        updateRow(row, update);
+                        row = write(row, update);
                         return options.returnDocument === 'after' ? structuredClone(row) : null;
                     }
                     if (!row) return null;
                     const before = structuredClone(row);
-                    updateRow(row, update);
-                    return options.returnDocument === 'after' ? structuredClone(row) : before;
+                    const after = write(row, update);
+                    return options.returnDocument === 'after' ? structuredClone(after) : before;
                 },
                 async deleteOne(filter: Record<string, any>) {
                     const row = [...table.values()].find((item) => matches(item, filter));

@@ -10,6 +10,7 @@ import { BoardSettings, checkBoardNames, defaultSettings, normalizeSettings, pru
 import { buildRosterTeam, defaultProfileFields, FilterField, rosterFields } from './lib/roster';
 import { replacementRequest } from './lib/access';
 import { describeTeam, memberIds, type TeamEntry } from './lib/teams';
+import { applyCeremony } from './lib/ceremony-routes';
 import { applyResolver } from './lib/resolver-routes';
 import { applyReactions } from './lib/reactions-routes';
 import { applyScreens } from './lib/screens-routes';
@@ -211,6 +212,16 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
         return applyBoardRules(applyJury(data, state, tdoc.pids, !realtime), settings, tdoc, Date.now(), realtime);
     };
     const respond = async (handler: Handler, tdoc: Tdoc, realtime: boolean, json: boolean, publicView = false, saved?: BoardSettings) => {
+        // Hydro's scoreboard route also calls its path parameter "view"; read the query itself.
+        const perspective = new URLSearchParams(handler.request.querystring).get('view');
+        const audience = !publicView && perspective === 'audience';
+        if (audience) {
+            handler.checkPriv(PRIV.PRIV_USER_PROFILE);
+            if (!handler.user.own(tdoc)) handler.checkPerm(PERM.PERM_EDIT_CONTEST);
+            if (!ContestModel.canShowScoreboard.call(handler, tdoc, false)) throw new ForbiddenError('比赛开始后才能查看榜单');
+            publicView = true;
+            realtime = false;
+        }
         const settings = saved || await loadSettings(tdoc);
         if (realtime && !handler.user.own(tdoc)) handler.checkPerm(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
         handler.response.addHeader('Cache-Control', 'no-store');
@@ -224,7 +235,7 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
         };
         if (json || handler.request.json) {
             const ttl = publicView ? publicTtl : authTtl;
-            const key = `${settingsKey(tdoc.domainId, `${tdoc.docId}`)}@${settingsVersion.get(settings) ?? 0}:${ended}:${frozen}:${realtime ? 1 : 0}:${identity ? 1 : 0}`;
+            const key = `${settingsKey(tdoc.domainId, `${tdoc.docId}`)}@${settingsVersion.get(settings) ?? 0}:${audience ? 'audience' : publicView ? 'public' : 'member'}:${ended}:${frozen}:${realtime ? 1 : 0}:${identity ? 1 : 0}`;
             const now = Date.now();
             for (const [cached, entry] of publicCache) if (entry.expires <= now) publicCache.delete(cached);
             let entry = publicCache.get(key);
@@ -239,24 +250,26 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
         const canManage = handler.user.own(tdoc) || handler.user.hasPerm(PERM.PERM_EDIT_CONTEST);
         const canRealtime = handler.user.own(tdoc) || handler.user.hasPerm(PERM.PERM_VIEW_CONTEST_HIDDEN_SCOREBOARD);
         const base = contestBase(tdoc);
-        const dataPath = publicView ? publicPath(tdoc) : `${base}/scoreboard/xcpcio-plus`;
+        const dataPath = publicView && !audience ? publicPath(tdoc) : `${base}/scoreboard/xcpcio-plus`;
         handler.response.template = 'xcpcio_plus_board.html';
         handler.response.body = {
             tdoc: publicView ? { title: tdoc.title, domainId: tdoc.domainId, docId: tdoc.docId } : tdoc,
-            settingsUrl: canManage ? `${base}/xcpcio-settings` : null,
+            audienceUrl: canManage && !audience ? `${base}/scoreboard/xcpcio-plus?view=audience` : null,
+            managerUrl: audience ? `${base}/scoreboard/xcpcio-plus?view=manager` : null,
+            settingsUrl: canManage && !audience ? `${base}/xcpcio-settings` : null,
             publicUrl: settings.publicAccess && !publicView ? publicPath(tdoc) : null,
             // Only while frozen does the realtime board differ from what everyone sees.
-            realtimeUrl: canRealtime && !realtime && ContestModel.isLocked(tdoc) ? `${base}/scoreboard/xcpcio-plus?realtime=true` : null,
+            realtimeUrl: !audience && canRealtime && !realtime && ContestModel.isLocked(tdoc) ? `${base}/scoreboard/xcpcio-plus?realtime=true` : null,
             frozenUrl: realtime ? `${base}/scoreboard/xcpcio-plus` : null,
             // Hydro's own 解除封榜 (ContestScoreboardHandler.postUnlock, which checks the permission again); it
             // needs the contest to have ended. Also on the public page, where managers land when it is enabled.
-            unlock: canManage && tdoc.lockAt && !tdoc.unlocked
+            unlock: !audience && canManage && tdoc.lockAt && !tdoc.unlocked
                 ? { url: `${base}/scoreboard`, ready: ContestModel.isDone(tdoc) } : null,
             // While the contest runs, the per-submission feed is for staff only. The page hides it;
             // the board data itself still needs every (result-masked) submission to rank.
-            hideSubmissions: !ContestModel.isDone(tdoc) && !canManage && !canRealtime,
+            hideSubmissions: !ContestModel.isDone(tdoc) && (audience || (!canManage && !canRealtime)),
             runtimeJson: toScriptJson({
-                dataSource: `${dataPath}?json=true${realtime ? '&realtime=true' : ''}#allInOne=true`,
+                dataSource: `${dataPath}?json=true${audience ? '&view=audience' : perspective === 'manager' ? '&view=manager' : ''}${realtime ? '&realtime=true' : ''}#allInOne=true`,
                 refreshInterval: config.refreshInterval,
             }),
             assetBase: manifest.base, js: manifest.js, css: manifest.css, realtime,
@@ -356,11 +369,11 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     }
 
     ctx.Route('contest_xcpcio_plus_settings', '/contest/:tid/xcpcio-settings', SettingsHandler);
-    const resolver = applyResolver(ctx, { loadSettings, loadData, sessionDays: config.resolverSessionDays ?? 0 });
+    const links = new ContestLinks<Tdoc>();
+    const resolver = applyResolver(ctx, { links, loadSettings, loadData, sessionDays: config.resolverSessionDays ?? 0 });
     const monitor = applyMonitor(ctx);
     // 气球配送: its balloons feed the 气球配送图 screen, its tickets the print servers' receipt printers.
     // Links that work without a Hydro login register here, so they can be revoked after the contest.
-    const links = new ContestLinks<Tdoc>();
     const balloons = applyBalloons(ctx, { loadSettings, links, jury: jury.load });
     const reactions = config.live !== false && config.liveCapture !== false ? applyReactions(ctx, {
         loadSettings, loadData: loadContestData, links, screenDuringContest: async (tdoc): Promise<boolean> => (await live?.capture?.get(tdoc))?.screenDuringContest ?? false,
@@ -370,6 +383,7 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     applyOverview(ctx, { loadSettings, loadData });
     const results = applyResults(ctx, { loadSettings, loadData, statusOf: boardStatus, resolver });
     applyCertificates(ctx, { loadSettings, snapshot: results.snapshot });
+    applyCeremony(ctx, results);
     const juryRoutes = applyJuryRoutes(ctx, { store: jury, loadData: (tdoc) => loadData(tdoc, true, true, true), snapshot: results.snapshot });
     applyIntegrity(ctx, { loadData: (tdoc) => loadData(tdoc, true, true, true), snapshot: results.snapshot, jury: jury.load });
     applyCcs(ctx, { loadSettings, loadData: loadContestData, loadJury: jury.load });

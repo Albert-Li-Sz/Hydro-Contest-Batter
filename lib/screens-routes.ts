@@ -13,12 +13,13 @@ import { ResolverSessions } from './resolver-sessions';
 import type { BalloonScreenData } from './balloon-routes';
 import type { ContestLinks } from './links';
 import {
-    broadcastRows, decodePoster, defaultScreenConfig, groupSources, hiddenBeforeStart, intervalTypes, isPosterId, judgeScreen,
+    broadcastRows, decodePoster, imageBytes, defaultScreenConfig, groupSources, hiddenBeforeStart, intervalTypes, isPosterId, judgeScreen,
     eligibleScreenReaction, maxPosterImages, reactionPlaylist, type ScreenReaction, normalizeScreenConfig, presentationItem, problemRows, saveScreenConfig, screenCategories, ScreenConfig,
     screenData, ScreenError, screenLabels, screenProjection, ScreenType, screenTypes, screenVariants, standingsTypes,
 } from './screens-data';
 import { judgeHealth } from './manage/judges';
 import type { MonitorMachine } from './monitor';
+import { ScreenDevices, deviceItem, screenClient, type ScreenDevice } from './screen-devices';
 import { seatOf } from './print';
 import { isTeamEntry, loadSeats, memberIds, type TeamEntry } from './teams';
 
@@ -55,6 +56,8 @@ export function applyScreens(ctx: Context, dependencies: {
     /** The contest's no-login links, revoked together after the contest (lib/links.ts). */
     links?: ContestLinks<Tdoc>;
 }) {
+    const devices = new ScreenDevices(ctx.db);
+    ctx.on('app/started', () => devices.ensureIndexes());
     const collection = ctx.db.collection('xcpcio.screens');
     const media = ctx.db.collection('xcpcio.screens.media');
     const sessions = new ResolverSessions(ctx.db);
@@ -87,15 +90,17 @@ export function applyScreens(ctx: Context, dependencies: {
     ctx.on('contest/del', async (domainId, tid) => {
         const id = `${domainId}/${tid}`;
         await Promise.all([
-            collection.deleteOne({ _id: id }),
+            devices.remove(id), collection.deleteOne({ _id: id }),
             media.deleteMany({ _id: new RegExp(`^${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`) }),
         ]).catch(() => null);
     });
     ctx.on('domain/delete', async (domainId) => {
         const pattern = new RegExp(`^${domainId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`);
-        await Promise.all([collection.deleteMany({ _id: pattern }), media.deleteMany({ _id: pattern })]).catch(() => null);
+        await Promise.all([devices.remove(pattern), collection.deleteMany({ _id: pattern }), media.deleteMany({ _id: pattern })]).catch(() => null);
     });
 
+    dependencies.links?.add({ id: 'screen-devices', label: '大屏设备',
+        status: tdoc => devices.status(key(tdoc)), revoke: tdoc => devices.revoke(key(tdoc)) });
     dependencies.links?.add({
         id: 'screens', label: '大屏',
         async status(tdoc) {
@@ -302,139 +307,231 @@ export function applyScreens(ctx: Context, dependencies: {
         }
     }
 
+    async function serveImage(handler: Handler, doc: ScreenDoc, type: ScreenType, id: string) {
+        if (type !== 'poster' || !isPosterId(id) || !doc.config.items.poster.images.includes(id)) throw new NotFoundError('Poster not found');
+        const file = await media.findOne({ _id: `${doc._id}/${id}` });
+        if (!file) throw new NotFoundError('Poster not found');
+        handler.response.addHeader('X-Content-Type-Options', 'nosniff');
+        handler.response.addHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+        handler.response.type = file.mime;
+        handler.response.body = imageBytes(file.data);
+    }
+    async function serveVideo(handler: Handler, tdoc: Tdoc, doc: ScreenDoc, type: ScreenType, id: string, boardId?: string | null) {
+        if (type !== 'reactions' || !dependencies.playScreenVideo || !ContestModel.canShowScoreboard.call(handler, tdoc, false)) {
+            throw new NotFoundError('视频不可播放');
+        }
+        const item = deviceItem(type, doc.config.items.reactions, boardId);
+        const teams = await screenTeamIds(tdoc, item.boardId);
+        await dependencies.playScreenVideo(tdoc, item.layoutId || '', id, handler, video => eligibleScreenReaction(video, item, teams));
+    }
     class ScreenImageHandler extends ScreenPublicHandler {
         notUsage = true;
-
         @param('mid', Types.String)
-        async get(_domainId: string, id: string) {
-            if (this.type !== 'poster' || !isPosterId(id) || !this.doc.config.items.poster.images.includes(id)) throw new NotFoundError('Poster not found');
-            const file = await media.findOne({ _id: `${this.doc._id}/${id}` });
-            if (!file) throw new NotFoundError('Poster not found');
-            this.response.addHeader('X-Content-Type-Options', 'nosniff');
-            this.response.addHeader('Content-Security-Policy', "default-src 'none'; sandbox");
-            this.response.type = file.mime;
-            this.response.body = Buffer.isBuffer(file.data) ? file.data : Buffer.from((file.data as unknown as { value: () => Uint8Array }).value());
-        }
+        async get(_domain: string, id: string) { await serveImage(this, this.doc, this.type, id); }
     }
-
     class ScreenReactionHandler extends ScreenPublicHandler {
         notUsage = true;
-
         @param('vid', Types.String)
-        async get(_domainId: string, id: string) {
-            if (this.type !== 'reactions' || !dependencies.playScreenVideo || !ContestModel.canShowScoreboard.call(this, this.tdoc, false)) {
-                throw new NotFoundError('视频不可播放');
-            }
-            const item = this.doc.config.items.reactions;
-            const teams = await screenTeamIds(this.tdoc, item.boardId);
-            await dependencies.playScreenVideo(this.tdoc, item.layoutId || '', id, this, video => eligibleScreenReaction(video, item, teams));
-        }
+        async get(_domain: string, id: string) { await serveVideo(this, this.tdoc, this.doc, this.type, id); }
     }
 
+    async function readScreen(handler: Handler, tdoc: Tdoc, doc: ScreenDoc, type: ScreenType, mediaBase: string,
+        boardId?: string | null, revision?: number, known?: string, index?: number) {
+        const { locale, items } = doc.config;
+        const item = deviceItem(type, items[type], boardId);
+        const base = { type, locale, serverTime: Date.now() };
+        if (type === 'resolver') {
+            const session = item.sessionId ? await sessions.find(tdoc.domainId, String(tdoc.docId), item.sessionId) : null;
+            if (!session) {
+                return { ...base, notice: item.sessionId ? '滚榜会话已结束或删除，请重新投屏' : '等待主持人投到观众屏' };
+            }
+            return { ...base, session: session._id, ...await sessions.audience(session, known, revision, index) };
+        }
+        // Like the public board, standings stay hidden until the contest starts.
+        if (hiddenBeforeStart.has(type) && !ContestModel.canShowScoreboard.call(handler, tdoc, false)) {
+            return { ...base, notice: '比赛尚未开始' };
+        }
+        const contest = contestClock(tdoc);
+        const program = presentationItem(type, item, contest);
+        try {
+            let payload: unknown;
+            if (type === 'poster') payload = item.images.map((id) => `${mediaBase}/images/${id}`);
+            else if (type === 'reactions') {
+                const [videos, teams] = await Promise.all([
+                    dependencies.screenVideos?.(tdoc, item.layoutId || undefined) ?? [],
+                    screenTeamIds(tdoc, item.boardId),
+                ]);
+                payload = reactionPlaylist(videos.map(v => ({ ...v, url: `${mediaBase}/videos/${encodeURIComponent(v.id)}` })), item, teams);
+            }
+            else if (type === 'clarifications') payload = await cached(`${key(tdoc)}|broadcast`, async () => broadcastRows(
+                await ContestModel.getMultiClarification(tdoc.domainId, tdoc.docId, 0), tdoc.pids, labelsOf(tdoc),
+            ));
+            else if (type === 'problem-list') payload = await cached(`${key(tdoc)}|problems`, async () => problemRows(tdoc.pids,
+                await ProblemModel.getList(tdoc.domainId, tdoc.pids, true, false, ['docId', 'title', 'config'], true), (await balloonColorsOf(tdoc)).colors, labelsOf(tdoc),
+            ));
+            else if (type === 'problem-colors') {
+                const { perTeam, colors } = await balloonColorsOf(tdoc);
+                if (perTeam) throw new ScreenError('每队使用各自的颜色对应时不显示题目颜色');
+                payload = screenData({ ...contest, contest: { ...contest.contest, balloon_color: colors.map((background_color) => ({ background_color })) } },
+                    null, { logoNames, locked: false, firstSolve: false, unofficialFirstSolve: false });
+            }
+            else if (type === 'judges') payload = await cached('judges', async () => {
+                const now = Date.now();
+                const [machines, count] = await Promise.all([dependencies.machines(now), TaskModel.count({ type: 'judge' })]);
+                return judgeScreen(judgeHealth(now, machines, count), count);
+            });
+            else if (!standingsTypes.has(type)) payload = screenData(contest, null, { logoNames, locked: false, firstSolve: false, unofficialFirstSolve: false });
+            else {
+                const boardId = item.boardId;
+                const locked = ContestModel.isLocked(tdoc);
+                const withSeats = type === 'floor' || type === 'balloons';
+                const options = type === 'groups' ? item.source : type === 'rank-trend' ? type : withSeats ? 'seats' : '';
+                const prefix = `${key(tdoc)}|${tdoc.beginAt.getTime()}|${tdoc.endAt.getTime()}|${tdoc.lockAt?.getTime() || ''}|${locked}`;
+                const projection = await cached(`${prefix}|${boardId}|${options}`, async () => {
+                    const [{ settings, data, boards }, seats] = await Promise.all([cached(`${prefix}|source`, () => source(tdoc)),
+                        withSeats ? cached(`${prefix}|seat-list`, () => contestSeats(tdoc)) : undefined]);
+                    const board = boards.find((candidate) => candidate.id === boardId);
+                    if (!board) throw new ScreenError('所选分榜已不存在，请在大屏管理页重新选择', 404);
+                    const rules = awardsFor(settings, boardId);
+                    return screenData(data, boardId === 'all' ? null : new Set(board.teamIds), {
+                        logoNames, locked, seats, trend: type === 'rank-trend',
+                        groups: type === 'groups' && item.source === 'boards' ? boards.filter((group) => group.id !== 'all') : null,
+                        firstSolve: rules.firstSolve, unofficialFirstSolve: rules.unofficialFirstSolve, tieBreak: rules.tieBreak,
+                    });
+                });
+                if (type === 'logo-wall' && !projection.contest.organizations.length) throw new ScreenError('暂无可展示的学校，请检查公开榜的学校显示设置');
+                // CCPC 新榜单模式: before the freeze the board's columns are not problems.
+                if (type === 'balloons' && (await cached(`${prefix}|source`, () => source(tdoc))).data.hiddenFrom !== undefined) {
+                    throw new ScreenError('封榜前隐藏题号时不显示气球配送图');
+                }
+                const balloons = type === 'balloons' ? await cached(`${prefix}|balloons`, async () => {
+                    // 气球配送 tracks the balloons itself when the contest uses it (also after the freeze, in its colours).
+                    const own = await dependencies.balloons?.(tdoc);
+                    if (own?.withheld) throw new ScreenError('按队配色或统一一血气球时不显示气球配送图');
+                    if (own) return own;
+                    const index = new Map(tdoc.pids.map((pid, i) => [pid, String(i)]));
+                    const rows = await ContestModel.getMultiBalloon(tdoc.domainId, tdoc.docId, { sent: { $exists: false } })
+                        .project<{ _id: ObjectId; uid: number; pid: number }>({ uid: 1, pid: 1 }).toArray();
+                    return { pending: rows.flatMap((row) => index.has(row.pid) ? [{ teamId: String(row.uid), problemId: index.get(row.pid)!, submissionId: String(row._id) }] : []), colors: null };
+                }) : undefined;
+                payload = screenProjection(type, item, projection, balloons?.pending);
+                // The colours 气球配送 sets for its tickets are the balloons' colours on the screen too.
+                if (balloons?.colors && payload && typeof payload === 'object' && Array.isArray((payload as { problems?: unknown }).problems)) {
+                    for (const problem of (payload as { problems: { id: string; color: string }[] }).problems) {
+                        const color = balloons.colors[Number(problem.id)];
+                        if (color) problem.color = color;
+                    }
+                }
+            }
+            return { ...base, item: program, data: payload, title: tdoc.title };
+        } catch (error) {
+            if (!(error instanceof ScreenError)) throw error;
+            return { ...base, notice: error.message };
+        }
+    }
     class ScreenDataHandler extends ScreenPublicHandler {
         @param('revision', Types.Int, true)
         @param('session', Types.String, true)
         @param('index', Types.Int, true)
-        async get(_domainId: string, revision?: number, known?: string, index?: number) {
-            const { locale, items } = this.doc.config;
-            const item = items[this.type];
-            const base = { type: this.type, locale, serverTime: Date.now() };
-            if (this.type === 'resolver') {
-                const session = item.sessionId ? await sessions.find(this.tdoc.domainId, String(this.tdoc.docId), item.sessionId) : null;
-                if (!session) {
-                    this.response.body = { ...base, notice: item.sessionId ? '滚榜会话已结束或删除，请重新投屏' : '等待主持人投到观众屏' };
-                    return;
-                }
-                this.response.body = { ...base, session: session._id, ...await sessions.audience(session, known, revision, index) };
-                return;
-            }
-            // Like the public board, standings stay hidden until the contest starts.
-            if (hiddenBeforeStart.has(this.type) && !ContestModel.canShowScoreboard.call(this, this.tdoc, false)) {
-                this.response.body = { ...base, notice: '比赛尚未开始' };
-                return;
-            }
-            const { tdoc, type } = this;
-            const contest = contestClock(tdoc);
-            const program = presentationItem(type, item, contest);
-            try {
-                let payload: unknown;
-                if (type === 'poster') payload = item.images.map((id) => `${contestBase(tdoc)}/screen/${this.doc.token}/poster/images/${id}`);
-                else if (type === 'reactions') {
-                    const [videos, teams] = await Promise.all([
-                        dependencies.screenVideos?.(tdoc, item.layoutId || undefined) ?? [],
-                        screenTeamIds(tdoc, item.boardId),
-                    ]);
-                    const mediaBase = `${contestBase(tdoc)}/screen/${this.doc.token}/reactions/videos/`;
-                    payload = reactionPlaylist(videos.map(v => ({ ...v, url: mediaBase + encodeURIComponent(v.id) })), item, teams);
-                }
-                else if (type === 'clarifications') payload = await cached(`${key(tdoc)}|broadcast`, async () => broadcastRows(
-                    await ContestModel.getMultiClarification(tdoc.domainId, tdoc.docId, 0), tdoc.pids, labelsOf(tdoc),
-                ));
-                else if (type === 'problem-list') payload = await cached(`${key(tdoc)}|problems`, async () => problemRows(tdoc.pids,
-                    await ProblemModel.getList(tdoc.domainId, tdoc.pids, true, false, ['docId', 'title', 'config'], true), (await balloonColorsOf(tdoc)).colors, labelsOf(tdoc),
-                ));
-                else if (type === 'problem-colors') {
-                    const { perTeam, colors } = await balloonColorsOf(tdoc);
-                    if (perTeam) throw new ScreenError('每队使用各自的颜色对应时不显示题目颜色');
-                    payload = screenData({ ...contest, contest: { ...contest.contest, balloon_color: colors.map((background_color) => ({ background_color })) } },
-                        null, { logoNames, locked: false, firstSolve: false, unofficialFirstSolve: false });
-                }
-                else if (type === 'judges') payload = await cached('judges', async () => {
-                    const now = Date.now();
-                    const [machines, count] = await Promise.all([dependencies.machines(now), TaskModel.count({ type: 'judge' })]);
-                    return judgeScreen(judgeHealth(now, machines, count), count);
-                });
-                else if (!standingsTypes.has(type)) payload = screenData(contest, null, { logoNames, locked: false, firstSolve: false, unofficialFirstSolve: false });
-                else {
-                    const boardId = item.boardId;
-                    const locked = ContestModel.isLocked(tdoc);
-                    const withSeats = type === 'floor' || type === 'balloons';
-                    const options = type === 'groups' ? item.source : type === 'rank-trend' ? type : withSeats ? 'seats' : '';
-                    const prefix = `${key(tdoc)}|${tdoc.beginAt.getTime()}|${tdoc.endAt.getTime()}|${tdoc.lockAt?.getTime() || ''}|${locked}`;
-                    const projection = await cached(`${prefix}|${boardId}|${options}`, async () => {
-                        const [{ settings, data, boards }, seats] = await Promise.all([cached(`${prefix}|source`, () => source(tdoc)),
-                            withSeats ? cached(`${prefix}|seat-list`, () => contestSeats(tdoc)) : undefined]);
-                        const board = boards.find((candidate) => candidate.id === boardId);
-                        if (!board) throw new ScreenError('所选分榜已不存在，请在大屏管理页重新选择', 404);
-                        const rules = awardsFor(settings, boardId);
-                        return screenData(data, boardId === 'all' ? null : new Set(board.teamIds), {
-                            logoNames, locked, seats, trend: type === 'rank-trend',
-                            groups: type === 'groups' && item.source === 'boards' ? boards.filter((group) => group.id !== 'all') : null,
-                            firstSolve: rules.firstSolve, unofficialFirstSolve: rules.unofficialFirstSolve, tieBreak: rules.tieBreak,
-                        });
-                    });
-                    if (type === 'logo-wall' && !projection.contest.organizations.length) throw new ScreenError('暂无可展示的学校，请检查公开榜的学校显示设置');
-                    // CCPC 新榜单模式: before the freeze the board's columns are not problems.
-                    if (type === 'balloons' && (await cached(`${prefix}|source`, () => source(tdoc))).data.hiddenFrom !== undefined) {
-                        throw new ScreenError('封榜前隐藏题号时不显示气球配送图');
-                    }
-                    const balloons = type === 'balloons' ? await cached(`${prefix}|balloons`, async () => {
-                        // 气球配送 tracks the balloons itself when the contest uses it (also after the freeze, in its colours).
-                        const own = await dependencies.balloons?.(tdoc);
-                        if (own?.withheld) throw new ScreenError('按队配色或统一一血气球时不显示气球配送图');
-                        if (own) return own;
-                        const index = new Map(tdoc.pids.map((pid, i) => [pid, String(i)]));
-                        const rows = await ContestModel.getMultiBalloon(tdoc.domainId, tdoc.docId, { sent: { $exists: false } })
-                            .project<{ _id: ObjectId; uid: number; pid: number }>({ uid: 1, pid: 1 }).toArray();
-                        return { pending: rows.flatMap((row) => index.has(row.pid) ? [{ teamId: String(row.uid), problemId: index.get(row.pid)!, submissionId: String(row._id) }] : []), colors: null };
-                    }) : undefined;
-                    payload = screenProjection(type, item, projection, balloons?.pending);
-                    // The colours 气球配送 sets for its tickets are the balloons' colours on the screen too.
-                    if (balloons?.colors && payload && typeof payload === 'object' && Array.isArray((payload as { problems?: unknown }).problems)) {
-                        for (const problem of (payload as { problems: { id: string; color: string }[] }).problems) {
-                            const color = balloons.colors[Number(problem.id)];
-                            if (color) problem.color = color;
-                        }
-                    }
-                }
-                this.response.body = { ...base, item: program, data: payload, title: tdoc.title };
-            } catch (error) {
-                if (!(error instanceof ScreenError)) throw error;
-                this.response.body = { ...base, notice: error.message };
-            }
+        async get(_domain: string, revision?: number, known?: string, index?: number) {
+            this.response.body = await readScreen(this, this.tdoc, this.doc, this.type,
+                `${contestBase(this.tdoc)}/screen/${this.doc.token}/${this.type}`, null, revision, known, index);
         }
     }
 
+    class DeviceAdminHandler extends ScreensHandler {
+        async get() { this.response.body = { devices: await devices.list(key(this.tdoc)) }; }
+        @param('payload', Types.String)
+        async post(_domain: string, payload: string) {
+            let input;
+            try { input = JSON.parse(payload); } catch { throw new ScreenError('设备设置无效'); }
+            if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ScreenError('设备设置无效');
+            const boardIds = input.boardId ? (await source(this.tdoc)).boards.map(b => b.id) : [];
+            if (input.action === 'claim') await loadDoc(this.tdoc, this.user._id);
+            this.response.body = await devices.action(key(this.tdoc), input, boardIds);
+        }
+    }
+    const deviceBase = '/xcpcio-screen';
+    const cookieName = 'xcpcio_screen';
+    class DeviceHandler extends Handler {
+        noCheckPermView = true;
+        notUsage = true;
+        async prepare() {
+            this.response.addHeader('Cache-Control', 'private, no-store');
+            this.response.addHeader('Referrer-Policy', 'no-referrer');
+        }
+        cookie() { return this.context.cookies.get(cookieName, { signed: false }); }
+        setCookie(value: string) {
+            this.context.cookies.set(cookieName, value, { signed: false, httpOnly: true, sameSite: 'lax',
+                path: deviceBase, maxAge: 365 * 86400000, secure: this.context.secure });
+        }
+        async get() {
+            this.response.template = 'xcpcio_screen_device.html';
+            this.response.body = { codeBase, title: '大屏设备', runtimeJson: toScriptJson({
+                device: true, version: codeBase.split('/').pop(), dataUrl: deviceBase + '/data', pairUrl: deviceBase + '/pair',
+            }) };
+        }
+        async onerror(error: Parameters<Handler['onerror']>[0] | ScreenError) {
+            if (error instanceof ScreenError) { this.response.status = error.status; this.response.body = { error: error.message }; return; }
+            return super.onerror(error);
+        }
+    }
+    class PairHandler extends DeviceHandler {
+        async post() {
+            const result = await devices.pair(this.cookie(), this.request.ip);
+            if ('cookie' in result && result.cookie) this.setCookie(result.cookie);
+            this.response.body = 'code' in result ? { code: result.code, expiresAt: result.expiresAt } : { paired: true };
+        }
+    }
+    class KioskHandler extends DeviceHandler {
+        @param('token', Types.String)
+        async get(_domain?: string, token = '') {
+            const cookie = await devices.redeem(token);
+            if (!cookie) throw new NotFoundError('启动链接已失效');
+            this.setCookie(cookie); this.response.redirect = deviceBase;
+        }
+    }
+    async function boundContest(device: ScreenDevice) {
+        const [domain, tid] = device.contestKey.split('/');
+        const tdoc = await ContestModel.get(domain, new ObjectId(tid));
+        const doc = tdoc?.rule === 'acm' ? await loadDoc(tdoc) : null;
+        if (!tdoc || !doc) throw new ScreenError('比赛已删除', 404);
+        return { tdoc, doc };
+    }
+    class DeviceDataHandler extends DeviceHandler {
+        @param('revision', Types.Int, true)
+        @param('session', Types.String, true)
+        @param('index', Types.Int, true)
+        async get(_domain?: string, revision?: number, known?: string, index?: number) {
+            const device = await devices.authenticate(this.cookie());
+            if (!device) { this.response.body = { paired: false }; return; }
+            const { tdoc, doc } = await boundContest(device);
+            let raw;
+            try { raw = JSON.parse(this.request.query.client || '{}'); } catch { throw new ScreenError('设备状态无效'); }
+            await devices.heartbeat(device, screenClient(raw, this.request.ip, this.request.headers['user-agent'] || ''));
+            const data = await readScreen(this, tdoc, doc, device.type, deviceBase, device.boardId, revision, known, index);
+            this.response.body = { ...data, paired: true, device: { id: device._id, name: device.name, scale: device.scale,
+                identifyUntil: device.identifyUntil, reloadAt: device.reloadAt } };
+        }
+    }
+    class DeviceMediaHandler extends DeviceHandler {
+        @param('kind', Types.String)
+        @param('id', Types.String)
+        async get(_domain?: string, kind = '', id = '') {
+            const device = await devices.authenticate(this.cookie());
+            if (!device) throw new NotFoundError('设备未配对');
+            const { tdoc, doc } = await boundContest(device);
+            if (kind === 'images') await serveImage(this, doc, device.type, id);
+            else if (kind === 'videos') await serveVideo(this, tdoc, doc, device.type, id, device.boardId);
+            else throw new NotFoundError('未知素材');
+        }
+    }
+    ctx.Route('xcpcio_screen_device', deviceBase, DeviceHandler);
+    ctx.Route('xcpcio_screen_pair', deviceBase + '/pair', PairHandler);
+    ctx.Route('xcpcio_screen_data', deviceBase + '/data', DeviceDataHandler);
+    ctx.Route('xcpcio_screen_kiosk', deviceBase + '/k/:token', KioskHandler);
+    ctx.Route('xcpcio_screen_device_media', deviceBase + '/:kind/:id', DeviceMediaHandler);
+    ctx.Route('contest_xcpcio_screen_devices', '/contest/:tid/screens/devices', DeviceAdminHandler);
     ctx.Route('contest_xcpcio_screens', '/contest/:tid/screens', ScreensHandler);
     ctx.Route('contest_xcpcio_screen_view', '/contest/:tid/screen/:token/:type', ScreenViewHandler);
     ctx.Route('contest_xcpcio_screen_data', '/contest/:tid/screen/:token/:type/data', ScreenDataHandler);

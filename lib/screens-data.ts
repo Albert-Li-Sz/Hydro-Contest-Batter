@@ -88,12 +88,15 @@ export const maxPosterImages = 20;
 export const maxPosterBytes = 2 * 1024 * 1024;
 export const isPosterId = (value: unknown): value is string => typeof value === 'string' && /^[a-f\d]{24}$/.test(value);
 
-export function decodePoster(encoded: string) {
+export const imageBytes = (data: Buffer) => data instanceof Uint8Array ? Buffer.from(data)
+    : Buffer.from((data as unknown as { value(): Uint8Array }).value());
+
+export function decodePoster(encoded: string, maxBytes = maxPosterBytes) {
     if (typeof encoded !== 'string') throw new ScreenError('图片内容无效');
-    if (encoded.length > 4 * Math.ceil(maxPosterBytes / 3)) throw new ScreenError('图片不能超过 2 MiB');
+    if (encoded.length > 4 * Math.ceil(maxBytes / 3)) throw new ScreenError(`图片不能超过 ${maxBytes / 1024 ** 2} MiB`);
     if (!/^[A-Za-z\d+/]+={0,2}$/.test(encoded)) throw new ScreenError('图片内容无效');
     const data = Buffer.from(encoded, 'base64');
-    if (data.length > maxPosterBytes) throw new ScreenError('图片不能超过 2 MiB');
+    if (data.length > maxBytes) throw new ScreenError(`图片不能超过 ${maxBytes / 1024 ** 2} MiB`);
     if (data.length >= 24 && data.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))) return { data, mime: 'image/png' };
     if (data.length >= 8 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return { data, mime: 'image/jpeg' };
     if (data.length >= 16 && data.toString('ascii', 0, 4) === 'RIFF' && data.toString('ascii', 8, 12) === 'WEBP') return { data, mime: 'image/webp' };

@@ -2,6 +2,11 @@
 // Ranking and submissions remain owned by the upstream Vue application.
 const app = document.getElementById('app');
 if (app) {
+    // Keep the selected sub-board when switching perspective. The audience adapter below
+    // returns a shared submissions tab to the rankings while the contest is running.
+    for (const link of document.querySelectorAll('.xp-view-switch')) {
+        link.addEventListener('click', () => { link.hash = location.hash; });
+    }
     let awardRules;
     let specialText;
     // The contest's own medal names; before they arrive, the defaults of lib/settings.ts.

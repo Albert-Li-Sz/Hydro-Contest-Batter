@@ -49,3 +49,8 @@
     #hydro-resolver-config .resolver-heading { align-items: flex-start; flex-wrap: wrap; gap: .6rem; }
     #hydro-resolver-config .xc-actions { justify-content: flex-start; }
 }
+
+.resolver-photo-teams { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%, 20rem),1fr)); gap:0 1rem; max-height:28rem; overflow:auto; }
+#team-photos .button:has(.resolver-file-input) { position:relative; }
+#team-photos .button:focus-within { outline:2px solid currentColor; outline-offset:2px; }
+.resolver-file-input { position:absolute; width:1px; height:1px; clip-path:inset(50%); overflow:hidden; }

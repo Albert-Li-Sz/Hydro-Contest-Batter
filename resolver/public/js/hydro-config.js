@@ -330,3 +330,72 @@ showPreviewPosition();
 refreshPreview();
 loadSessions();
 requestAnimationFrame(frame);
+
+import { matchPhoto } from './photo-matching.js';
+import { imageData, printableImage } from './image-upload.js';
+
+const photos = runtime.photos || {};
+const photoTeams = document.getElementById('photo-teams');
+const photoProgress = document.getElementById('photo-progress');
+const unmatched = document.getElementById('photo-unmatched');
+async function savePhoto(uid, file) {
+    const image = file ? await imageData(await printableImage(file, 1600, 'image/jpeg', 1024 ** 2)) : undefined;
+    const result = await request(`${runtime.base}/photos`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uid, image }),
+    });
+    photos[uid] = result.url;
+    renderPhotos();
+}
+function renderPhotos() {
+    photoTeams.replaceChildren();
+    for (const team of runtime.teams || []) {
+        const row = document.createElement('div');
+        row.className = 'resolver-session';
+        const name = document.createElement('strong');
+        name.textContent = team.name;
+        name.className = 'resolver-session-info';
+        if (photos[team.uid]) {
+            const img = new Image(64, 48);
+            img.style.objectFit = 'contain';
+            img.alt = `${team.name}的照片`; img.src = photos[team.uid]; img.loading = 'lazy';
+            row.append(img);
+        }
+        const upload = document.createElement('label');
+        upload.className = 'button'; upload.textContent = photos[team.uid] ? '替换' : '选择照片';
+        const input = document.createElement('input');
+        input.type = 'file'; input.accept = 'image/*'; input.className = 'resolver-file-input';
+        input.setAttribute('aria-label', `为${team.name}选择照片`);
+        input.onchange = () => input.files[0] && savePhoto(team.uid, input.files[0]).then(refreshPreview).catch(showError);
+        upload.append(input); row.append(name, upload);
+        if (photos[team.uid]) {
+            const remove = document.createElement('button');
+            remove.className = 'button'; remove.textContent = '删除照片';
+            remove.onclick = () => savePhoto(team.uid, null).then(refreshPreview).catch(showError);
+            row.append(remove);
+        }
+        photoTeams.append(row);
+    }
+}
+renderPhotos();
+document.getElementById('photo-files').addEventListener('change', async ({ target }) => {
+    const files = Array.from(target.files);
+    target.disabled = true;
+    unmatched.replaceChildren();
+    let saved = 0;
+    try {
+        for (const [index, file] of files.entries()) {
+            photoProgress.textContent = `正在处理 ${index + 1} / ${files.length} · ${file.name}`;
+            const uid = matchPhoto(file.name, runtime.teams);
+            try {
+                if (!uid) throw new Error('未匹配到唯一队伍');
+                await savePhoto(uid, file);
+                saved++;
+            } catch (error) {
+                const item = document.createElement('li');
+                item.textContent = `${file.name} · ${error.message}`; unmatched.append(item);
+            }
+        }
+        photoProgress.textContent = `已上传 ${saved} / ${files.length} 张照片`;
+        if (saved) await refreshPreview();
+    } finally { target.disabled = false; target.value = ''; }
+});

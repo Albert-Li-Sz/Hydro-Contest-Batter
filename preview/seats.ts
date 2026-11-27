@@ -3,7 +3,7 @@ import {
     type SeatAccount, type SeatBackupData, scopeLabel, selectSeatRows,
 } from '../lib/manage/seats';
 import { ManageError } from '../lib/manage/users';
-import type { LinkStatus } from '../lib/links';
+import type { ContestLinks, LinkStatus } from '../lib/links';
 
 interface PreviewAccount { _id: number; uname: string; displayName: string; priv: number; loginat: Date }
 interface PreviewTeam { _id: number; uname: string; displayName: string; members: number[] }
@@ -13,7 +13,7 @@ interface PreviewContest { id: string; title: string; beginAt: Date; endAt: Date
  * The 座位与 IP tab of the /manage preview: onsite-toolkit seats and IP login in memory, with
  * the same selection, backup, cleanup and restore rules as lib/seat-store.ts.
  */
-export function createSeatsPreview(users: PreviewAccount[], teams: PreviewTeam[], contests: PreviewContest[], verify: (password: unknown) => void) {
+export function createSeatsPreview(users: PreviewAccount[], teams: PreviewTeam[], contests: PreviewContest[], verify: (password: unknown) => void, demoLinks?: ContestLinks) {
     const now = Date.now();
     const seats = new Map<number, string>();
     const ips = new Map<string, number>();
@@ -36,6 +36,8 @@ export function createSeatsPreview(users: PreviewAccount[], teams: PreviewTeam[]
         [contests[1].id]: teams.slice(0, 2).map((team) => team._id),
     };
     const links: Record<string, LinkStatus[]> = Object.fromEntries(contests.map((tdoc, index) => [tdoc.id, [
+        { id: 'screen-devices', label: '大屏设备', count: 0, issuedAt: null },
+        { id: 'resolver-photos', label: '滚榜队伍照片', count: 0, issuedAt: null },
         { id: 'screens', label: '大屏', count: 1, issuedAt: new Date(tdoc.beginAt.getTime() - 86400_000) },
         { id: 'balloons', label: '气球台', count: index ? 0 : 1, issuedAt: index ? null : new Date(tdoc.beginAt.getTime() - 3600_000) },
         { id: 'live', label: '直播 overlay', count: 1, issuedAt: new Date(tdoc.beginAt.getTime() - 7200_000) },
@@ -90,7 +92,7 @@ export function createSeatsPreview(users: PreviewAccount[], teams: PreviewTeam[]
 
     const contestRow = (tdoc: PreviewContest) => ({ key: contestKey(tdoc), title: tdoc.title, domainId: 'system', beginAt: tdoc.beginAt, endAt: tdoc.endAt });
 
-    function data(query: URLSearchParams) {
+    async function data(query: URLSearchParams) {
         const tab = query.get('tab');
         if (tab === 'seat-backups') {
             return { backups: backups.map(({ seats: list, ips: addresses, ...doc }) => ({ ...doc, seats: list.length, ips: addresses.length, operator: 'admin' })) };
@@ -102,10 +104,11 @@ export function createSeatsPreview(users: PreviewAccount[], teams: PreviewTeam[]
         }
         const chosen = selection(Object.fromEntries(query));
         const number = Math.max(1, Number(query.get('page')) || 1);
+        const active = chosen.scope === contests[0] && demoLinks ? await demoLinks.status({ domainId: 'system', docId: 'demo' }) : [];
         return {
             contests: contests.map(contestRow), contest: chosen.scope ? contestRow(chosen.scope) : null,
             total: chosen.rows.length, page: number, pageSize: 50, rows: chosen.rows.slice((number - 1) * 50, number * 50),
-            counts: chosen.counts, zones: chosen.zones, links: chosen.scope ? links[chosen.scope.id] : null,
+            counts: chosen.counts, zones: chosen.zones, links: chosen.scope ? [...links[chosen.scope.id].filter(row => !active.some(a => a.id === row.id)), ...active] : null,
         };
     }
 
@@ -161,6 +164,9 @@ export function createSeatsPreview(users: PreviewAccount[], teams: PreviewTeam[]
             if (!scope) throw new ManageError('比赛不存在', 404);
             const list = links[scope.id];
             for (const item of list) if (item.count) item.issuedAt = new Date();
+            if (scope === contests[0] && demoLinks) return demoLinks.revoke({ domainId: 'system', docId: 'demo' }).then(active => ({
+                links: [...list.filter(row => !active.some(a => a.id === row.id)).map(item => ({ ...item, error: null })), ...active],
+            }));
             return { links: list.map((item) => ({ id: item.id, label: item.label, count: item.count, error: null })) };
         }
         default: return undefined;
