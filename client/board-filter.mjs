@@ -11,10 +11,10 @@ export function filterRevision(ref) {
 
 function validate(value) {
     if (!value || !['any', 'all'].includes(value.match) || !['pin', 'only'].includes(value.action)
-        || !Array.isArray(value.rules) || value.rules.length > 24) throw new Error('筛选格式无效，最多可设置 24 条规则');
+        || !Array.isArray(value.rules)) throw new Error('筛选格式无效');
     return { match: value.match, action: value.action, rules: value.rules.map((rule, index) => {
-        if (!fields.has(rule?.field) || typeof rule.pattern !== 'string' || rule.pattern.length > 256 || !rule.pattern.trim()) {
-            throw new Error(`第 ${index + 1} 条规则需要字段和 1 至 256 字的正则表达式`);
+        if (!fields.has(rule?.field) || typeof rule.pattern !== 'string' || !rule.pattern.trim()) {
+            throw new Error(`第 ${index + 1} 条规则需要匹配字段和正则表达式`);
         }
         try { new RegExp(rule.pattern, 'iu'); } catch { throw new Error(`第 ${index + 1} 条正则表达式无效`); }
         return { field: rule.field, pattern: rule.pattern };
@@ -67,7 +67,7 @@ export function mountBoardFilter(panel) {
         select.className = 'select'; select.setAttribute('aria-label', '匹配字段');
         for (const [id, name] of fields) select.add(new Option(name, id, false, id === field));
         const input = document.createElement('input');
-        input.className = 'textbox'; input.placeholder = '正则表达式'; input.maxLength = 256;
+        input.className = 'textbox'; input.placeholder = '正则表达式';
         input.setAttribute('aria-label', '正则表达式'); input.value = pattern;
         const remove = document.createElement('button');
         remove.type = 'button'; remove.className = 'button'; remove.textContent = '移除';
