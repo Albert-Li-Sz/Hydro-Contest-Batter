@@ -25,6 +25,7 @@ import { applyJuryRoutes, juryStore } from './lib/jury-routes';
 import { applyIntegrity } from './lib/integrity-routes';
 import { applyCcs } from './lib/ccs/routes';
 import { applyManage } from './lib/manage-routes';
+import { applySubmit } from './lib/submit-routes';
 import { applyPrintServers } from './lib/print-routes';
 import { applyBalloons } from './lib/balloon-routes';
 import { ContestLinks } from './lib/links';
@@ -394,6 +395,7 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     applyCcs(ctx, { loadSettings, loadData: loadContestData, loadJury: jury.load });
     applyManage(ctx, { machines: monitor.machines, links, beforeRejudge: results.beforeRejudge, holdForRejudge: juryRoutes.holdForRejudge });
     applyPresence(ctx);
+    applySubmit(ctx, jury.load);
     applyPrintServers(ctx, { receipts: balloons.receipts });
     const live = config.live !== false
         ? applyLive(ctx, { loadSettings, loadData: (tdoc, identity) => loadData(tdoc, false, identity, 'live'), capture: config.liveCapture !== false, publicVideos: reactions?.publicVideos, staffReplay: reactions?.staffReplay, captureStunPort: config.liveCaptureStunPort ?? 3478, links })

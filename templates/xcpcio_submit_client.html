@@ -1,0 +1,23 @@
+{% set page_name = 'contest_xcpcio_submit_client' %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row"><div class="medium-10 large-8 columns">
+  <section class="section visible">
+    <div class="section__header"><h1 class="section__title">选手命令行 submit</h1></div>
+    <div class="section__body typo">
+      <p>在已绑定比赛账号的选手机上用命令行交题、查看评测或打印源文件。安装包已包含本站的域地址。</p>
+      <h2>下载安装包</h2>
+      <ul>{% for item in downloads %}<li><a href="{{ item.url }}" download>{{ item.title }}</a></li>{% endfor %}</ul>
+      <p>将两个文件解压到同一目录，在此目录执行 <code>./submit install</code>。Windows 使用 <code>.\submit.exe install</code>。</p>
+      <h2>比赛中使用</h2>
+      <dl>
+        <dt><code>submit info</code></dt><dd>确认本机账号、进行中的比赛和可用语言。</dd>
+        <dt><code>submit a.cpp</code></dt><dd>按文件名识别题号和语言。也可以执行 <code>submit solution.cpp -p B -l cpp</code>。</dd>
+        <dt><code>submit status</code></dt><dd>查看本队最近 10 次提交。</dd>
+        <dt><code>submit print a.cpp</code></dt><dd>将源文件送到本场比赛的打印队列。</dd>
+      </dl>
+      <p>同时参加多场比赛时，在命令后加 <code>--tid 比赛编号</code>。</p>
+    </div>
+  </section>
+</div></div>
+{% endblock %}

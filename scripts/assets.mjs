@@ -1,5 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -112,4 +113,21 @@ if (clients.length) {
     await rm(clientTarget, { recursive: true, force: true });
     await cp(clientSource, clientTarget, { recursive: true });
     console.log(`Print client ready: ${clients.length} platforms`);
+}
+
+// Release archives keep these binaries; a source build supplies all six together.
+const submitSource = path.join(root, 'submit-client/dist');
+const submitTarget = path.join(root, 'public/hydro-submit-client');
+const submitBinaries = (await readdir(submitSource).catch(() => [])).filter(file => /^hydro-submit-(?:windows-(?:amd64|arm64)\.exe|(?:darwin|linux)-(?:amd64|arm64))$/.test(file));
+if (submitBinaries.length) {
+    if (submitBinaries.length !== 6) throw new Error('请先运行 pnpm build:submit-client 以生成六个平台');
+    await mkdir(submitTarget, { recursive: true });
+    await Promise.all(submitBinaries.map(async file => {
+        const target = path.join(submitTarget, file);
+        const temp = target + '.' + randomUUID();
+        try {
+            await cp(path.join(submitSource, file), temp);
+            await rename(temp, target);
+        } finally { await rm(temp, { force: true }); }
+    }));
 }

@@ -11,7 +11,7 @@ const hydroDirectory = profile
     ? path.resolve(os.homedir(), '.hydro/profiles', profile)
     : path.join(os.homedir(), '.hydro');
 const addonFile = path.join(hydroDirectory, 'addon.json');
-const staticNames = ['hydro-xcpcio', 'hydro-resolver', 'hydro-live', 'hydro-print-client'];
+const staticNames = ['hydro-xcpcio', 'hydro-resolver', 'hydro-live', 'hydro-print-client', 'hydro-submit-client'];
 
 function help() {
     console.log(`用法
@@ -101,6 +101,11 @@ export function checkPackage(directory) {
             'public/hydro-resolver/assets/font/NotoSansSC-VF.ttf', 'public/hydro-resolver/assets/reaction-samples/screen.mp4',
             'public/hydro-resolver/assets/reaction-samples/webcam.mp4', 'licenses/fix-webm-duration-MIT.txt',
         );
+    }
+    if (pkg.files?.includes('submit-client/go.mod')) {
+        for (const platform of ['windows-amd64.exe', 'windows-arm64.exe', 'darwin-amd64', 'darwin-arm64', 'linux-amd64', 'linux-arm64']) {
+            files.push(`public/hydro-submit-client/hydro-submit-${platform}`);
+        }
     }
     for (const file of files) {
         if (!fs.statSync(path.join(directory, file), { throwIfNoEntry: false })?.isFile()) {

@@ -27,7 +27,7 @@ function dosTime(date: Date) {
     return { time, day };
 }
 
-export interface ZipEntry { name: string; data: Buffer }
+export interface ZipEntry { name: string; data: Buffer; mode?: number }
 
 export function writeZip(entries: ZipEntry[], modified = new Date()): Buffer {
     const { time, day } = dosTime(modified);
@@ -52,7 +52,7 @@ export function writeZip(entries: ZipEntry[], modified = new Date()): Buffer {
         local.push(header, name, compressed);
         const record = Buffer.alloc(46);
         record.writeUInt32LE(0x02014b50, 0);
-        record.writeUInt16LE(20, 4);
+        record.writeUInt16LE(entry.mode === undefined ? 20 : 0x0314, 4);
         record.writeUInt16LE(20, 6);
         record.writeUInt16LE(0x0800, 8);
         record.writeUInt16LE(8, 10);
@@ -62,7 +62,7 @@ export function writeZip(entries: ZipEntry[], modified = new Date()): Buffer {
         record.writeUInt32LE(compressed.length, 20);
         record.writeUInt32LE(entry.data.length, 24);
         record.writeUInt16LE(name.length, 28);
-        record.writeUInt32LE((0o100644 << 16) >>> 0, 38); // regular file, rw-r--r--
+        record.writeUInt32LE(((0o100000 | (entry.mode ?? 0o644)) << 16) >>> 0, 38); // Unix regular-file permissions
         record.writeUInt32LE(offset, 42);
         central.push(record, name);
         offset += header.length + name.length + compressed.length;
