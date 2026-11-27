@@ -13,10 +13,11 @@ import { isTeamEntry, loadCoaches, loadSeats, memberIds, type TeamEntry } from '
 import { resolverBoards, resolverCodeBase } from '../resolver-data';
 import {
     adminApi, adminChannel, adminRuntime, type ApiResponse, builtinMediaNames, defaultVisualConfig, liveUrls, type LiveStore, overlayApi, overlayChannel,
-    pluginRoot, previewRuntime, readBuiltinMedia, shell, storeName,
+    overlayControlChannel, pluginRoot, previewRuntime, readBuiltinMedia, shell, storeName,
 } from './api';
 import { applyCapture } from './capture-routes';
 import { LiveHub, type LiveState } from './hub';
+import { OverlayClients, OverlayError, OVERLAY_STATUS_MS, overlayTokenHash, type OverlayEndpoint } from './overlay-clients';
 import { stateEntries, stateFromEntries, stateUpdate, type LiveStateEntries, type LiveStatePatch } from './state';
 
 interface LiveDoc {
@@ -26,6 +27,7 @@ interface LiveDoc {
     tokenAt?: Date;
     /** Separate from the overlay token, so pictures placed in captions survive a token reset. */
     mediaKey: string;
+    overlaySeq?: number;
     visualConfig: string;
     state?: LiveState;
     stateEntries?: LiveStateEntries;
@@ -47,12 +49,15 @@ declare module 'hydrooj' {
         'xcpcio.live.media': LiveMedia;
     }
     interface EventMap {
-        /** Another Hydro process changed a contest's live state, token, a template, spotlight scores or a commentary mark. */
+        /**
+         * Another Hydro process changed a contest's live state, token, a template, spotlight scores or a commentary mark,
+         * or sends a command to an OBS overlay connected elsewhere.
+         */
         'xcpcio/live-sync': (key: string, kind: LiveSyncKind, origin: string, payload?: unknown) => void;
     }
 }
 
-type LiveSyncKind = 'state' | 'token' | 'template' | 'spotlight' | 'social' | 'mark';
+type LiveSyncKind = 'state' | 'token' | 'template' | 'spotlight' | 'social' | 'mark' | 'overlay';
 
 /** Contest time is up to the board's rule; the overlay withholds teams until the board shows them. */
 const nobody = { user: { _id: 0, own: () => false, hasPerm: () => false, hasPriv: () => false } };
@@ -95,8 +100,15 @@ export function applyLive(ctx: Context, dependencies: {
     const closeRevoked = (contestKey: string, token: string) => {
         for (const connection of overlays.get(contestKey) || []) if (connection.token !== token) connection.close();
     };
+    // The OBS overlays open right now, for the list on the live settings page and its commands.
+    const overlayClients = new OverlayClients(ctx.db, (delivery) => announce(delivery.contestKey, 'overlay', delivery));
+    ctx.on('app/started', () => { void overlayClients.ensureIndexes().catch(() => null); });
     ctx.on('xcpcio/live-sync', async (contestKey, kind, origin, payload) => {
         if (origin === instance) return;
+        if (kind === 'overlay') {
+            overlayClients.receive(payload);
+            return;
+        }
         if (kind === 'state') {
             const change = payload as { patch: LiveStatePatch; revision: number };
             if (change?.patch && Number.isSafeInteger(change.revision)) {
@@ -280,6 +292,7 @@ export function applyLive(ctx: Context, dependencies: {
         await Promise.all([
             collection.deleteOne({ _id: id }),
             media.deleteMany({ key: id }),
+            overlayClients.remove(id),
         ]).catch(() => null);
     });
     ctx.on('domain/delete', async (domainId) => {
@@ -291,7 +304,7 @@ export function applyLive(ctx: Context, dependencies: {
             closeRevoked(id, '');
         }
         const pattern = new RegExp(`^${domainId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`);
-        await Promise.all([collection.deleteMany({ _id: pattern }), media.deleteMany({ key: pattern })]).catch(() => null);
+        await Promise.all([collection.deleteMany({ _id: pattern }), media.deleteMany({ key: pattern }), overlayClients.remove(pattern)]).catch(() => null);
     });
 
     async function checkAdmin(handler: Handler | ConnectionHandler, tid: ObjectId) {
@@ -318,11 +331,15 @@ export function applyLive(ctx: Context, dependencies: {
 
     async function resetToken(contestKey: string) {
         const token = newToken();
-        await collection.updateOne({ _id: contestKey }, { $set: { token, tokenAt: new Date(), updatedAt: new Date() } });
+        const previous = await collection.findOneAndUpdate({ _id: contestKey }, { $set: { token, tokenAt: new Date(), updatedAt: new Date() } },
+            { returnDocument: 'before', projection: { token: 1 } });
+        if (!previous) throw new NotFoundError('直播配置不存在');
         // Overlays already open with the old link stop at once, in every Hydro process.
         closeRevoked(contestKey, token);
         capture?.revoke(contestKey, token);
+        // Overlays on the old link leave the list; they reappear once opened with the new one.
         announce(contestKey, 'token');
+        await overlayClients.revoke(contestKey, previous.token);
         return token;
     }
 
@@ -370,6 +387,26 @@ export function applyLive(ctx: Context, dependencies: {
             const doc = await loadDoc(this.tdoc);
             const token = await resetToken(doc._id);
             this.response.body = { overlay: urls(this.tdoc, { ...doc, token }).overlay };
+        }
+    }
+
+    /** The OBS overlays open right now (JSON), and the commands sent to one of them. */
+    class LiveOverlaysHandler extends LiveConfigHandler {
+        async get() {
+            this.response.type = 'application/json';
+            this.response.body = { overlays: await overlayClients.list(key(this.tdoc)) };
+        }
+
+        @param('action', Types.String)
+        @param('id', Types.String)
+        async post(_domainId: string, action: string, id: string) {
+            try {
+                this.response.body = await overlayClients.command(key(this.tdoc), id, action);
+            } catch (error) {
+                if (!(error instanceof OverlayError)) throw error;
+                this.response.status = error.status;
+                this.response.body = { error: error.message };
+            }
         }
     }
 
@@ -524,12 +561,14 @@ export function applyLive(ctx: Context, dependencies: {
         }
     }
 
-    /** /api/overlay websockets for OBS. */
+    /** /api/overlay websockets for OBS, and the overlay's control socket (hydroControl). */
     class LiveOverlayConnectionHandler extends ConnectionHandler {
         noCheckPermView = true;
         unsubscribe?: () => void;
         recheck?: NodeJS.Timeout;
+        statusTimer?: NodeJS.Timeout;
         registration?: { token: string; close: () => void };
+        endpoint?: OverlayEndpoint;
         contestKey = '';
         closed = false;
 
@@ -538,15 +577,25 @@ export function applyLive(ctx: Context, dependencies: {
         async prepare(_domainId: string, tid: ObjectId, token: string) {
             const { tdoc } = await checkToken(this.domain._id, tid, token);
             if (this.closed) return;
-            const channel = overlayChannel(/\/ws\/overlay\/(.+)$/.exec(this.request.path)?.[1] || '');
+            const channel = overlayChannel(/\/ws\/overlay\/(.+)$/.exec(this.request.path)?.[1] || '', true);
             if (!channel) throw new NotFoundError('channel');
-            const hub = await hubFor(tdoc);
+            const hub = channel === overlayControlChannel ? null : await hubFor(tdoc);
             if (this.closed) return;
             this.contestKey = key(tdoc);
             this.registration = { token, close: () => this.close(4004, '直播链接已作废') };
             if (!overlays.has(this.contestKey)) overlays.set(this.contestKey, new Set());
             overlays.get(this.contestKey)!.add(this.registration);
-            this.unsubscribe = hub.subscribe(channel, (payload) => this.send(typeof payload === 'string' ? payload : JSON.stringify(payload)));
+            if (hub) this.unsubscribe = hub.subscribe(channel, (payload) => this.send(typeof payload === 'string' ? payload : JSON.stringify(payload)));
+            else {
+                this.endpoint = {
+                    contestKey: this.contestKey, connection: `${instance}/${randomUUID()}`, tokenHash: overlayTokenHash(token),
+                    ip: String(this.request.ip || ''), send: (message) => this.send(message),
+                };
+                overlayClients.attach(this.endpoint);
+                // An incoming socket event also works while the browser throttles background timers.
+                this.statusTimer = setInterval(() => this.send({ type: 'requestStatus' }), OVERLAY_STATUS_MS);
+                this.statusTimer.unref?.();
+            }
             // Also for deployments whose processes do not share Hydro's broadcast bus.
             this.recheck = setInterval(async () => {
                 const doc = await collection.findOne({ _id: this.contestKey }).catch(() => null);
@@ -555,9 +604,29 @@ export function applyLive(ctx: Context, dependencies: {
             this.recheck.unref?.();
         }
 
+        async message(input: unknown) {
+            const endpoint = this.endpoint;
+            const message = input as { type?: unknown } | null;
+            if (!endpoint || !message || typeof message !== 'object') return;
+            try {
+                if (message.type === 'hello') await overlayClients.hello(endpoint, message);
+                else if (message.type === 'status') await overlayClients.status(endpoint, message);
+                else if (message.type === 'ack') await overlayClients.acknowledge(endpoint, message);
+            } catch (error) {
+                if (error instanceof OverlayError) this.close(error.status === 404 ? 4004 : 4000, error.message);
+                else throw error;
+            }
+        }
+
         async cleanup() {
             this.closed = true;
             if (this.recheck) clearInterval(this.recheck);
+            if (this.statusTimer) clearInterval(this.statusTimer);
+            if (this.endpoint) {
+                const endpoint = this.endpoint;
+                this.endpoint = undefined;
+                await overlayClients.detach(endpoint).catch(() => null);
+            }
             const registered = overlays.get(this.contestKey);
             if (this.registration && registered) {
                 registered.delete(this.registration);
@@ -576,7 +645,7 @@ export function applyLive(ctx: Context, dependencies: {
             const { tdoc, doc } = await checkToken(this.domain._id, tid, token);
             this.response.addHeader('Cache-Control', 'no-store');
             this.response.type = 'text/html';
-            this.response.body = shell('overlay', urls(tdoc, doc), `${tdoc.title} · 直播画面`);
+            this.response.body = shell('overlay', { ...urls(tdoc, doc), version }, `${tdoc.title} · 直播画面`);
         }
     }
 
@@ -603,6 +672,7 @@ export function applyLive(ctx: Context, dependencies: {
     }
 
     ctx.Route('contest_xcpcio_live', '/contest/:tid/live', LiveConfigHandler);
+    ctx.Route('contest_xcpcio_live_overlays', '/contest/:tid/live/overlays', LiveOverlaysHandler);
     ctx.Route('contest_xcpcio_live_admin', '/contest/:tid/live/admin', LiveAdminPageHandler);
     ctx.Route('contest_xcpcio_live_admin_page', '/contest/:tid/live/admin/*page', LiveAdminPageHandler);
     ctx.Route('contest_xcpcio_live_main_page', '/contest/:tid/live/main-page/:item', LiveMainPageHandler);

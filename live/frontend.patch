@@ -2136,10 +2136,18 @@ index 57f81a7..40b103d 100644
                  </ButtonGroup>
              </div>
 diff --git a/src/frontend/admin-overlay/src/components/managers/ScoreboardManager.tsx b/src/frontend/admin-overlay/src/components/managers/ScoreboardManager.tsx
-index a20babe..8985ade 100644
+index a20babe..666a6e5 100644
 --- a/src/frontend/admin-overlay/src/components/managers/ScoreboardManager.tsx
 +++ b/src/frontend/admin-overlay/src/components/managers/ScoreboardManager.tsx
-@@ -30,6 +30,7 @@ import {
+@@ -6,6 +6,7 @@ import {
+     Button,
+     ButtonGroup,
+     Checkbox,
++    FormControlLabel,
+     Stack,
+     Table,
+     TableBody,
+@@ -30,6 +31,7 @@ import {
  } from "@shared/api.ts";
  import { ScoreboardWidgetService } from "@admin/services/scoreboardService.ts";
  import ScrollDirectionSwitcher from "@admin/components/controls/ScrollDirectionSwitcher.tsx";
@@ -2147,7 +2155,7 @@ index a20babe..8985ade 100644
  
  type ScoreboardSettingsTabProps = {
      isShown: boolean;
-@@ -63,14 +64,14 @@ const ScoreboardSettingsTab = ({
+@@ -63,14 +65,14 @@ const ScoreboardSettingsTab = ({
      );
  
      return (
@@ -2164,7 +2172,7 @@ index a20babe..8985ade 100644
                  </Button>
                  <Button
                      color="error"
-@@ -78,7 +79,7 @@ const ScoreboardSettingsTab = ({
+@@ -78,9 +80,17 @@ const ScoreboardSettingsTab = ({
                      onClick={hide}
                      variant="contained"
                  >
@@ -2172,8 +2180,18 @@ index a20babe..8985ade 100644
 +                    {t("Hide")}
                  </Button>
              </ButtonGroup>
++            <FormControlLabel
++                label={t("Submission timeline")}
++                control={<Checkbox checked={!!settings.timeline} onChange={(_, timeline) => {
++                    const next = { ...settings, timeline };
++                    setSettings(next);
++                    if (isShown) showWithSettings(next);
++                }} />}
++            />
              <ScrollDirectionSwitcher
-@@ -147,9 +148,9 @@ const ScoreboardGroupSetting = ({
+                 direction={settings.scrollDirection}
+                 setDirection={setScrollDirection}
+@@ -147,9 +157,9 @@ const ScoreboardGroupSetting = ({
              <TableHead>
                  <TableRow>
                      <TableCell>
@@ -2185,7 +2203,7 @@ index a20babe..8985ade 100644
                          <TableCell key={val} align="center">
                              <Typography variant="h6">{val}</Typography>
                          </TableCell>
-@@ -164,7 +165,7 @@ const ScoreboardGroupSetting = ({
+@@ -164,7 +174,7 @@ const ScoreboardGroupSetting = ({
                              justifyContent="space-between"
                              alignItems="center"
                          >
@@ -3939,10 +3957,10 @@ index 799a87c..79851ad 100644
      };
 diff --git a/src/frontend/common/src/i18n.ts b/src/frontend/common/src/i18n.ts
 new file mode 100644
-index 0000000..407c90e
+index 0000000..1d360b8
 --- /dev/null
 +++ b/src/frontend/common/src/i18n.ts
-@@ -0,0 +1,376 @@
+@@ -0,0 +1,377 @@
 +// Hydro: the director's console in Chinese (default) or English. Texts are written in English in
 +// the source and looked up here; text that arrives in Chinese (from Hydro) is looked up the other
 +// way for English. The choice is kept in this browser, and switching reloads the page.
@@ -4026,6 +4044,7 @@ index 0000000..407c90e
 +    Optimistic: "乐观",
 +    Pessimistic: "悲观",
 +    "All groups": "全部分组",
++    "Submission timeline": "每行提交时间轴",
 +
 +    // 画面采集 (director console)
 +    Capture: "画面采集",
@@ -4333,7 +4352,7 @@ index e0c89a5..4fb8075 100644
                  return response;
              });
 diff --git a/src/frontend/generated/api.ts b/src/frontend/generated/api.ts
-index 0154daa..245a688 100644
+index 0154daa..d24ba94 100644
 --- a/src/frontend/generated/api.ts
 +++ b/src/frontend/generated/api.ts
 @@ -456,6 +456,7 @@ export namespace RunResult {
@@ -4344,7 +4363,15 @@ index 0154daa..245a688 100644
      type: RunResult.Type.IN_PROGRESS;
      testedPart: number;
      isAfterFirstOk: boolean;
-@@ -691,6 +692,24 @@ export interface TeamLocatorSettings {
+@@ -678,6 +679,7 @@ export interface QueueSettings {
+ }
+
+ export interface ScoreboardSettings {
++  timeline?: boolean;
+   scrollDirection?: ScoreboardScrollDirection;
+   optimismLevel?: OptimismLevel;
+   group?: string;
+@@ -691,6 +693,24 @@ export interface TeamLocatorSettings {
    scene?: string;
  }
  
@@ -4369,7 +4396,7 @@ index 0154daa..245a688 100644
  export interface OverlayTeamViewSettings {
    teamId: TeamId;
    primary: MediaType[];
-@@ -698,6 +717,7 @@ export interface OverlayTeamViewSettings {
+@@ -698,6 +718,7 @@ export interface OverlayTeamViewSettings {
    showTaskStatus: boolean;
    achievement: MediaType[];
    showTimeLine: boolean;
@@ -4377,7 +4404,7 @@ index 0154daa..245a688 100644
    position: TeamViewPosition;
  }
  
-@@ -952,6 +972,7 @@ export namespace SolutionsStatistic {
+@@ -952,6 +973,7 @@ export namespace SolutionsStatistic {
      type: SolutionsStatistic.Type.ICPC;
      teamsCount: number;
      stats: ICPCProblemSolutionsStatistic[];
@@ -4385,7 +4412,7 @@ index 0154daa..245a688 100644
    }
    
    export interface IOI {
-@@ -983,6 +1004,7 @@ export interface ExternalTeamViewSettings {
+@@ -983,6 +1005,7 @@ export interface ExternalTeamViewSettings {
    showTaskStatus?: boolean;
    showAchievement?: boolean;
    showTimeLine?: boolean;
@@ -4393,7 +4420,7 @@ index 0154daa..245a688 100644
    position?: TeamViewPosition;
  }
  
-@@ -1041,6 +1063,7 @@ export namespace TimeLineRunInfo {
+@@ -1041,6 +1064,7 @@ export namespace TimeLineRunInfo {
    }
    
    export interface IN_PROGRESS {
@@ -6552,10 +6579,18 @@ index 74d88fe..85ad644 100644
      height: ${c.QUEUE_ROW_HEIGHT}px;
      font-size: ${c.QUEUE_PROBLEM_LABEL_FONT_SIZE};
 diff --git a/src/frontend/overlay/src/components/organisms/widgets/scoreboard/ScoreboardContainer.tsx b/src/frontend/overlay/src/components/organisms/widgets/scoreboard/ScoreboardContainer.tsx
-index 79cee2c..9f77f8f 100644
+index 79cee2c..f20fa56 100644
 --- a/src/frontend/overlay/src/components/organisms/widgets/scoreboard/ScoreboardContainer.tsx
 +++ b/src/frontend/overlay/src/components/organisms/widgets/scoreboard/ScoreboardContainer.tsx
-@@ -61,6 +61,9 @@ interface ScoreboardRowsProps {
+@@ -12,6 +12,7 @@ import { ScoreboardSettings, Widget } from "@shared/api";
+ import { OverlayWidgetC } from "@/components/organisms/widgets/types";
+ import { ScoreboardHeader, ScoreboardTableHeader } from "./ScoreboardHeader";
+ import { AnimatedRow } from "./ScoreboardRow";
++import { useScoreboardTimelines } from "./ScoreboardTimeline";
+ import {
+     useScoreboardRows,
+     useScoreboardData,
+@@ -61,6 +62,9 @@ interface ScoreboardRowsProps {
  
  const ScoreboardRows = ({ settings, onPage }: ScoreboardRowsProps) => {
      const rows = useScoreboardRows(settings.optimismLevel, settings.group);
@@ -6565,7 +6600,15 @@ index 79cee2c..9f77f8f 100644
      const rowHeight = c.SCOREBOARD_ROW_HEIGHT + c.SCOREBOARD_ROW_PADDING;
  
      const targetScrollPos = useScroller(
-@@ -142,8 +145,18 @@ const ScoreboardRows = ({ settings, onPage }: ScoreboardRowsProps) => {
+@@ -74,6 +78,7 @@ const ScoreboardRows = ({ settings, onPage }: ScoreboardRowsProps) => {
+     const { scoreboardData, normalScoreboardData, contestData } =
+         useScoreboardData(settings.optimismLevel);
+
++    const timelines = useScoreboardTimelines(!!settings.timeline, contestData?.contestLengthMs);
+     const animatingTeams = useAnimatingTeams(rows);
+
+     const [prevWindow, setPrevWindow] = useState({
+@@ -142,9 +147,20 @@ const ScoreboardRows = ({ settings, onPage }: ScoreboardRowsProps) => {
                      subscribeScroll={subscribe}
                      zIndex={rows.length - position}
                      scoreboardRow={scoreboardData?.ids[teamId]}
@@ -6584,13 +6627,23 @@ index 79cee2c..9f77f8f 100644
 +                            : scoreboardData?.idAwards[teamId]
 +                    }
                      contestData={contestData}
++                    timeline={settings.timeline ? timelines.get(teamId) ?? {} : undefined}
                  />
              ))}
+         </ScoreboardRowsWrap>
 diff --git a/src/frontend/overlay/src/components/organisms/widgets/scoreboard/ScoreboardRow.tsx b/src/frontend/overlay/src/components/organisms/widgets/scoreboard/ScoreboardRow.tsx
-index fe2dd81..d891418 100644
+index fe2dd81..44f6617 100644
 --- a/src/frontend/overlay/src/components/organisms/widgets/scoreboard/ScoreboardRow.tsx
 +++ b/src/frontend/overlay/src/components/organisms/widgets/scoreboard/ScoreboardRow.tsx
-@@ -46,7 +46,7 @@ const ScoreboardTableRowWrap = styled.div<{
+@@ -21,6 +21,7 @@ import {
+     interpolate,
+ } from "@/components/organisms/widgets/scoreboard/utils/easingFunctions";
+ import { getAwardsEffects } from "@/utils/awards";
++import { ScoreboardTimeline, type TimelinePaths } from "./ScoreboardTimeline";
+
+ type ContestDataWithMaps = ContestInfo & {
+     teamsId: Record<TeamInfo["id"], TeamInfo>;
+@@ -46,7 +47,7 @@ const ScoreboardTableRowWrap = styled.div<{
      background-color: ${c.SCOREBOARD_BACKGROUND_COLOR};
  `;
  
@@ -6599,7 +6652,7 @@ index fe2dd81..d891418 100644
      overflow: hidden;
      align-items: center;
  
-@@ -62,13 +62,13 @@ const ScoreboardRowWrap = styled(ScoreboardTableRowWrap)`
+@@ -62,13 +63,13 @@ const ScoreboardRowWrap = styled(ScoreboardTableRowWrap)`
      border-bottom: ${c.SCOREBOARD_ROWS_DIVIDER_COLOR} solid 1px;
  `;
  
@@ -6615,6 +6668,98 @@ index fe2dd81..d891418 100644
      fontSize: c.SCOREBOARD_ROW_FONT_SIZE,
  })`
      display: flex;
+@@ -212,6 +213,7 @@ interface AnimatedRowProps {
+     getScrollPos: () => number;
+     subscribeScroll: (cb: () => void) => () => void;
+     zIndex: number;
++    timeline?: TimelinePaths;
+     scoreboardRow: APIScoreboardRow;
+     rank: number;
+     awards: Award[] | null | undefined;
+@@ -241,6 +243,7 @@ export const AnimatedRow = React.memo(
+         getScrollPos,
+         subscribeScroll,
+         zIndex,
++        timeline,
+         scoreboardRow,
+         rank,
+         awards,
+@@ -376,6 +379,7 @@ export const AnimatedRow = React.memo(
+                     teamId={teamId}
+                     contestData={contestData}
+                 />
++                {timeline && contestData && <ScoreboardTimeline paths={timeline} contest={contestData} />}
+             </PositionedScoreboardRowDiv>
+         );
+     },
+@@ -386,6 +390,7 @@ export const AnimatedRow = React.memo(
+             prevProps.animatingInfo === nextProps.animatingInfo &&
+             prevProps.rowHeight === nextProps.rowHeight &&
+             prevProps.zIndex === nextProps.zIndex &&
++            prevProps.timeline === nextProps.timeline &&
+             prevProps.scoreboardRow === nextProps.scoreboardRow &&
+             prevProps.rank === nextProps.rank &&
+             prevProps.awards === nextProps.awards &&
+diff --git a/src/frontend/overlay/src/components/organisms/widgets/scoreboard/ScoreboardTimeline.tsx b/src/frontend/overlay/src/components/organisms/widgets/scoreboard/ScoreboardTimeline.tsx
+new file mode 100644
+index 0000000..ab3c4cb
+--- /dev/null
++++ b/src/frontend/overlay/src/components/organisms/widgets/scoreboard/ScoreboardTimeline.tsx
+@@ -0,0 +1,54 @@
++import { useEffect, useState } from "react";
++import type { ContestInfo, RunInfo } from "@shared/api";
++import { followTeamChannel } from "@/utils/teamChannel";
++
++const colors = {
++    pending: "#cbd5e1", frozen: "#67c6ef", wrong: "#f37373", accepted: "#52cd93", first: "#ffe06c",
++};
++type Kind = keyof typeof colors;
++export type TimelinePaths = Partial<Record<Kind, string>>;
++
++function marker(run: RunInfo): Kind | null {
++    if (run.result.type === "IN_PROGRESS") return run.result.frozen ? "frozen" : "pending";
++    if (run.result.type !== "ICPC") return null;
++    if (run.result.isFirstToSolveRun) return "first";
++    return run.result.verdict.isAccepted ? "accepted" : "wrong";
++}
++
++// The public runs channel always sends a full snapshot, including after a reconnect or rejudge.
++// Build a bounded number of SVG paths per team; scrolling only renders the visible rows.
++export function useScoreboardTimelines(enabled: boolean, length?: number) {
++    const [byTeam, setByTeam] = useState(new Map<string, TimelinePaths>());
++    useEffect(() => {
++        if (!enabled || !(length > 0)) {
++            setByTeam(new Map());
++            return;
++        }
++        return followTeamChannel<RunInfo[]>("runs", runs => {
++            const timelines = new Map<string, TimelinePaths>();
++            for (const run of runs) {
++                if (run.isHidden || run.time < 0 || run.time >= length) continue;
++                const kind = marker(run);
++                if (!kind) continue;
++                const paths = timelines.get(run.teamId) ?? {};
++                const x = (run.time / length * 1000).toFixed(1);
++                paths[kind] = (paths[kind] ?? "") + `M${x},0v4`;
++                timelines.set(run.teamId, paths);
++            }
++            setByTeam(timelines);
++        });
++    }, [enabled, length]);
++    return byTeam;
++}
++
++export function ScoreboardTimeline({ paths, contest }: { paths: TimelinePaths; contest: ContestInfo }) {
++    if (!(contest.contestLengthMs > 0)) return null;
++    const freeze = contest.freezeTimeMs == null ? 1000 : Math.max(0, Math.min(1000, contest.freezeTimeMs / contest.contestLengthMs * 1000));
++    return <svg className="ScoreboardTimeline" aria-hidden="true" viewBox="0 0 1000 4" preserveAspectRatio="none"
++        style={{ position: "absolute", insetInline: 0, bottom: 0, width: "100%", height: 4, pointerEvents: "none" }}>
++        <rect width="1000" height="4" fill="#8999a8" opacity=".2" />
++        {freeze < 1000 && <rect data-freeze="" x={freeze} width={1000 - freeze} height="4" fill="#72a6d3" opacity=".55" />}
++        {(Object.keys(colors) as Kind[]).map(kind => paths[kind] &&
++            <path key={kind} data-result={kind} d={paths[kind]} stroke={colors[kind]} strokeWidth={kind === "first" ? 4 : 2} vectorEffect="non-scaling-stroke" />)}
++    </svg>;
++}
 diff --git a/src/frontend/overlay/src/components/organisms/widgets/types.ts b/src/frontend/overlay/src/components/organisms/widgets/types.ts
 index 36fb442..2008186 100644
 --- a/src/frontend/overlay/src/components/organisms/widgets/types.ts

@@ -16,6 +16,7 @@ import { recordingWorkflow, venueWorkflow } from './recording-workflow-check.mjs
 import { captureContinuity } from './capture-continuity-check.mjs';
 import { closingCeremony } from './closing-ceremony-check.mjs';
 import { resolverAudience } from './resolver-audience-check.mjs';
+import { liveOverlays } from './live-overlays-check.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const contest = '/contest/demo';
@@ -554,7 +555,7 @@ try {
     }
     if (mode === 'venue') await venueWorkflow(browser, base, contest);
     if (!mode || mode === 'resolver') console.log('Resolver audience', JSON.stringify(await resolverAudience(browser, base)));
-    if (!mode || mode === 'live') await broadcastStyles(browser, base);
+    if (!mode || mode === 'live') { await broadcastStyles(browser, base); await liveOverlays(browser, base, contest); }
     if (!mode || mode === 'interactions' || mode === 'recording') await interactions(browser, base);
     if (!mode || mode === 'ceremony') await closingCeremony(browser, base, path.dirname(statePath));
     if (process.env.BASELINE_PREVIEW) console.log('Resolver v1.18.0', JSON.stringify(await resolverAudience(browser, process.env.BASELINE_PREVIEW, true)));

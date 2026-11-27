@@ -23,6 +23,21 @@
       <div class="resolver-actions"><button type="button" class="button" id="reset-token">作废并重新生成链接</button><span class="resolver-muted" id="save-status" role="status"></span></div>
     </div>
   </section>
+  <section class="section visible" aria-labelledby="overlay-clients-title">
+    <div class="section__header resolver-heading"><h2 class="section__title" id="overlay-clients-title">直播画面客户端</h2><span class="resolver-muted" id="overlay-count"></span></div>
+    <div class="section__body">
+      <p class="resolver-muted" id="overlay-list-status" role="status">正在读取画面…</p>
+      <ul class="live-clients" id="overlay-clients"></ul>
+    </div>
+  </section>
+  <template id="overlay-client-row">
+    <li class="live-client">
+      <div><strong data-name></strong> <span data-online></span><div class="resolver-muted" data-info></div>
+        <details><summary>浏览器信息</summary><p class="resolver-muted" data-agent></p></details></div>
+      <div class="live-client-actions"><div><button type="button" class="button" data-action="identify">识别画面</button> <button type="button" class="button" data-action="reload">刷新画面</button></div>
+        <span class="resolver-muted" role="status" data-receipt></span></div>
+    </li>
+  </template>
   <dialog id="reset-confirm" aria-labelledby="reset-title"><form method="dialog"><h2 id="reset-title">作废直播画面链接</h2><p>旧链接立即失效。请在 OBS 中换成新链接。</p><div class="resolver-actions"><button class="button" value="cancel">取消</button><button class="button primary" value="confirm">作废并重新生成</button></div></form></dialog>
   <p class="resolver-muted">直播移植自 <a href="https://github.com/icpc/live-v3" target="_blank" rel="noopener">ICPC Live v3.5.1</a> · <a href="/hydro-live/LICENSE.txt">MIT</a></p>
 </div></div></div>
