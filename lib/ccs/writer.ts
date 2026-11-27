@@ -28,7 +28,7 @@ export const WEBHOOK_GIVE_UP_MS = 30 * 60_000;
 const VIEWS: View[] = ['full', 'public'];
 
 export { diffNotifications, eventLine, notificationsOf } from './events';
-import { diffNotifications, notificationsOf, eventLine } from './events';
+import { diffNotifications, identityAwardIds, notificationsOf, eventLine } from './events';
 
 export function applyWriter(host: HydroApi, ctx: Context, store: CcsStore, dependencies: SourceDependencies, loadCcsSource: ReturnType<typeof createCcsSourceLoader>['loadCcsSource'], webhook: { lookup?: HostLookup; post?: WebhookPost } = {}, onCommit?: (key: string) => void) {
     const { ContestModel, ObjectId, UserModel, PERM, PRIV } = host;
@@ -136,10 +136,11 @@ export function applyWriter(host: HydroApi, ctx: Context, store: CcsStore, depen
             nextTick.set(key, Date.now() + (active ? FAST_MS : SLOW_MS));
             return;
         }
+        const privateAwards = identityAwardIds(source.settings);
         let committedAny = false;
         for (const view of views) {
             const previous = await viewHashes(key, view);
-            const { changed, removed, notifications } = diffNotifications(notificationsOf(buildObjects(source, view)), previous);
+            const { changed, removed, notifications } = diffNotifications(notificationsOf(buildObjects(source, view), privateAwards), previous);
             if (!notifications.length) continue;
             if (!await store.ownsLease(LEASE, owner)) { leader = false; hashes.clear(); built.clear(); return; }
             const changedMap = new Map(changed.map((item) => [item.key, item.hash]));

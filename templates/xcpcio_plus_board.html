@@ -24,6 +24,21 @@
     </div>
     <div class="section__body xp-board-body">
       {% if realtime %}<p class="xp-notice">当前为有权限用户的实时榜，可能包含封榜后的结果。</p>{% endif %}
+      <details id="xp-board-filter">
+        <summary>高级筛选</summary>
+        <div id="xp-filter-rules"></div>
+        <div class="xp-filter-controls">
+          <button type="button" class="button" id="xp-filter-add">添加规则</button>
+          <label>规则组合 <select class="select" id="xp-filter-match"><option value="any">任一满足</option><option value="all">全部满足</option></select></label>
+          <label>匹配队伍 <select class="select" id="xp-filter-action"><option value="pin">置顶</option><option value="only">仅显示</option></select></label>
+          <button type="button" class="button primary" id="xp-filter-apply">应用筛选</button>
+          <button type="button" class="button" id="xp-filter-clear">清除筛选</button>
+          <button type="button" class="button" id="xp-filter-export">导出文本</button>
+          <button type="button" class="button" id="xp-filter-import">导入文本</button>
+        </div>
+        <textarea class="textbox" id="xp-filter-transfer" aria-label="筛选规则文本" rows="4" hidden></textarea>
+        <span id="xp-filter-message" role="status"></span>
+      </details>
       <div id="app" aria-label="XCPCIO 榜单"></div>
       <p id="xp-podium" class="xp-muted" hidden></p>
       <p id="xp-special" class="xp-special" hidden></p>

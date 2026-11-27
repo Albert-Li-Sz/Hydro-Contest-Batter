@@ -7,7 +7,7 @@ import type {
     Award, ContestInfo, ICPCProblemResult, OptimismLevel, RunInfo, ScoreboardDiff, ScoreboardRow, SolutionsStatistic, TeamTrend, TeamTrendPoint, TimeLineRunInfo,
 } from './types';
 import { hiddenFromOf, publicRunVerdict } from './model';
-import { schoolRanks, trophyWinners } from '../../resolver/public/js/trophies.js';
+import { awardPlaces, trophyWinners } from '../../resolver/public/js/trophies.js';
 import { honorsWinners } from '../../resolver/public/js/honors.js';
 
 const isJudged = (run: RunInfo) => run.result.type === 'ICPC';
@@ -114,11 +114,6 @@ export interface Ranking {
 
 type Entry = { id: string; name: string; row: ScoreboardRow; out: boolean; groups: string[]; school: string };
 
-/**
- * Ranks and medals as on the board (lib/award-policy.mjs): out-of-contest teams are listed but
- * unranked and never medalled; medals go to official teams that solved something, by rank when
- * tied teams share a medal, otherwise by position.
- */
 function rankEntries(info: ContestInfo, entries: Entry[], chain: ContestInfo['awardsSettings'][number] | undefined) {
     const ranks = new Map<string, number>();
     const excluded = new Set(chain?.excludedGroups || []);
@@ -127,20 +122,17 @@ function rankEntries(info: ContestInfo, entries: Entry[], chain: ContestInfo['aw
     const rows = entries.map((entry) => ({ entry, teamId: entry.id, official: !entry.out, solved: entry.row.totalScore,
         school: entry.school, lastAcceptMs: entry.row.totalScore > 0 ? Math.floor(entry.row.lastAcceptedMs / 1000) * 1000 : null }));
     const sameRow = (a: typeof rows[number], b: typeof rows[number]) => same(a.entry, b.entry);
-    const schools = schoolRanks(rows, sameRow);
-    let position = 0;
-    let previous: Entry | null = null;
-    let previousRank = 0;
+    const places = awardPlaces(rows, sameRow);
+    const schools = new Map<string, number>();
     for (const entry of entries) {
-        if (entry.out) continue;
-        position++;
-        const rank = previous && same(previous, entry) ? previousRank : position;
-        ranks.set(entry.id, rank);
-        previous = entry;
-        previousRank = rank;
+        const place = places.get(entry.id)!;
+        if (!entry.out) {
+            ranks.set(entry.id, place.rank);
+            schools.set(entry.id, place.school);
+        } else if (!chain?.hydroUnofficialMedals || !entry.groups.includes('unofficial')) continue;
         if (entry.row.totalScore <= 0 || entry.groups.some((group) => excluded.has(group))) continue;
         for (const medal of medals) {
-            const awardRank = chain?.hydroMedalRanking === 'school' ? schools.get(entry.id)! : medal.tiebreakMode === 'ALL' ? rank : position;
+            const awardRank = chain?.hydroMedalRanking === 'school' ? place.school : medal.tiebreakMode === 'ALL' ? place.rank : place.position;
             if (awardRank <= (medal.chainLimit ?? 0)) {
                 medal.teams.push(entry.id);
                 break;

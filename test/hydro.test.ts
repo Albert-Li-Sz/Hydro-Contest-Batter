@@ -75,7 +75,7 @@ function setup(saved = new Map<string, any>(), config: Record<string, unknown> =
     const ctx: any = {
         db: { collection: (name: string) => (name === 'status' ? { find: () => ({ toArray: async () => state.judges }) }
             : name.startsWith('xcpcio.resolver.') || name.startsWith('xcpcio.ccs.') || name.startsWith('xcpcio.screens') || name === 'xcpcio.ceremony' || name.startsWith('xcpcio.live')
-            || name === 'xcpcio.presence' || name === 'iplogin' ? resolverDb.db.collection(name as any) : collection) },
+            || name === 'xcpcio.presence' || name === 'iplogin' || name === 'user' || name === 'vuser' ? resolverDb.db.collection(name as any) : collection) },
         Route: (name: string, _path: string, handler: any) => { routes.set(name, handler); },
         Connection: (name: string, _path: string, handler: any) => { routes.set(name, handler); },
         effect: vi.fn((factory: () => () => unknown) => { const stop = factory(); if (typeof stop === 'function') cleanup.push(stop); }),
@@ -492,6 +492,36 @@ describe('Hydro 数据与权限', () => {
         await admin.post('system', JSON.stringify({ ...defaultSettings, publicAccess: true, showIdentity: true }));
         const open = app.publicBoard(); await open.prepare('system', state.contest.docId); await open.get('system', true, false);
         expect(open.response.body.teams[0]).toMatchObject({ name: '张三', organization: '南京晓庄学院' });
+    });
+    it('公开 JSON 只在开启身份展示时发送虚拟队和单人账号的女队、教练与机位', async () => {
+        state.contest.allowTeam = true;
+        state.entries.push({ uid: -1001, unrank: true, members: [2], journal: [] });
+        state.users[-1001] = { _id: -1001, uname: 'team:2:fixture', displayName: '参赛队' };
+        state.users[2] = { _id: 2, uname: 'member' };
+        const memory = previewDatabase();
+        await memory.db.collection('user').insertOne({ _id: 1, isGirl: '是', coach: '教练甲', seat: 'B03' } as never);
+        await memory.db.collection('vuser').insertOne({ _id: -1001, 女队: 1, seat: 'A01' } as never);
+        const app = setup(new Map(), {}, memory);
+        await app.init();
+        const read = async () => {
+            const guest = app.publicBoard();
+            await guest.prepare('system', state.contest.docId);
+            await guest.get('system', true, false);
+            return guest.response.body;
+        };
+        const admin = app.settings(); admin.user.own = () => true;
+        await admin.prepare('system', state.contest.docId);
+        await admin.post('system', JSON.stringify({ ...defaultSettings, publicAccess: true, showIdentity: true }));
+        const visible = await read();
+        expect(visible.contest.group).toHaveProperty('girl');
+        expect(visible.teams).toEqual(expect.arrayContaining([
+            expect.objectContaining({ team_id: '1', girl: true, coaches: ['教练甲'], location: 'B03' }),
+            expect.objectContaining({ team_id: '-1001', girl: true, members: ['member'], location: 'A01' }),
+        ]));
+        await admin.post('system', JSON.stringify({ ...defaultSettings, publicAccess: true, showIdentity: false }));
+        const hidden = await read();
+        expect(hidden.teams).toHaveLength(2);
+        expect(JSON.stringify(hidden)).not.toMatch(/"girl"|"coaches"|"location"|教练甲|B03|A01/);
     });
     it('开赛前公开榜不可见，有隐藏榜权限的用户除外', async () => {
         state.started = false;

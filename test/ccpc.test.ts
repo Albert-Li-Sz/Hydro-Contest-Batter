@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { balloonLook, defaultBalloonSettings, firstNumbers, normalizeBalloonSettings, teamPalette } from '../lib/balloons';
-import type { BoardData } from '../lib/board';
+import { enhanceBoard, type BoardData } from '../lib/board';
+import { createContest, createTeams, createSubmissions, MedalType, Rank } from './engine';
+import { ccsFixture } from './ccs-fixture';
+import { buildObjects } from '../lib/ccs/model';
+import { ceremonyDefaults, ceremonySlides } from '../lib/ceremony-slides';
+import { certificateEntries, defaultConfig, parseCsv } from '../lib/certificates/model';
 import { applyBoardRules, dropAfterAccept, hideProblemLabels, labelsHidden, revealThreshold } from '../lib/ccpc-board';
 import { buildContestInfo, buildRuns } from '../lib/live/model';
 import { computeScoreboard, runsByTeam, statistics } from '../lib/live/scoreboard';
-import { FirstSolveBulletin, problemFocus } from '../lib/live/broadcast';
+import { FirstSolveBulletin, medalCutoff, problemFocus } from '../lib/live/broadcast';
 import { contestPhase, patchBoard, presetOf, presets } from '../lib/control';
 import { boardSealed, defaultCaptureSettings, streamAllowed } from '../lib/live/capture';
 import { filterChanges, lastChange, reviewChanges, staleSessions, type ReviewItem } from '../lib/rejudge-review';
@@ -75,10 +80,13 @@ describe('school ranks and trophies', () => {
         expect(settings).toMatchObject({ tieBreak: 'ccpc', podiumBasis: 'school', podiumTie: 'shared', podiumNames: ['金杯', '银杯'], medalRanking: 'school' });
         const legacy = normalizeSettings({ manualBoards: [], medals: { gold: 1, silver: 1, bronze: 1 } });
         expect(legacy).toMatchObject({ tieBreak: 'hydro', podiumBasis: 'team', podiumTie: 'lastAccept', podiumNames: ['冠军', '亚军', '季军'], medalRanking: 'team' });
-        expect(legacy.ccpcBoard).toEqual({ enabled: false, revealBasis: 'count', reveal: 50 });
+        expect(legacy.ccpcBoard).toEqual({ enabled: false, revealBasis: 'count', reveal: 50, revealPercent: 20 });
         expect(() => normalizeSettings({ manualBoards: [], podiumNames: [] })).toThrow('奖杯应有 1 至 10 个');
         expect(() => normalizeSettings({ manualBoards: [], ccpcBoard: { enabled: true, revealBasis: 'percent', reveal: 120 } })).toThrow('1% 至 100%');
         expect(normalizeSettings({ manualBoards: [], ccpcBoard: { enabled: true, revealBasis: 'percent' } }).ccpcBoard.reveal).toBe(20);
+        expect(normalizeSettings({ manualBoards: [], ccpcBoard: { enabled: true, revealBasis: 'min', reveal: 30, revealPercent: 15 } }).ccpcBoard)
+            .toEqual({ enabled: true, revealBasis: 'min', reveal: 30, revealPercent: 15 });
+        expect(() => normalizeSettings({ manualBoards: [], ccpcBoard: { enabled: true, revealBasis: 'min', revealPercent: 0 } })).toThrow('比例应为 1% 至 100%');
     });
 });
 
@@ -101,6 +109,10 @@ describe('CCPC 新榜单模式', () => {
         expect(revealThreshold({ revealBasis: 'count', reveal: 2 }, 300)).toBe(2);
         expect(revealThreshold({ revealBasis: 'percent', reveal: 20 }, 259)).toBe(51);
         expect(revealThreshold({ revealBasis: 'percent', reveal: 20 }, 3)).toBe(1);
+        // The smaller of 30 teams and 15% of the teams: 15% of 259 is 38, of 100 is 15.
+        expect(revealThreshold({ revealBasis: 'min', reveal: 30, revealPercent: 15 }, 259)).toBe(30);
+        expect(revealThreshold({ revealBasis: 'min', reveal: 30, revealPercent: 15 }, 100)).toBe(15);
+        expect(revealThreshold({ revealBasis: 'min', reveal: 30, revealPercent: 15 }, 4)).toBe(1);
         const hidden = hideProblemLabels(data, { enabled: true, revealBasis: 'count', reveal: 2 });
         expect(hidden.hiddenFrom).toBe(1);
         expect(hidden.contest.problem_id).toEqual(['A', '', '', '']);
@@ -113,7 +125,7 @@ describe('CCPC 新榜单模式', () => {
     });
 
     it('applies until the freeze, to public views only; submissions after an accept are left out everywhere', () => {
-        const board = { enabled: true, revealBasis: 'count' as const, reveal: 2 };
+        const board = { enabled: true, revealBasis: 'count' as const, reveal: 2, revealPercent: 20 };
         const contest = { beginAt: new Date(0), endAt: new Date(18000_000), lockAt: new Date(14400_000) };
         expect(labelsHidden(board, contest, 3600_000)).toBe(true);
         expect(labelsHidden(board, contest, 14400_000)).toBe(true);
@@ -252,7 +264,7 @@ describe('赛事中控', () => {
     it('applies a 赛制 and recognises it again', () => {
         const ccpc = patchBoard(normalizeSettings({ ...defaultSettings, medals: { gold: 4, silver: 6, bronze: 9 } }), presets.ccpc.board as Record<string, unknown>);
         expect(ccpc).toMatchObject({ tieBreak: 'ccpc', ignoreAfterAccept: true, podiumBasis: 'school', medals: { gold: 4, silver: 6, bronze: 9 } });
-        expect(ccpc.ccpcBoard).toEqual({ enabled: true, revealBasis: 'count', reveal: 50 });
+        expect(ccpc.ccpcBoard).toEqual({ enabled: true, revealBasis: 'count', reveal: 50, revealPercent: 20 });
         const balloons = normalizeBalloonSettings({ enabled: true, ...presets.ccpc.balloons }, []);
         expect(presetOf(ccpc, balloons)).toBe('ccpc');
         expect(presetOf(ccpc, { ...balloons, teamColors: false })).toBeNull();
@@ -270,6 +282,64 @@ describe('赛事中控', () => {
 });
 
 describe('every channel names the same winners', () => {
+    it.each([
+        { ranking: 'team', sameScore: true, second: 20, gold: ['1', '4'], silver: ['2', '3', '5'], bronze: ['6', '7'] },
+        { ranking: 'team', sameScore: false, second: 20, gold: ['1', '4'], silver: ['2', '5'], bronze: ['3', '6', '7'] },
+        { ranking: 'team', sameScore: true, second: 15, gold: ['1', '4'], silver: ['2'], bronze: ['3', '5', '6', '7'] },
+        { ranking: 'school', sameScore: true, second: 15, gold: ['1', '4'], silver: ['2', '3', '5'], bronze: ['6', '7'] },
+    ] as const)('agrees on starred medals with $ranking ranking, shared medals $sameScore and team 2 at minute $second', (scenario) => {
+        const source = ccsFixture();
+        const data = source.full;
+        // Teams 1 and 2 share a school. 4 leads outright, 5 ties team 3, 6 sits between 3 and 7, 8 has no solves.
+        const times = [10, scenario.second, 20, 5, 20, 25, 30];
+        const starred = new Set(['4', '5', '6', '8']);
+        data.teams = data.teams.map((team, index) => ({
+            ...team, name: 'T' + team.team_id, organization: ['A', 'A', 'B', 'X', 'Y', 'Z', 'C', 'X'][index],
+            group: [starred.has(team.team_id) ? 'unofficial' : 'official'],
+        }));
+        data.submissions = times.map((time, index) => ({
+            team_id: String(index + 1), submission_id: 's' + index, problem_id: 0, timestamp: time * 60_000, status: 'CORRECT',
+        }));
+        const settings = normalizeSettings({ ...defaultSettings, showIdentity: true, medals: { gold: 1, silver: 1, bronze: 2 },
+            unofficialMedals: true, medalSameScore: scenario.sameScore, medalRanking: scenario.ranking });
+        const boards = resolverBoards(data, settings, true);
+        const enhanced = enhanceBoard(data, settings);
+        const contest = createContest(enhanced.contest as never);
+        const rank = new Rank(contest, createTeams(enhanced.teams), createSubmissions(enhanced.submissions, contest));
+        rank.buildRank();
+        const resultsSource = { data, settings, ...source.contest, at: source.now, problemIds: [100, 101, 102], coaches: {} };
+        const result = resultBoard(resultsSource, 'all');
+        const csv = parseCsv(standingsCsv(result)).slice(1);
+        const presentation = ceremonySlides(resultsSource, ceremonyDefaults, {}).slides;
+        const certificates = certificateEntries(result, { ...defaultConfig('C'), kinds: { team: true, member: false, coach: false, participation: false } });
+        const game = prepareResolver(data, boards, { ...defaultResolverConfig(settings, true), freezeMode: 'custom', freezeAtSeconds: 900 },
+            { contestId: 'c', ended: true, capturedAt: new Date(source.now), logoNames: {} }).game;
+        const resolverAwards = game.contest.awards as { id: string; teamIds: string[] }[];
+        const ccs = buildObjects({ ...source, settings, full: data, public: data, boards, publicBoards: boards }, 'public');
+        const live = { data, boards, settings, identity: true, logoNames: {}, now: source.now, contest: {
+            title: 'C', beginAt: new Date(source.contest.beginAt), endAt: new Date(source.contest.endAt), lockAt: null,
+        } };
+        const info = buildContestInfo(live);
+        const state = computeScoreboard(info, runsByTeam(buildRuns(live, info)), 'normal');
+
+        for (const [tier, kind, label] of [['gold', MedalType.GOLD, '金奖'], ['silver', MedalType.SILVER, '银奖'], ['bronze', MedalType.BRONZE, '铜奖']] as const) {
+            const expected = scenario[tier];
+            const awardId = tier + '-medal';
+            expect(rank.teams.filter(team => team.awards.includes(kind)).map(team => team.id).sort(), 'XCPCIO ' + label).toEqual(expected);
+            expect(resolverAwards.find(award => award.id === 'medal-' + tier)?.teamIds.slice().sort(), '滚榜 ' + label).toEqual(expected);
+            expect(state.ranking.awards.find(award => award.id === awardId)?.teams.slice().sort(), 'Live ' + label).toEqual(expected);
+            expect(ccs.awards.find(award => award.id === awardId)?.team_ids?.slice().sort(), 'CCS ' + label).toEqual(expected);
+            expect(result.rows.filter(row => row.medals.includes(label)).map(row => row.id).sort(), '成绩 ' + label).toEqual(expected);
+            expect(csv.filter(row => row[9] === label).map(row => row[2]).sort(), '成绩 CSV ' + label).toEqual(expected);
+            expect(presentation.flatMap(slide => slide.kind === 'award' && slide.tier === tier ? slide.teams.map(team => team.name.slice(1)) : []).sort(), '颁奖 ' + label).toEqual(expected);
+            expect(certificates.filter(entry => entry.values.award === label).map(entry => entry.teamId).sort(), '证书 ' + label).toEqual(expected);
+        }
+        expect(result.rows.filter(row => starred.has(row.id)).every(row => row.rank === 0 && row.schoolRank === 0)).toBe(true);
+        expect(certificates.filter(entry => starred.has(entry.teamId)).every(entry => entry.values.rank === '')).toBe(true);
+        expect(csv.filter(row => starred.has(row[2])).every(row => row[0] === '*' && row[1] === '*')).toBe(true);
+        expect(medalCutoff(info, state, 'all', 'gold')).toMatchObject({ inside: { name: 'T1', rank: 1 }, outside: { name: 'T2', rank: 2 } });
+    });
+
     // demo: 林澈 (南京晓庄) 3 solved, 陈言 (南京邮电) 3, 周宁 (南京晓庄) 2, 许青 (东南) 2; 苏禾 and 江屿 are unofficial.
     const settings = normalizeSettings({ ...defaultSettings, tieBreak: 'ccpc', podiumEnabled: true, podiumBasis: 'school', medals: { gold: 1, silver: 1, bronze: 1 }, medalRanking: 'school' });
     const data = demoData();

@@ -9,7 +9,7 @@ import { BoardData, BoardTeam, automaticBoards, boardBalloon, enhanceBoard, rese
 import { BoardSettings, checkBoardNames, defaultSettings, normalizeSettings, pruneMembers, toScriptJson } from './lib/settings';
 import { buildRosterTeam, defaultProfileFields, FilterField, rosterFields } from './lib/roster';
 import { replacementRequest } from './lib/access';
-import { describeTeam, memberIds, type TeamEntry } from './lib/teams';
+import { loadBoardProfiles, describeTeam, memberIds, type TeamEntry } from './lib/teams';
 import { applyCeremony } from './lib/ceremony-routes';
 import { applyPerspective } from './lib/perspective';
 import { applyResolver } from './lib/resolver-routes';
@@ -30,6 +30,7 @@ import { applyBalloons } from './lib/balloon-routes';
 import { ContestLinks } from './lib/links';
 import { applyPresence } from './lib/presence-routes';
 import { applyClarificationDesk } from './lib/clarification-desk-routes';
+import { unfreezeAt } from './lib/auto-unfreeze';
 import { applyControl } from './lib/control-routes';
 import { displaySpecialAwards } from './lib/special-awards';
 import { applyBoardRules, labelsHidden } from './lib/ccpc-board';
@@ -53,6 +54,8 @@ export const Config = Schema.object({
 interface SettingsDoc {
     _id: string;
     settings: BoardSettings;
+    unlockCheckAt?: Date | null;
+    unlockLeaseUntil?: Date;
     updatedBy: number;
     updatedAt: Date;
 }
@@ -80,10 +83,12 @@ const maskedResults = ['WRONG_ANSWER', 'TIME_LIMIT_EXCEEDED', 'MEMORY_LIMIT_EXCE
 const boardStatus = (code: number) => status.get(code) || 'JUDGEMENT_FAILED';
 
 /** `identity` adds the display name and school, which Hydro treats as private user information. */
-export async function loadContestData(tdoc: Tdoc, realtime: boolean, identity = false, results: boolean | 'live' = false): Promise<BoardData> {
+export async function loadContestData(tdoc: Tdoc, realtime: boolean, identity = false, results: boolean | 'live' = false, profileDb?: Context['db']): Promise<BoardData> {
     const entries = await ContestModel.getMultiStatus(tdoc.domainId, { docId: tdoc.docId }).toArray();
     // Team contests (Hydro 5.1): load the members along with the teams.
-    const users = await UserModel.getList(tdoc.domainId, [...entries.map((entry) => entry.uid), ...memberIds(tdoc, entries as TeamEntry[])]);
+    const uids = entries.map((entry) => entry.uid);
+    const [users, profiles] = await Promise.all([UserModel.getList(tdoc.domainId, [...uids, ...memberIds(tdoc, entries as TeamEntry[])]),
+        identity && profileDb ? loadBoardProfiles(profileDb, uids) : undefined]);
     const ended = ContestModel.isDone(tdoc);
     const frozen = ContestModel.isLocked(tdoc) && !realtime;
     // School ranks need to know which teams share a school, also where the school name stays private.
@@ -100,6 +105,7 @@ export async function loadContestData(tdoc: Tdoc, realtime: boolean, identity = 
             organization: team.school,
             group: [entry.unrank ? 'unofficial' : 'official'],
             school_key: schoolKeys.get(school),
+            ...profiles?.get(entry.uid),
             ...team.members?.length ? { members: team.members } : {},
         };
     });
@@ -208,8 +214,11 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
      */
     // 裁判操作 (lib/jury.ts): 计时补偿 for every view, 暂缓公布 for the public ones.
     const jury = juryStore(ctx.db);
+    const rawData = async (tdoc: Tdoc, realtime: boolean, identity = false, results: boolean | 'live' = false, saved?: BoardSettings) =>
+        loadContestData(tdoc, realtime, identity, results, identity && (saved || await loadSettings(tdoc)).showIdentity ? ctx.db : undefined);
     const loadData = async (tdoc: Tdoc, realtime: boolean, identity = false, results: boolean | 'live' = false, saved?: BoardSettings) => {
-        const [data, settings, state] = await Promise.all([loadContestData(tdoc, realtime, identity, results), saved || loadSettings(tdoc), jury.load(tdoc)]);
+        const settings = saved || await loadSettings(tdoc);
+        const [data, state] = await Promise.all([rawData(tdoc, realtime, identity, results, settings), jury.load(tdoc)]);
         return applyBoardRules(applyJury(data, state, tdoc.pids, !realtime), settings, tdoc, Date.now(), realtime);
     };
     const respond = async (handler: Handler, tdoc: Tdoc, realtime: boolean, json: boolean, publicView = false, saved?: BoardSettings) => {
@@ -292,7 +301,7 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
         }
         await collection.updateOne(
             { _id: settingsKey(tdoc.domainId, `${tdoc.docId}`) },
-            { $set: { settings, updatedBy: uid, updatedAt: new Date() } },
+            { $set: { settings, updatedBy: uid, updatedAt: new Date(), unlockCheckAt: unfreezeAt(tdoc, settings.autoUnfreezeMinutes) } },
             { upsert: true },
         );
         (ctx.broadcast as any)('xcpcio/ccs-touch', settingsKey(tdoc.domainId, `${tdoc.docId}`));
@@ -378,7 +387,7 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     // Links that work without a Hydro login register here, so they can be revoked after the contest.
     const balloons = applyBalloons(ctx, { loadSettings, links, jury: jury.load });
     const reactions = config.live !== false && config.liveCapture !== false ? applyReactions(ctx, {
-        loadSettings, loadData: loadContestData, links, screenDuringContest: async (tdoc): Promise<boolean> => (await live?.capture?.get(tdoc))?.screenDuringContest ?? false,
+        loadSettings, loadData: rawData, links, screenDuringContest: async (tdoc): Promise<boolean> => (await live?.capture?.get(tdoc))?.screenDuringContest ?? false,
     }) : undefined;
     applyScreens(ctx, { loadSettings, loadData, machines: monitor.machines, balloons: balloons.screen, balloonColors: balloons.screenColors, links,
         screenVideos: reactions?.screenVideos, playScreenVideo: reactions?.playScreenVideo, screenLayouts: reactions?.screenLayouts });
@@ -391,7 +400,7 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
         .map((team) => ({ uid: Number(team.team_id), name: team.name, school: team.organization || '' })).filter((team) => Number.isSafeInteger(team.uid)) });
     const juryRoutes = applyJuryRoutes(ctx, { store: jury, loadData: (tdoc) => loadData(tdoc, true, true, true), snapshot: results.snapshot });
     applyIntegrity(ctx, { loadData: (tdoc) => loadData(tdoc, true, true, true), snapshot: results.snapshot, jury: jury.load });
-    applyCcs(ctx, { loadSettings, loadData: loadContestData, loadJury: jury.load });
+    applyCcs(ctx, { loadSettings, loadData: rawData, loadJury: jury.load });
     applyManage(ctx, { machines: monitor.machines, links, beforeRejudge: results.beforeRejudge, holdForRejudge: juryRoutes.holdForRejudge });
     applyPresence(ctx);
     applyPrintServers(ctx, { receipts: balloons.receipts });

@@ -5,6 +5,7 @@ import {
 } from 'hydrooj';
 import { type BalloonSettings } from './balloons';
 import { contestPhase, medalTemplateOf, medalTemplates, patchBoard, presetIds, presetOf, presets, type PresetId } from './control';
+import { applyAutoUnfreeze } from './auto-unfreeze';
 import type { CaptureSettings } from './live/capture';
 import { resolverCodeBase } from './resolver-data';
 import { type BoardSettings, toScriptJson } from './settings';
@@ -27,6 +28,7 @@ export function applyControl(ctx: Context, dependencies: {
     live: boolean;
     review: (tdoc: Tdoc) => Promise<{ changes: number; pending: number; stale: number }>;
 }) {
+    applyAutoUnfreeze(ctx);
     const codeBase = resolverCodeBase(JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8')).version);
     const contestBase = (tdoc: Tdoc) => `/d/${encodeURIComponent(tdoc.domainId)}/contest/${tdoc.docId}`;
 
@@ -46,9 +48,9 @@ export function applyControl(ctx: Context, dependencies: {
             medalTemplate: medalTemplateOf(board),
             medalTemplates,
             board: {
-                tieBreak: board.tieBreak, ccpcBoard: board.ccpcBoard, ignoreAfterAccept: board.ignoreAfterAccept,
-                medals: board.medals, medalBasis: board.medalBasis, medalBase: board.medalBase, medalRounding: board.medalRounding, honors: board.honors,
-                medalRanking: board.medalRanking, medalSameScore: board.medalSameScore,
+                tieBreak: board.tieBreak, ccpcBoard: board.ccpcBoard, ignoreAfterAccept: board.ignoreAfterAccept, autoUnfreezeMinutes: board.autoUnfreezeMinutes,
+                medals: board.medals, medalBasis: board.medalBasis, medalBase: board.medalBase, medalRounding: board.medalRounding, medalFixed: board.medalFixed, honors: board.honors,
+                medalRanking: board.medalRanking, medalSameScore: board.medalSameScore, unofficialMedals: board.unofficialMedals,
                 podiumEnabled: board.podiumEnabled, podiumBasis: board.podiumBasis, podiumTie: board.podiumTie, podiumNames: board.podiumNames,
                 firstSolve: board.firstSolve, unofficialFirstSolve: board.unofficialFirstSolve,
                 schoolBoards: board.schoolBoards, participationBoards: board.participationBoards, manualBoards: board.manualBoards.length,

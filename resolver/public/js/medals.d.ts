@@ -3,7 +3,7 @@ export interface MedalContest {
     scoringMode?: string;
     tieBreak?: 'hydro' | 'icpc' | 'ccpc';
     durationMs?: number;
-    teams: { id: string; name?: string; unrank?: boolean; schoolKey?: string; organizationName?: string }[];
+    teams: { id: string; name?: string; unrank?: boolean; unofficial?: boolean; schoolKey?: string; organizationName?: string }[];
     problems?: { id: string; label?: string }[];
     submissions?: { teamId: string; problemId: string; contestTime: number; status: 'solved' | 'pending' | 'failed' }[];
     awards?: unknown[];

@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { type Readable } from 'node:stream';
 import type { Context, Tdoc } from 'hydrooj';
-import { schoolName } from '../board';
+import { identityBoard, schoolName } from '../board';
 import { accessObject, accountProperties, type AccessContext, endpointProperties, idProperties, project } from './access';
 import {
     buildObjects, buildScoreboard, type CcsObjects, type CcsSource, contestTimes, mimeOf, type View,
@@ -20,6 +20,7 @@ import {
 } from './types';
 import { applyWriter } from './writer';
 import { openFeed } from './feed';
+import { identityAward, identityAwardIds } from './events';
 import { type HostLookup, validateWebhookUrl, type WebhookPost } from './ssrf';
 import { readZip, writeZip, ZipError } from './zip';
 import { VERDICT_CHANGED } from '../verdict-event';
@@ -285,9 +286,10 @@ const objectIdAt = (ms: number) => new ObjectId(Math.floor(ms / 1000).toString(1
             const objects = objectsOf(source, access.role === 'team' && team ? `team-${team}` : 'public', options);
             // Current privacy settings still apply after the final snapshot is frozen.
             if (access.identity) return objects;
-            return { ...objects, organizations: [], groups: objects.groups.filter(group => !group.id.startsWith('school-')),
-                awards: objects.awards.filter(award => !award.id.startsWith('group-winner-school-')),
-                teams: objects.teams.map(item => ({ ...item, organization_id: null, group_ids: item.group_ids?.filter(id => !id.startsWith('school-')) })),
+            const privateAwards = identityAwardIds(source.settings);
+            return { ...objects, organizations: [], groups: objects.groups.filter(group => !identityBoard(group.id)),
+                awards: objects.awards.filter(award => !identityAward(award.id, privateAwards)),
+                teams: objects.teams.map(item => ({ ...item, organization_id: null, group_ids: item.group_ids?.filter(id => !identityBoard(id)) })),
             };
         }
 

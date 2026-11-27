@@ -6,6 +6,7 @@ import { honorsResults, specialAwardResults } from '../lib/special-awards';
 import { defaultResolverConfig, prepareResolver, resolverBoards } from '../lib/resolver-data';
 import { buildContestInfo, buildRuns, type LiveSource } from '../lib/live/model';
 import { computeScoreboard, runsByTeam } from '../lib/live/scoreboard';
+import { medalTemplateOf } from '../lib/control';
 import { honorsPlaces, honorsWinners } from '../resolver/public/js/honors.js';
 
 const minute = 60_000;
@@ -48,6 +49,33 @@ describe('奖牌名额 v2', () => {
         expect(board(data, ccpc)).toEqual([4, 6, 9]);
         expect(board(data, hongKong)).toEqual([4, 7, 10]);
         expect(board(data, xian)).toEqual([4, 8, 12]);
+    });
+
+    it('mixes a fixed tier into cumulative and independent percentages without enlarging the official pool', () => {
+        const data = field({ solved: 31, unofficial: 5 });
+        const mixed = { ...ccpc, medals: { gold: 10, silver: 5, bronze: 30 }, medalFixed: { silver: true }, unofficialMedals: true };
+        expect(board(data, mixed)).toEqual([4, 5, 9]);
+        expect(board(data, { ...mixed, medalRounding: 'tier' })).toEqual([4, 5, 10]);
+        const mixedSettings = normalizeSettings({ ...defaultSettings, ...mixed });
+        const main = resolverBoards(data, mixedSettings, true).find(item => item.id === 'all')!;
+        expect(main.medalCounts).toEqual({ gold: 4, silver: 5, bronze: 9 });
+        const live = buildContestInfo(liveSource(data, mixedSettings));
+        expect(live.awardsSettings[0].awards.map(award => award.chainLimit)).toEqual([4, 9, 18]);
+        const settings = normalizeSettings({ ...defaultSettings, ...ccpc, boardAwards: { official: mixed } });
+        expect(awardsFor(settings, 'official').medalFixed).toEqual({ gold: false, silver: true, bronze: false });
+        expect(medalCounts(awardsFor(settings, 'official'), 31)).toEqual({ gold: 4, silver: 5, bronze: 9 });
+        expect(medalTemplateOf(settings)).toBe('ccpc-national');
+        expect(medalTemplateOf(normalizeSettings({ ...settings, medalFixed: { silver: true } }))).toBeNull();
+    });
+
+    it('accepts fixed counts independently of the percentage budget, including zero, and rejects malformed units', () => {
+        const input = { ...defaultSettings, ...ccpc, medals: { gold: 150, silver: 0, bronze: 30 }, medalFixed: { gold: true, silver: true } };
+        const rules = awardsFor(normalizeSettings(input), 'all');
+        expect(medalCounts(rules, 0)).toEqual({ gold: 150, silver: 0, bronze: 0 });
+        expect(medalCounts(rules, 31)).toEqual({ gold: 150, silver: 0, bronze: 10 });
+        expect(() => normalizeSettings({ ...input, medalFixed: {} })).toThrow();
+        expect(() => normalizeSettings({ ...input, medalFixed: { gold: 1 } })).toThrow('medalFixed.gold');
+        expect(normalizeSettings({ ...input, medalBasis: 'count' }).medalFixed).toEqual({ gold: false, silver: false, bronze: false });
     });
 
     it('keeps the CCPC count when teams submit without solving, while the per-tier count follows the solved teams', () => {
@@ -147,7 +175,7 @@ describe('带条件的特别奖', () => {
         return data;
     };
     const award = (input: Partial<SpecialAward>): SpecialAward => ({ id: 'a', name: '奖', kind: 'rank', board: 'all', rank: 1, teamIds: [], unofficial: false, ties: true,
-        count: 1, minTeams: 0, floor: 'none', excludeMedalists: false, ...input });
+        count: 1, minTeams: 0, minSolved: 1, floor: 'none', excludeMedalists: false, ...input });
     const results = (awards: Partial<SpecialAward>[], extra: Record<string, unknown> = {}, data = contest()) => {
         const settings = normalizeSettings({ ...defaultSettings, medals: { gold: 1, silver: 2, bronze: 3 }, ...extra,
             specialAwards: awards.map((item, index) => award({ id: `a${index}`, ...item })) });
@@ -186,5 +214,16 @@ describe('带条件的特别奖', () => {
         // 优胜奖: every official team that solved something without a medal (7–10), not the zero-solve team 12.
         expect(results([{ kind: 'honorable' }])).toEqual([['7', '8', '9', '10']]);
         expect(results([{ kind: 'lastSolver', count: 2 }])).toEqual([['9', '10']]);
+    });
+
+    it('requires a number of solved problems when the award sets one', () => {
+        const data = contest();
+        // Teams 1–8 solve a second problem; medals still go to 1–6.
+        for (let team = 1; team <= 8; team++) data.submissions.push({ submission_id: `b${team}`, team_id: String(team), problem_id: 1, timestamp: (200 + team) * minute, status: 'CORRECT' });
+        // 优胜奖 with at least two problems: 7 and 8, not the one-problem teams 9 and 10.
+        expect(results([{ kind: 'honorable', minSolved: 2 }], {}, data)).toEqual([['7', '8']]);
+        // The same threshold on 顽强拼搏奖 leaves the one-problem teams out.
+        expect(results([{ kind: 'lastAccept', excludeMedalists: true, minSolved: 2 }], {}, data)).toEqual([['8']]);
+        expect(() => normalizeSettings({ ...defaultSettings, specialAwards: [award({ kind: 'honorable', minSolved: 0 })] })).toThrow('过题门槛');
     });
 });

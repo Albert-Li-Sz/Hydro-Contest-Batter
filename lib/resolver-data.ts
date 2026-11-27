@@ -2,7 +2,7 @@ import type { SpecialResult } from './special-awards';
 import type { BoardData } from './board';
 import { enhanceBoard, medalPool } from './board';
 import type { BoardAwards, BoardSettings, MedalPool } from './settings';
-import { awardsFor, cappedMedals, medalCounts } from './settings';
+import { awardsFor, boardMedalCounts, medalCounts } from './settings';
 import type { ResolverBoard, ResolverConfig, ResolverContest, ResolverPayload } from './resolver-types';
 import { buildGame } from '../resolver/server/lib/engine.js';
 
@@ -22,8 +22,7 @@ export function resolverBoards(data: BoardData, settings: BoardSettings, identit
     const board = (id: string, name: string, teamIds: string[]): ResolverBoard => {
         const awards = awardsFor(settings, id);
         const pool = medalPool(data, teamIds);
-        // As on the board: never more medals than official teams that solved something.
-        return { id, name, teamIds, medals: awards.medals, awards, eligible: pool.solved, pool, medalCounts: cappedMedals(medalCounts(awards, pool), pool.solved) };
+        return { id, name, teamIds, medals: awards.medals, awards, eligible: pool.solved, pool, medalCounts: boardMedalCounts(awards, pool) };
     };
     return [board('all', '主榜', data.teams.map((team) => team.team_id)),
         ...Object.entries(groups).map(([id, name]) => board(id, name, enhanced.teams.filter((team) => team.group.includes(id)).map((team) => team.team_id)))];
@@ -35,7 +34,7 @@ function resolverAwardConfig(awards: BoardAwards, pool: number | MedalPool = 0) 
     const honors = awards.honors;
     return { goldCount: counts.gold, silverCount: counts.silver, bronzeCount: counts.bronze,
         goldCitation: awards.goldCitation, silverCitation: awards.silverCitation, bronzeCitation: awards.bronzeCitation,
-        medalSameScore: awards.medalSameScore, podiumEnabled: awards.podiumEnabled, firstSolve: awards.firstSolve,
+        medalSameScore: awards.medalSameScore, unofficialMedals: awards.unofficialMedals, podiumEnabled: awards.podiumEnabled, firstSolve: awards.firstSolve,
         podiumBasis: awards.podiumBasis ?? 'team', podiumTie: awards.podiumTie ?? 'lastAccept', podiumNames: awards.podiumNames, medalRanking: awards.medalRanking ?? 'team',
         honorsEnabled: !!honors?.enabled, honorsHighest: honors?.highest ?? 25, honorsHigh: honors?.high ?? 50, honorsStandard: honors?.standard ?? 100 };
 }
@@ -110,7 +109,7 @@ export function prepareResolver(
         const unrank = team.group.includes('unofficial') || (config.mode === 'official' && !members.has(team.team_id));
         return {
             id: team.team_id, name: team.name, displayName: config.showSchool && school ? `${team.name}（${school}）` : team.name,
-            photo: context.photos?.[team.team_id], organizationName: school, unrank, ...team.school_key ? { schoolKey: team.school_key } : {},
+            photo: context.photos?.[team.team_id], organizationName: school, unrank, unofficial: members.has(team.team_id) && team.group.includes('unofficial'), ...team.school_key ? { schoolKey: team.school_key } : {},
             ...team.members?.length ? { members: team.members } : {},
             logo: logoId && /^[a-f\d]{12}$/.test(logoId) ? `${resolverAssetBase}/logos/${logoId}.webp` : `${resolverAssetBase}/assets/img/icpc-logo.png`,
         };

@@ -1,5 +1,5 @@
 import type { BoardData } from '../board';
-import { balloonUnset, medalPool, problemColorOrNull, schoolGroup, schoolName } from '../board';
+import { balloonUnset, identityBoard, medalPool, problemColorOrNull, schoolGroup, schoolName } from '../board';
 import type { BoardSettings } from '../settings';
 import { awardsFor, medalCounts, type MedalPool } from '../settings';
 import { resolverAssetBase } from '../resolver-data';
@@ -107,7 +107,7 @@ function medalChain(settings: BoardSettings, pool: MedalPool, group?: string): A
     const podium = rules.podiumEnabled ? { hydroPodium: { basis: rules.podiumBasis, tie: rules.podiumTie, names: rules.podiumNames } } : {};
     const honors = rules.honors?.enabled ? { hydroHonors: { highest: rules.honors.highest, high: rules.honors.high, standard: rules.honors.standard } } : {};
     return awards.length || rules.podiumEnabled || rules.honors?.enabled
-        ? [{ awards, excludedGroups: ['unofficial'], hydroMedalRanking: rules.medalRanking, ...podium, ...honors, ...group ? { groups: [group] } : {} }] : [];
+        ? [{ awards, excludedGroups: rules.unofficialMedals ? [] : ['unofficial'], hydroUnofficialMedals: rules.unofficialMedals, hydroMedalRanking: rules.medalRanking, ...podium, ...honors, ...group ? { groups: [group] } : {} }] : [];
 }
 
 const logoKey = (name: string) => name.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -142,7 +142,7 @@ export function buildContestInfo(source: LiveSource, { fallbackOrganizationLogo 
         { id: 'unofficial', displayName: '非正式参赛', isHidden: false, isOutOfContest: true },
     ];
     for (const board of source.hidden ? [] : source.boards) {
-        if (board.id === 'all') continue;
+        if (board.id === 'all' || (!identity && identityBoard(board.id)) || (board.id === 'girl' && !source.settings.showIdentity)) continue;
         if (!groups.some((group) => group.id === board.id)) groups.push({ id: board.id, displayName: board.name, isHidden: false, isOutOfContest: false });
         for (const teamId of board.teamIds) membership.set(teamId, [...(membership.get(teamId) || []), board.id]);
     }

@@ -10,28 +10,32 @@
  * the schools are 甲 1, 乙 2, 丙 3, and 甲2 shares 2 with 乙1.
  */
 
-/** School rank of every official team: 1 + the schools whose best team is strictly ahead of it. */
-export function schoolRanks(rows, same) {
-  const best = [];
+/** Positions for each row, counted only from official teams. A tie shares the counts at its start. */
+export function awardPlaces(rows, same) {
+  let official = 0;
   const schools = new Set();
-  const official = rows.filter((row) => row.official);
-  for (const row of official) {
-    if (schools.has(row.school)) continue;
-    schools.add(row.school);
-    best.push(row);
-  }
-  const position = new Map(official.map((row, index) => [row, index]));
-  const ranks = new Map();
-  for (const row of official) {
-    const at = position.get(row);
-    let ahead = 0;
-    for (const other of best) {
-      if (position.get(other) >= at) break;
-      if (!same(other, row)) ahead++;
+  const places = new Map();
+  for (let first = 0; first < rows.length;) {
+    let end = first + 1;
+    while (end < rows.length && same(rows[first], rows[end])) end++;
+    const rank = official + 1;
+    const school = schools.size + 1;
+    for (let index = first; index < end; index++) {
+      const row = rows[index];
+      if (row.official) {
+        official++;
+        schools.add(row.school);
+      }
+      places.set(row.teamId, { rank, school, position: row.official ? official : rank });
     }
-    ranks.set(row.teamId, ahead + 1);
+    first = end;
   }
-  return ranks;
+  return places;
+}
+
+export function schoolRanks(rows, same) {
+  const places = awardPlaces(rows, same);
+  return new Map(rows.filter((row) => row.official).map((row) => [row.teamId, places.get(row.teamId).school]));
 }
 
 export const TROPHY_DEFAULTS = Object.freeze({ basis: 'team', tie: 'lastAccept', names: Object.freeze(['冠军', '亚军', '季军']) });

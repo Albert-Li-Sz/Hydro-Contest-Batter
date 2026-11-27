@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { boardFilterCheck } from './board-filter-check.mjs';
 import { recordingWorkflow, venueWorkflow } from './recording-workflow-check.mjs';
 import { captureContinuity } from './capture-continuity-check.mjs';
 import { closingCeremony } from './closing-ceremony-check.mjs';
@@ -548,6 +549,7 @@ try {
     // UI_SMOKE=interactions skips the page sweep while working on an interaction.
     const mode = process.env.UI_SMOKE;
     if (!mode) await sweep(browser, base);
+    if (!mode || mode === 'board') await boardFilterCheck(browser, base);
     if (mode === 'control') {
         const context = await browser.newContext();
         try { await configuration(context, base); } finally { await context.close(); }

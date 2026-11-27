@@ -5,6 +5,7 @@ import { inkOn } from '../resolver/public/js/ink.js';
 import { colorPresets } from '../lib/balloons';
 import { enhanceBoard, schoolGroup } from '../lib/board';
 import { awardsFor, defaultSettings, medalCounts, normalizeSettings, pruneMembers, toScriptJson } from '../lib/settings';
+import { buildContestInfo } from '../lib/live/model';
 import { demoData } from './fixture';
 import { defaultResolverConfig, prepareResolver, resolverBoards } from '../lib/resolver-data';
 
@@ -64,6 +65,31 @@ describe('分榜与奖项', () => {
         expect(Object.keys(hidden.contest.group as object).some((id) => id.startsWith('school-'))).toBe(false);
         expect(hidden.teams.every((team) => team.organization === '')).toBe(true);
     });
+    it('女队可进入独立分榜，关闭身份时移除已生成的标记与分组', () => {
+        const data = demoData();
+        data.teams[0].girl = true;
+        data.teams[0].coaches = ['教练甲'];
+        data.teams[0].location = 'C12';
+        data.teams[3].girl = true;
+        const settings = { ...configuredSettings, showIdentity: true };
+        const visible = enhanceBoard(data, settings);
+        expect(visible.contest.group).toHaveProperty('girl', '女队');
+        expect(rankFor('girl', settings, data).teams.map((team) => team.id)).toEqual(['1', '4']);
+        expect(visible.teams[0]).toMatchObject({ girl: true, coaches: ['教练甲'], location: 'C12' });
+        const boards = resolverBoards(visible, settings, true);
+        const live = { data: visible, boards, identity: true, settings, logoNames: {}, now: 2, contest: { title: 'C', beginAt: new Date(0), endAt: new Date(10) } };
+        expect(buildContestInfo(live).teams.find(team => team.id === '1')?.groups).toContain('girl');
+        for (const [enabled, identity] of [[true, false], [false, true]]) {
+            const hidden = enhanceBoard(visible, { ...settings, showIdentity: enabled }, { identity });
+            expect(hidden.contest.group).not.toHaveProperty('girl');
+            expect(hidden.contest.medal).not.toHaveProperty('girl');
+            expect(hidden.teams.every(team => !('girl' in team) && !('coaches' in team) && !('location' in team) && !team.group.includes('girl'))).toBe(true);
+            expect(resolverBoards(visible, { ...settings, showIdentity: enabled }, identity).map(board => board.id)).not.toContain('girl');
+            const info = buildContestInfo({ ...live, identity, settings: { ...settings, showIdentity: enabled } });
+            expect(info.groups.map(group => group.id)).not.toContain('girl');
+            expect(info.teams.every(team => !team.groups.includes('girl'))).toBe(true);
+        }
+    });
     it('并列名次获得相同奖牌', () => {
         const data = demoData();
         data.submissions = [
@@ -114,6 +140,24 @@ describe('分榜与奖项', () => {
         expect(star.problemStatistics[0].isFirstSolved).toBe(true);
         expect(rank.teams.find((team) => team.id === '3')!.awards).toContain(MedalType.GOLD);
     });
+    it('分榜自行启用打星奖牌，总榜和本次滚榜范围外的队伍保留原资格', () => {
+        const data = demoData();
+        const settings = normalizeSettings({ ...configuredSettings, medals: { gold: 1, silver: 0, bronze: 0 },
+            manualBoards: [{ id: 'local', name: '现场队', teamIds: ['4', '7'] }],
+            boardAwards: { 'manual-local': { unofficialMedals: true }, unofficial: { unofficialMedals: true } } });
+        expect(rankFor('all', settings, data).teams.find(team => team.id === '4')!.awards).toEqual([]);
+        const local = rankFor('manual-local', settings, data);
+        expect(local.teams.map(team => [team.id, team.rank, team.awards])).toEqual([['4', 0, [MedalType.GOLD]], ['7', 1, [MedalType.GOLD]]]);
+        expect(rankFor('unofficial', settings, data).teams.map(team => team.awards)).toEqual([[MedalType.GOLD], [MedalType.GOLD]]);
+        const { game, snapshot } = prepareResolver(data, resolverBoards(data, settings, true),
+            { ...defaultResolverConfig(settings, true), boardId: 'manual-local', mode: 'official', freezeMode: 'custom', freezeAtSeconds: 3000 },
+            { contestId: 'c', ended: true, capturedAt: new Date(0), logoNames: {} });
+        expect(snapshot.teams.find(team => team.id === '1')).toMatchObject({ unrank: true, unofficial: false });
+        expect(snapshot.teams.find(team => team.id === '6')).toMatchObject({ unrank: true, unofficial: false });
+        expect(snapshot.teams.find(team => team.id === '4')).toMatchObject({ unrank: true, unofficial: true });
+        expect((game.contest.awards as { id: string; teamIds: string[] }[]).find(item => item.id === 'medal-gold')?.teamIds.sort()).toEqual(['4', '7']);
+    });
+
     it('纯打星榜只可参与一血，开关不会授予奖牌', () => {
         const excluded = rankFor('unofficial');
         expect(excluded.teams).toHaveLength(2);

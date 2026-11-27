@@ -43,20 +43,22 @@ export const presetIds = Object.keys(presets) as PresetId[];
  */
 export const medalTemplates: { id: string; name: string; board: BoardPatch }[] = [
     { id: 'ccpc-national', name: 'CCPC 全国赛', board: { medalBasis: 'ratio', medals: { gold: 10, silver: 20, bronze: 30 }, medalBase: 'submitted', medalRounding: 'cumulative',
-        medalRanking: 'team', honors: { enabled: false, highest: 25, high: 50, standard: 100 } } },
+        medalRanking: 'team', honors: { enabled: false, highest: 25, high: 50, standard: 100 }, medalFixed: { gold: false, silver: false, bronze: false } } },
     { id: 'ccpc-final', name: 'CCPC 总决赛', board: { medalBasis: 'count', medals: { gold: 10, silver: 20, bronze: 30 }, medalRanking: 'school',
-        honors: { enabled: false, highest: 25, high: 50, standard: 100 } } },
+        honors: { enabled: false, highest: 25, high: 50, standard: 100 }, medalFixed: { gold: false, silver: false, bronze: false } } },
     { id: 'icpc-regional', name: 'ICPC 区域赛', board: { medalBasis: 'ratio', medals: { gold: 10, silver: 20, bronze: 30 }, medalBase: 'solved', medalRounding: 'tier',
-        medalRanking: 'team', honors: { enabled: false, highest: 25, high: 50, standard: 100 } } },
+        medalRanking: 'team', honors: { enabled: false, highest: 25, high: 50, standard: 100 }, medalFixed: { gold: false, silver: false, bronze: false } } },
     { id: 'icpc-multiple', name: '金牌倍数', board: { medalBasis: 'multiple', medals: { gold: 10, silver: 2, bronze: 3 }, medalBase: 'registered',
-        medalRanking: 'team', honors: { enabled: false, highest: 25, high: 50, standard: 100 } } },
+        medalRanking: 'team', honors: { enabled: false, highest: 25, high: 50, standard: 100 }, medalFixed: { gold: false, silver: false, bronze: false } } },
     { id: 'wf', name: 'ICPC World Finals', board: { medalBasis: 'count', medals: { gold: 4, silver: 6, bronze: 10 }, medalRanking: 'team',
-        honors: { enabled: true, highest: 25, high: 50, standard: 100 } } },
+        honors: { enabled: true, highest: 25, high: 50, standard: 100 }, medalFixed: { gold: false, silver: false, bronze: false } } },
 ];
 
 /** The 奖牌模板 the medals follow now, or null when they were set by hand. */
 export function medalTemplateOf(board: BoardSettings): string | null {
     const fields = ['medalBasis', 'medals', 'medalRanking', 'honors'] as const;
+    // A tier set to a number of teams under 按比例 is a hand-made rule.
+    if (board.medalBasis === 'ratio' && Object.values(board.medalFixed ?? {}).some(Boolean)) return null;
     return medalTemplates.find((template) => fields.every((key) => JSON.stringify(board[key]) === JSON.stringify(template.board[key]))
         && (board.medalBasis === 'count' || (template.board.medalBase === board.medalBase
             && (board.medalBasis !== 'ratio' || template.board.medalRounding === board.medalRounding))))?.id ?? null;

@@ -6,7 +6,8 @@
 import { randomUUID } from 'node:crypto';
 import type { Context } from 'hydrooj';
 import type { AwardOverride, CcsMeta, CcsSource, PostedComment, View } from './model';
-import type { Clarification, EventType } from './types';
+import type { Clarification } from './types';
+import type { Notification } from './events';
 
 export interface ContestDoc {
     _id: string;
@@ -19,7 +20,7 @@ export interface ContestDoc {
     ended?: Partial<Record<View, boolean>>;
     pending?: Partial<Record<View, {
         first: number;
-        notifications: { type: EventType; id: string | null; data: unknown }[];
+        notifications: Notification[];
         changed?: Record<string, string>;
         removed?: string[];
         at: Date;
@@ -31,14 +32,11 @@ export interface ContestDoc {
     snapshotId?: string;
 }
 
-export interface EventDoc {
+export interface EventDoc extends Notification {
     _id: string;
     key: string;
     view: View;
     seq: number;
-    type: EventType;
-    id: string | null;
-    data: unknown;
     at: Date;
 }
 
@@ -155,7 +153,7 @@ export function ccsStore(ctx: Context) {
         },
 
         /** A pending batch is committed (with its object hash delta) before being exposed, and recovered idempotently after a crash. */
-        async append(key: string, view: View, notifications: { type: EventType; id: string | null; data: unknown }[], changedHashes?: Map<string, string>) {
+        async append(key: string, view: View, notifications: Notification[], changedHashes?: Map<string, string>) {
             await contests.updateOne({ _id: key }, { $setOnInsert: { seq: {} } }, { upsert: true });
             await recoverPending(key, view);
             for (let offset = 0; offset < notifications.length; offset += 250) {

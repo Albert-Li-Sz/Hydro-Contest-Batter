@@ -43,21 +43,25 @@ export async function loadSeats(db: Context['db'], uids: number[]) {
         ? [[_id, String(seat)] as const] : [])));
 }
 
-/** onsite-toolkit imports coaches as `coach` or `coaches` on the user or virtual user; teams with any, by id. */
+/** Read the identity fields stored by onsite-toolkit on the account that entered the contest. */
+export async function loadBoardProfiles(db: Context['db'], uids: number[]) {
+    const ids = [...new Set(uids)];
+    type Profile = { _id: number; coach?: unknown; coaches?: unknown; girl?: unknown; isGirl?: unknown; 女队?: unknown; seat?: unknown };
+    const read = (name: 'user' | 'vuser', subset: number[]) => subset.length
+        ? db.collection(name).find({ _id: { $in: subset } } as never)
+            .project<Profile>({ _id: 1, coach: 1, coaches: 1, girl: 1, isGirl: 1, 女队: 1, seat: 1 }).toArray() : [];
+    const [users, teams] = await Promise.all([read('user', ids.filter((id) => id > 0)), read('vuser', ids.filter((id) => id < 0))]);
+    return new Map([...users, ...teams].map((account) => {
+        const coaches = [...new Set([...profileValues(account.coach), ...profileValues(account.coaches)])];
+        const seat = typeof account.seat === 'string' || typeof account.seat === 'number' ? String(account.seat).trim() : '';
+        const girl = [account.girl, account.isGirl, account.女队].some((v) => /^(?:true|1|yes|y|是|女|女队)$/i.test(String(v ?? '').trim()));
+        return [account._id, { ...(girl ? { girl: true as const } : {}), ...(coaches.length ? { coaches } : {}), ...(seat ? { location: seat } : {}) }];
+    }));
+}
+
 export async function loadCoaches(db: Context['db'], uids: number[]) {
-    const distinct = [...new Set(uids.filter((uid) => Number.isFinite(uid)))];
-    type AccountCoach = { _id: number; coach?: unknown; coaches?: unknown };
-    const read = (name: 'user' | 'vuser', ids: number[]) => ids.length
-        ? db.collection(name).find({ _id: { $in: ids }, $or: [{ coaches: { $exists: true } }, { coach: { $exists: true } }] } as never)
-            .project<AccountCoach>({ _id: 1, coach: 1, coaches: 1 }).toArray()
-        : [];
-    const [users, teams] = await Promise.all([read('user', distinct.filter((uid) => uid > 0)), read('vuser', distinct.filter((uid) => uid < 0))]);
-    const coaches: Record<string, string[]> = Object.create(null);
-    for (const account of [...users, ...teams]) {
-        const names = [...new Set([...profileValues(account.coach), ...profileValues(account.coaches)])];
-        if (names.length) coaches[String(account._id)] = names;
-    }
-    return coaches;
+    const profiles = await loadBoardProfiles(db, uids);
+    return Object.fromEntries([...profiles].flatMap(([uid, profile]) => profile.coaches ? [[String(uid), profile.coaches] as const] : []));
 }
 
 /**

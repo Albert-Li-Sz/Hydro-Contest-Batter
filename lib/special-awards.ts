@@ -5,7 +5,7 @@
 import type { BoardData, BoardTeam } from './board';
 import { medalPool } from './board';
 import type { BoardSettings, SpecialAward } from './settings';
-import { awardsFor, cappedMedals, medalCounts } from './settings';
+import { awardsFor, medalCounts } from './settings';
 import { SCHOOL_TAG } from './award-policy.mjs';
 import { compareStandings, sameStanding, scoreStandings, type StandingsCell, type StandingsRow } from '../resolver/public/js/standings.js';
 import { configuredAwards } from '../resolver/public/js/medals.js';
@@ -78,7 +78,7 @@ const schoolOf = (team: BoardTeam) => (Array.isArray(team.tag) ? (team.tag as st
  */
 function mainBoardMedals(data: BoardData, settings: Settings, input: ReturnType<typeof standingsInput>) {
     const contest = { ...input.ranking, durationMs: input.duration,
-        teams: data.teams.map((team) => ({ id: team.team_id, name: team.name, unrank: team.group.includes('unofficial'), schoolKey: schoolOf(team) })),
+        teams: data.teams.map((team) => ({ id: team.team_id, name: team.name, unrank: team.group.includes('unofficial'), unofficial: team.group.includes('unofficial'), schoolKey: schoolOf(team) })),
         submissions: [...input.cells].flatMap(([teamId, team]) => [...team].filter(([, cell]) => cell.solvedAt !== null)
             .map(([problem, cell]) => ({ teamId, problemId: String(problem), contestTime: cell.solvedAt!, status: 'solved' as const }))) };
     const standings = scoreStandings(contest, input.results);
@@ -86,9 +86,9 @@ function mainBoardMedals(data: BoardData, settings: Settings, input: ReturnType<
     if (settings.medals && settings.manualBoards && settings.boardAwards) {
         const rules = awardsFor(settings as BoardSettings, 'all');
         const pool = medalPool(data, data.teams.map((team) => team.team_id));
-        const counts = cappedMedals(medalCounts(rules, pool), pool.solved);
+        const counts = medalCounts(rules, pool);
         const awards = configuredAwards(contest, { medalMode: 'custom', goldCount: counts.gold, silverCount: counts.silver, bronzeCount: counts.bronze,
-            medalSameScore: rules.medalSameScore, medalRanking: rules.medalRanking }, standings);
+            medalSameScore: rules.medalSameScore, unofficialMedals: rules.unofficialMedals, medalRanking: rules.medalRanking }, standings);
         ['gold', 'silver', 'bronze'].forEach((tier, index) => {
             for (const id of awards.find((award) => award.id === `medal-${tier}`)?.teamIds || []) tiers[index].add(id);
         });
@@ -105,12 +105,12 @@ export function specialAwardResults(data: BoardData, settings: Settings): Specia
     let main: ReturnType<typeof mainBoardMedals> | null = null;
     const medals = () => (main ??= mainBoardMedals(data, settings, input));
     const medalists = () => new Set(medals().tiers.flatMap((tier) => [...tier]));
-    // The lowest standing that still meets the floor: the last team holding that medal or a better one.
+    // The lowest standing that still meets the floor: the last official team holding that medal or a better one.
     const floorRow = (floor: SpecialAward['floor']): StandingsRow | null | undefined => {
         if (floor === 'none') return undefined;
         const { standings, tiers } = medals();
         const holders = new Set(tiers.slice(0, ['gold', 'silver', 'bronze'].indexOf(floor) + 1).flatMap((tier) => [...tier]));
-        return standings.filter((row) => holders.has(row.teamId)).at(-1) ?? null;
+        return standings.filter((row) => !row.unrank && holders.has(row.teamId)).at(-1) ?? null;
     };
 
     const groups = data.contest.group as Record<string, string> | undefined;
@@ -130,6 +130,8 @@ export function specialAwardResults(data: BoardData, settings: Settings): Specia
         let members = data.teams.filter((team) => (award.board === 'all' || team.group.includes(award.board))
             && (award.unofficial || !team.group.includes('unofficial')));
         if ((award.minTeams ?? 0) > members.length) return [];
+        const minSolved = award.minSolved ?? 1;
+        if (minSolved > 1) members = members.filter((team) => [...cells.get(team.team_id)?.values() || []].filter((cell) => cell.solvedAt !== null).length >= minSolved);
         if (award.excludeMedalists || award.kind === 'honorable') {
             const excluded = medalists();
             members = members.filter((team) => !excluded.has(team.team_id));

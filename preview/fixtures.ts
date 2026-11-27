@@ -32,6 +32,8 @@ export function teamData() {
     const people = ['林澈', '周宁', '陈言', '苏禾', '许青', '江屿', '沈星', '陆川', '顾遥', '叶舟', '温岚', '宋知'];
     data.teams = data.teams.map((team, index) => ({
         ...team, name: names[index % names.length],
+        ...(index === 1 || index === 3 ? { girl: true } : {}),
+        coaches: [index % 2 ? '吴老师' : '陈老师'], location: `A-${String(index + 1).padStart(2, '0')}`,
         members: [0, 1, 2].map((offset) => people[(index * 3 + offset) % people.length]),
     }));
     return data;

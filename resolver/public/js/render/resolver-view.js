@@ -175,6 +175,13 @@ export class ResolverView {
     this.problems = Array.isArray(this.contest.problems) ? this.contest.problems : [];
     this.teams = Array.isArray(this.contest.teams) ? this.contest.teams : [];
     this.organizations = Array.isArray(this.contest.organizations) ? this.contest.organizations : [];
+    this.medalColors = new Map();
+    const colors = { gold: ICPCColors.GOLD2, silver: ICPCColors.SILVER2, bronze: ICPCColors.BRONZE2 };
+    for (const award of this.contest.awards || []) {
+      const tier = /(?:^|[- ])(gold|silver|bronze)(?:$|[- ])/i.exec(award.id || '')?.[1]
+        || /^(gold|silver|bronze)\b/i.exec(award.citation || '')?.[1];
+      if (tier) for (const id of award.teamIds || []) this.medalColors.set(id, colors[tier.toLowerCase()]);
+    }
     this.teamsById = new Map(this.teams.map((t) => [t.id, t]));
     this.orgsById = new Map(this.organizations.map((o) => [o.id, o]));
     this.options = {
@@ -886,29 +893,8 @@ export class ResolverView {
   }
 
   _backgroundForRow(row) {
-    const awards = Array.isArray(this.contest.awards) ? this.contest.awards : [];
-    if (this.options.showMedals && awards.length) {
-      const counts = this._medalCounts();
-      if (row < counts.gold) return ICPCColors.GOLD2;
-      if (row < counts.gold + counts.silver) return ICPCColors.SILVER2;
-      if (row < counts.gold + counts.silver + counts.bronze) return ICPCColors.BRONZE2;
-    }
+    if (this.options.showMedals && this.medalColors.has(this._order[row])) return this.medalColors.get(this._order[row]);
     return row % 2 === 0 ? ICPCColors.ROW_BACKGROUND : null;
-  }
-
-  _medalCounts() {
-    const awards = Array.isArray(this.contest.awards) ? this.contest.awards : [];
-    const counts = { gold: 0, silver: 0, bronze: 0 };
-    for (const award of awards) {
-      const type = String(award?.awardType || award?.id || '').toLowerCase();
-      const citation = String(award?.citation || '').toLowerCase();
-      const count = Array.isArray(award?.teamIds) ? award.teamIds.length : 0;
-      if (!count) continue;
-      if (type.includes('gold') || citation.includes('gold') || citation.includes('winner')) counts.gold += count;
-      else if (type.includes('silver') || citation.includes('silver')) counts.silver += count;
-      else if (type.includes('bronze') || citation.includes('bronze')) counts.bronze += count;
-    }
-    return counts;
   }
 
   _drawHeader(ctx, top = 0) {

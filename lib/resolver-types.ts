@@ -6,6 +6,7 @@ export interface ResolverTeam {
     displayName: string;
     organizationName: string;
     unrank: boolean;
+    unofficial?: boolean;
     /** Team contests: member names, shown on the team's award page. */
     members?: string[];
     photo?: string;
@@ -66,6 +67,7 @@ export interface ResolverConfig {
     silverCitation: string;
     bronzeCitation: string;
     medalSameScore: boolean;
+    unofficialMedals?: boolean;
     podiumEnabled: boolean;
     podiumBasis: 'team' | 'school';
     podiumTie: 'lastAccept' | 'shared';

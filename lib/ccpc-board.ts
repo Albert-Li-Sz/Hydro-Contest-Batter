@@ -20,9 +20,15 @@ export function dropAfterAccept(data: BoardData): BoardData {
     return kept.size === data.submissions.length ? data : { ...data, submissions: data.submissions.filter((run) => kept.has(run)) };
 }
 
-/** Teams that must solve a problem before its label shows: a count, or a share of the teams rounded down (at least 1). */
-export function revealThreshold(board: Pick<CcpcBoard, 'revealBasis' | 'reveal'>, teams: number) {
-    return Math.max(1, board.revealBasis === 'percent' ? Math.floor((teams * board.reveal) / 100 + 1e-9) : board.reveal);
+/**
+ * Teams that must solve a problem before its label shows: a count, a share of the teams rounded down, or the
+ * smaller of the two (at least 1).
+ */
+export function revealThreshold(board: Pick<CcpcBoard, 'revealBasis' | 'reveal'> & Partial<Pick<CcpcBoard, 'revealPercent'>>, teams: number) {
+    const share = (percent: number) => Math.floor((teams * percent) / 100 + 1e-9);
+    const needed = board.revealBasis === 'percent' ? share(board.reveal)
+        : board.revealBasis === 'min' ? Math.min(board.reveal, share(board.revealPercent ?? 20)) : board.reveal;
+    return Math.max(1, needed);
 }
 
 /** The hidden board applies from the start until the board freezes (Hydro: strictly after lockAt), or to the end. */
@@ -38,7 +44,7 @@ export function labelsHidden(board: CcpcBoard, contest: { beginAt: Date; endAt: 
  * their last submission, and the problems it never tried by number, all unlabelled. Every submission moves to
  * its position in its team's row. `hiddenFrom` is the first unlabelled column.
  */
-export function hideProblemLabels(data: BoardData, board: CcpcBoard): BoardData & { hiddenFrom: number } {
+export function hideProblemLabels(data: BoardData, board: Parameters<typeof revealThreshold>[0] & Partial<Pick<CcpcBoard, 'enabled'>>): BoardData & { hiddenFrom: number } {
     const count = data.contest.problem_quantity;
     const solvers = Array.from({ length: count }, () => new Set<string>());
     for (const run of data.submissions) if (run.status === 'CORRECT' && run.problem_id >= 0 && run.problem_id < count) solvers[run.problem_id].add(run.team_id);

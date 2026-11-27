@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { describeTeam, isTeamEntry, memberIds } from '../lib/teams';
+import { previewDatabase } from '../preview/resolver-memory-db';
+import { describeTeam, isTeamEntry, loadBoardProfiles, memberIds } from '../lib/teams';
 
 const users = {
     [-1001]: { _id: -1001, uname: 'team:7:ab12cd', displayName: '星火队' },
@@ -11,6 +12,22 @@ const users = {
 };
 
 describe('Hydro team contests', () => {
+    it('reads the three onsite girl aliases from the registered account or virtual team', async () => {
+        const { db } = previewDatabase();
+        await db.collection('user').insertMany([
+            { _id: 10, girl: true, coaches: ['李教练'], seat: 9 }, { _id: 11, isGirl: ' Yes ' },
+            { _id: 12, 女队: '否' }, { _id: 13, girl: 'false' }, { _id: 14, girl: 0 }, { _id: 99, girl: true },
+        ] as never);
+        await db.collection('vuser').insertMany([
+            { _id: -1, 女队: '是', coach: '唐教练', seat: ' B08 ' }, { _id: -2, isGirl: 1 }, { _id: -3, members: [99] },
+        ] as never);
+        const profiles = await loadBoardProfiles(db, [10, 11, 12, 13, 14, -1, -2, -3, -1]);
+        expect(Object.fromEntries(profiles)).toEqual({
+            10: { girl: true, coaches: ['李教练'], location: '9' }, 11: { girl: true }, 12: {}, 13: {}, 14: {},
+            '-1': { girl: true, coaches: ['唐教练'], location: 'B08' }, '-2': { girl: true }, '-3': {},
+        });
+    });
+
     it('loads members only for team contests', () => {
         const entries = [{ uid: -1001, members: [7, 8, 9] }, { uid: 10 }];
         expect(memberIds({ allowTeam: true }, entries)).toEqual([7, 8, 9]);

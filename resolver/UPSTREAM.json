@@ -104,7 +104,7 @@
       "source": "public/js/medals.js",
       "destination": "resolver/public/js/medals.js",
       "sha256": "f26b721870dc3b4704b17d695c057bf4c26362c5a621111d5149d33adc29cd65",
-      "modifiedSha256": "cb12c82174af0f79d8c210f16bb2ea8708bc231c8e34dac9e70d7fba70799943"
+      "modifiedSha256": "efbf3ca2e44aebfc871f8072907e3010275035b6148a649a58fe0f06484b5d04"
     },
     {
       "source": "public/js/play.js",
@@ -134,7 +134,7 @@
       "source": "public/js/render/resolver-view.js",
       "destination": "resolver/public/js/render/resolver-view.js",
       "sha256": "a7ad7808df01fee371f753b5161452bd24c5800a58cf62cba7f7305b3bc689b1",
-      "modifiedSha256": "c0c565b5a6d23d6631c1902a2af8cc0040b84abc3cbcc850e437a39213b316d4"
+      "modifiedSha256": "69cf8bedc2617960926ba3c4e7f2d9eed53c950a408fbc536c28f948d83b4aba"
     },
     {
       "source": "public/js/render/shaded-rect.js",
@@ -176,7 +176,7 @@
       "source": "server/lib/engine.js",
       "destination": "resolver/server/lib/engine.js",
       "sha256": "b74872b78f03b96d06a0c40e94464f26d19326c6200808d9bb007e94bb39b0e1",
-      "modifiedSha256": "c0ac9ff330c796d98dcdb038b431de7610348fdd8feaa00bf9211099aaf34f9a"
+      "modifiedSha256": "3ec41ea292fc71bea7e7c1f567526984ef39e5b847426015094378a2235baf6a"
     },
     {
       "source": "server/lib/limits.js",

@@ -4,7 +4,8 @@ import { previewDatabase } from '../preview/resolver-memory-db';
 import { ccsStore } from '../lib/ccs/store';
 import { ccsFixture } from './ccs-fixture';
 import { buildObjects } from '../lib/ccs/model';
-import { diffNotifications, notificationsOf, feedToken, tokenPrefix } from '../lib/ccs/events';
+import { endpointProperties } from '../lib/ccs/access';
+import { diffNotifications, notificationsOf, eventLine, feedToken, tokenPrefix } from '../lib/ccs/events';
 import { openFeed } from '../lib/ccs/feed';
 
 const key = 'system/68ea00000000000000000000';
@@ -39,6 +40,28 @@ describe('CCS persistent events', () => {
         for (const since of ['bad', '1', feedToken(prefix, 99999), feedToken(tokenPrefix(key, 'full', true), 1)]) {
             await expect(openFeed({ store, key, view: 'public', access, since, authorized: async () => true })).rejects.toThrow('since_token');
         }
+    });
+    it('redacts historic girl membership, winner and deletion notifications on public feeds', () => {
+        const publicProperties = endpointProperties({ role: 'public', identity: false, teamContest: true });
+        const group = { type: 'groups' as const, id: 'girl', seq: 1, data: { id: 'girl', name: '女队' } };
+        const award = { type: 'awards' as const, id: 'group-winner-girl', seq: 2, data: { id: 'group-winner-girl', team_ids: ['1'] } };
+        const team = { type: 'teams' as const, id: '1', seq: 3, data: { id: '1', group_ids: ['official', 'girl', 'manual-first'] } };
+        for (const event of [group, award, { ...group, data: null }, { ...award, data: null }]) {
+            expect(eventLine(event, publicProperties, false)).toBeNull();
+        }
+        expect(eventLine(team, publicProperties, false)?.data).toMatchObject({ group_ids: ['official', 'manual-first'] });
+        const visibleProperties = endpointProperties({ role: 'public', identity: true, teamContest: true });
+        expect(eventLine(team, visibleProperties, true)?.data).toMatchObject({ group_ids: ['official', 'girl', 'manual-first'] });
+
+        const objects = buildObjects(ccsFixture(), 'public');
+        objects.awards.push({ id: 'special-best', citation: '最佳女队', team_ids: ['1'] });
+        const created = diffNotifications(notificationsOf(objects, new Set(['special-best'])), new Map());
+        const before = new Map(created.changed.map(item => [item.key, item.hash]));
+        objects.awards = objects.awards.filter(item => item.id !== 'special-best');
+        const removed = diffNotifications(notificationsOf(objects), before).notifications.find(item => item.id === 'special-best')!;
+        expect(removed.data).toBeNull();
+        expect(eventLine({ ...removed, seq: 4 }, publicProperties, false)).toBeNull();
+        expect(eventLine({ ...removed, seq: 4 }, visibleProperties, true)).toMatchObject({ id: 'special-best', data: null });
     });
     it('recovers a partially persisted batch without exposing it or losing events', async () => {
         const { memory, store } = setup();

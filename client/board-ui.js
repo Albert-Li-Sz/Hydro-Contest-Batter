@@ -1,7 +1,9 @@
+import { mountBoardFilter } from './board-filter.mjs';
 // Accessibility and layout adapter for the pinned XCPCIO 0.98.0 components (desktop layout at every width).
 // Ranking and submissions remain owned by the upstream Vue application.
 const app = document.getElementById('app');
 if (app) {
+    mountBoardFilter(document.getElementById('xp-board-filter'));
     // Keep the selected sub-board when switching perspective. The audience adapter below
     // returns a shared submissions tab to the rankings while the contest is running.
     for (const link of document.querySelectorAll('.xp-view-switch')) {
@@ -343,7 +345,8 @@ if (app) {
                         const rank = cells[0];
                         const medal = ['gold', 'silver', 'bronze'].find((name) => rank.classList.contains(name));
                         const citation = medal && citationOf(medal);
-                        rank.setAttribute('aria-label', `${citation ? `${citation}，` : ''}第 ${rank.textContent.trim()} 名`);
+                        const place = row.querySelector('[class~="i-line-md:star-alt-filled"]') ? '打星队' : `第 ${rank.textContent.trim()} 名`;
+                        rank.setAttribute('aria-label', citation ? `${citation}，${place}` : place);
                         rank.title = citation || '';
                         const team = cells[names.indexOf('team')];
                         const schoolAction = hasSchool ? cells[1]?.querySelector('[cursor-pointer]') : null;

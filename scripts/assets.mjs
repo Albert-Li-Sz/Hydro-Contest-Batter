@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkPackage } from './manage-addon.mjs';
-import { patchBoardEngine, patchBoardInk, patchBoardLayouts, patchBoardSharing } from '../lib/patch-engine.mjs';
+import { patchBoardFilter, patchBoardEngine, patchBoardInk, patchBoardLayouts, patchBoardSharing } from '../lib/patch-engine.mjs';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -40,7 +40,7 @@ for (const file of await readdir(path.join(target, 'assets'))) {
             extendedEngines++;
         }
         if (/^Board-.*\.js$/.test(file)) {
-            source = patchBoardSharing(source);
+            source = patchBoardFilter(patchBoardSharing(source));
             patchedShareMenus++;
         }
         const layouts = patchBoardLayouts(source);

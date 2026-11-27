@@ -52,7 +52,7 @@ const choose = (label, value, options, onchange, attrs = {}) => {
 };
 const number = (label, value, onchange, attrs = {}) => {
     const input = el('input', { class: 'textbox', type: 'number', step: 1, min: 0, value, 'aria-label': label, ...attrs });
-    input.addEventListener('change', () => { if (input.checkValidity()) onchange(Number(input.value)); else input.reportValidity(); });
+    input.addEventListener('change', () => { if (input.checkValidity()) onchange(input.value === '' && attrs.placeholder ? null : Number(input.value)); else input.reportValidity(); });
     return el('label', { class: 'control-field control-field--short' }, label, input);
 };
 const text = (label, value, onchange, attrs = {}) => {
@@ -101,6 +101,10 @@ function contestBlock() {
         el('span', { title: formatTime(contest.beginAt) + ' – ' + formatTime(contest.endAt),
             text: shortTime(contest.beginAt, true) + ' – ' + shortTime(contest.endAt, !sameDay(contest.beginAt, contest.endAt)) }),
         contest.lockAt ? el('span', { class: 'resolver-muted', title: formatTime(contest.lockAt), text: '封榜 ' + shortTime(contest.lockAt, !sameDay(contest.beginAt, contest.lockAt)) }) : null,
+        contest.lockAt && !contest.unlocked && data.board.autoUnfreezeMinutes != null ? el('span', {
+            text: '将于 ' + shortTime(new Date(contest.endAt).getTime() + data.board.autoUnfreezeMinutes * 60_000, false) + ' 自动解封',
+            title: formatTime(new Date(contest.endAt).getTime() + data.board.autoUnfreezeMinutes * 60_000),
+        }) : null,
         unlock);
 }
 
@@ -121,18 +125,24 @@ function rules({ board, links }) {
     const ratio = board.medalBasis === 'ratio';
     const multiple = board.medalBasis === 'multiple';
     const honors = board.honors || { enabled: false, highest: 25, high: 50, standard: 100 };
-    const unit = (key) => (ratio || (multiple && key === 'gold') ? '（%）' : multiple ? '（倍）' : '');
-    const limit = (key) => (ratio || (multiple && key === 'gold') ? 100 : multiple ? 20 : 100000);
+    const fixed = (key) => ratio && !!board.medalFixed?.[key];
+    const percent = (key) => (ratio && !fixed(key)) || (multiple && key === 'gold');
+    const unit = (key) => (percent(key) ? '（%）' : fixed(key) ? '（队）' : multiple ? '（倍）' : '');
+    const limit = (key) => (percent(key) ? 100 : multiple ? 20 : 100000);
     return [
         group('赛制与同分规则', presetBar(),
             row(choose('同分规则', board.tieBreak, [['hydro', 'Hydro（罚时按秒）'], ['icpc', 'ICPC（按分钟，再比最后通过）'], ['ccpc', 'CCPC（按分钟，同分并列）']],
                 (value) => save('board', { tieBreak: value }))),
+            number('结束后自动解封（分钟）', board.autoUnfreezeMinutes ?? '', (v) => save('board', { autoUnfreezeMinutes: v }),
+                { placeholder: '留空关闭', title: '填 0 表示比赛结束即解封' }),
             row(check('封榜前隐藏题号', board.ccpcBoard.enabled, (enabled) => save('board', { ccpcBoard: { enabled } })),
                 check('过题后忽略再次提交', board.ignoreAfterAccept, (value) => save('board', { ignoreAfterAccept: value }))),
             board.ccpcBoard.enabled ? row(number('过题达到', board.ccpcBoard.reveal, (reveal) => save('board', { ccpcBoard: { reveal } }),
                 { min: 1, max: board.ccpcBoard.revealBasis === 'percent' ? 100 : 100000 }),
-                choose('单位', board.ccpcBoard.revealBasis, [['count', '队'], ['percent', '% 队伍']],
+                choose('单位', board.ccpcBoard.revealBasis, [['count', '队'], ['percent', '% 队伍'], ['min', '队或比例，取较小']],
                     (value) => save('board', { ccpcBoard: { revealBasis: value, reveal: value === 'percent' ? 20 : 50 } })),
+                board.ccpcBoard.revealBasis === 'min' ? number('比例 %', board.ccpcBoard.revealPercent ?? 20,
+                    (revealPercent) => save('board', { ccpcBoard: { revealPercent } }), { min: 1, max: 100 }) : null,
                 el('span', { class: 'resolver-muted', text: '显示题号' })) : null),
         group('奖牌与奖杯', medalTemplateBar(),
             row(choose('奖牌名额', board.medalBasis, [['count', '固定数量'], ['ratio', '按队伍比例'], ['multiple', '金牌比例，银铜为倍数']], (value) => save('board', { medalBasis: value })),
@@ -140,12 +150,15 @@ function rules({ board, links }) {
                     (value) => save('board', { medalBase: value })) : null,
                 ratio ? choose('取整', board.medalRounding, [['tier', '各档分别向上取整'], ['cumulative', '累计向上取整']], (value) => save('board', { medalRounding: value })) : null,
                 choose('奖牌依据', board.medalRanking, [['team', '队伍名次'], ['school', '学校名次']], (value) => save('board', { medalRanking: value }))),
-            row(...[['gold', '金牌'], ['silver', '银牌'], ['bronze', '铜牌']].map(([key, title]) =>
-                number(title + unit(key), board.medals[key], (value) => save('board', { medals: { [key]: value } }), { max: limit(key) }))),
+            row(...[['gold', '金牌'], ['silver', '银牌'], ['bronze', '铜牌']].flatMap(([key, title]) => [
+                number(title + unit(key), board.medals[key], (value) => save('board', { medals: { [key]: value } }), { max: limit(key) }),
+                ratio ? choose('单位', fixed(key) ? 'count' : 'percent', [['percent', '%'], ['count', '队']],
+                    (value) => save('board', { medalFixed: { [key]: value === 'count' } }), { 'aria-label': `${title}单位` }) : null])),
             row(check('Honors（按 WF place）', honors.enabled, (enabled) => save('board', { honors: { enabled } })),
                 ...honors.enabled ? [['highest', 'Highest Honors 至第'], ['high', 'High Honors 至第'], ['standard', 'Honors 至第']].map(([key, title]) =>
                     number(title, honors[key], (value) => save('board', { honors: { [key]: value } }), { min: 1 })) : []),
-            row(check('并列同奖', board.medalSameScore, (v) => save('board', { medalSameScore: v })),
+            row(check('允许打星队获奖牌', board.unofficialMedals, (v) => save('board', { unofficialMedals: v })),
+                check('并列同奖', board.medalSameScore, (v) => save('board', { medalSameScore: v })),
                 check('奖杯', board.podiumEnabled, (v) => save('board', { podiumEnabled: v })),
                 check('一血奖', board.firstSolve, (v) => save('board', { firstSolve: v })),
                 check('打星队可获一血', board.unofficialFirstSolve, (v) => save('board', { unofficialFirstSolve: v }), { disabled: !board.firstSolve })),

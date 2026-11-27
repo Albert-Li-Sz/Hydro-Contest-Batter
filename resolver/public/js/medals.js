@@ -1,10 +1,10 @@
 // HydroXCPCIO: zero-solve teams do not receive medals or podium awards.
 import { sameStanding } from './standings.js';
-import { schoolRanks, trophyWinners } from './trophies.js';
+import { awardPlaces, trophyWinners } from './trophies.js';
 import { HONORS_DEFAULTS, HONORS_TIERS, honorsWinners } from './honors.js';
 export const MEDAL_DEFAULTS = Object.freeze({
   medalMode: 'imported', goldCount: 4, silverCount: 4, bronzeCount: 4,
-  goldCitation: '金奖', silverCitation: '银奖', bronzeCitation: '铜奖', medalSameScore: true,
+  goldCitation: '金奖', silverCitation: '银奖', bronzeCitation: '铜奖', medalSameScore: true, unofficialMedals: false,
   podiumEnabled: false, championCitation: '冠军', runnerUpCitation: '亚军', thirdPlaceCitation: '季军',
   // HydroXCPCIO: trophies by team or school rank, how tied teams receive them, and their names; medals by school rank.
   podiumBasis: 'team', podiumTie: 'lastAccept', podiumNames: null, medalRanking: 'team',
@@ -20,6 +20,7 @@ export function normalizeMedalOptions(raw = {}) {
     if (count != null && count !== '' && Number.isFinite(Number(count))) options[`${tier}Count`] = Math.max(0, Math.min(10000, Math.trunc(Number(count))));
     if (typeof raw[`${tier}Citation`] === 'string') options[`${tier}Citation`] = raw[`${tier}Citation`].trim().slice(0, 80) || MEDAL_DEFAULTS[`${tier}Citation`];
   }
+  options.unofficialMedals = raw.unofficialMedals === true;
   if (typeof raw.medalSameScore === 'boolean') options.medalSameScore = raw.medalSameScore;
   if (typeof raw.podiumEnabled === 'boolean') options.podiumEnabled = raw.podiumEnabled;
   for (const field of ['championCitation', 'runnerUpCitation', 'thirdPlaceCitation']) {
@@ -57,7 +58,7 @@ function trophyRows(contest, standings) {
   }
   return standings.map((row) => {
     const team = teams.get(row.teamId);
-    return { ...row, official: !row.unrank, school: team?.schoolKey || team?.organizationName || `#${row.teamId}`,
+    return { ...row, official: !row.unrank, unofficial: team?.unofficial === true, school: team?.schoolKey || team?.organizationName || `#${row.teamId}`,
       lastAcceptMs: lastAccept.get(row.teamId) ?? null };
   });
 }
@@ -69,18 +70,15 @@ function medalAwards(options, standings, contest = {}) {
   const limits = [];
   let total = 0;
   for (const tier of tiers) limits.push(total += options[`${tier}Count`]);
-  const ranked = standings.filter((row) => !row.unrank && row.solved > 0);
-  const bySchool = options.medalRanking === 'school'
-    ? schoolRanks(trophyRows(contest, standings), (a, b) => sameStanding(contest, a, b)) : null;
-  let previous = null;
-  let tier = -1;
-  ranked.forEach((row, i) => {
-    if (bySchool) tier = limits.findIndex((limit) => bySchool.get(row.teamId) <= limit);
-    // Teams the ranking rule cannot separate (they share a rank) share the higher medal.
-    else if (!(options.medalSameScore && previous && sameStanding(contest, row, previous))) tier = limits.findIndex((limit) => i < limit);
+  const rows = trophyRows(contest, standings);
+  const places = awardPlaces(rows, (a, b) => sameStanding(contest, a, b));
+  for (const row of rows) {
+    if (!row.solved || (!row.official && !(row.unofficial && options.unofficialMedals))) continue;
+    const place = places.get(row.teamId);
+    const rank = options.medalRanking === 'school' ? place.school : options.medalSameScore ? place.rank : place.position;
+    const tier = limits.findIndex((limit) => rank <= limit);
     if (tier >= 0) awards[tier].teamIds.push(row.teamId);
-    previous = row;
-  });
+  }
   return awards.filter((award) => award.teamIds.length);
 }
 
@@ -98,7 +96,8 @@ function podiumAwards(options, standings, contest = {}) {
 function firstSolveAwards(contest, options, standings) {
   const selected = new Set(options.firstSolveProblemIds);
   const problems = (contest.problems || []).filter((problem) => options.firstSolveMode === 'all' || selected.has(problem.id));
-  const teams = new Set(standings.filter((row) => options.firstSolveIncludeUnrank || !row.unrank).map((row) => row.teamId));
+  const outside = new Set((contest.teams || []).filter(team => team.unrank && team.unofficial === false).map(team => team.id));
+  const teams = new Set(standings.filter(row => !row.unrank || (options.firstSolveIncludeUnrank && !outside.has(row.teamId))).map(row => row.teamId));
   const attempts = new Map(problems.map((problem) => [problem.id, { time: Infinity, pending: Infinity, winners: new Set() }]));
   for (const submission of contest.submissions || []) {
     const attempt = attempts.get(submission.problemId);

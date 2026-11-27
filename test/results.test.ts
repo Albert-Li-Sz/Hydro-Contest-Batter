@@ -9,7 +9,7 @@ import { demoData } from './fixture';
 
 function fixture(): ResultsData {
     const data = demoData();
-    const award: SpecialAward = { id: 'end', name: '顽强拼搏奖', kind: 'lastAccept', board: 'all', rank: 1, teamIds: [], unofficial: false, ties: true, count: 1, minTeams: 0, floor: 'none', excludeMedalists: false };
+    const award: SpecialAward = { id: 'end', name: '顽强拼搏奖', kind: 'lastAccept', board: 'all', rank: 1, teamIds: [], unofficial: false, ties: true, count: 1, minTeams: 0, minSolved: 1, floor: 'none', excludeMedalists: false };
     return {
         data,
         settings: { ...defaultSettings, firstSolve: true, specialAwards: [award], participationBoards: true },

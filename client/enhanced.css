@@ -544,3 +544,12 @@
 .xp-page .xp-medal-rule .xp-field { max-width: 260px; }
 .xp-page .xp-honors { margin-top: 8px; }
 .xp-page .xp-honors .checkbox { padding-bottom: 20px; }
+
+#xp-board-filter { margin: 0 0 .75rem; }
+#xp-board-filter summary { cursor: pointer; display: list-item; color: #286590; width: fit-content; }
+.xp-filter-rule, .xp-filter-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .6rem; }
+.xp-filter-rule .textbox { flex: 1 1 12rem; max-width: 32rem; }
+#xp-board-filter .select { width: auto; }
+#xp-board-filter :is(.button,.textbox,.select) { margin-bottom: 0; }
+#xp-filter-transfer { width: 100%; margin-top: .5rem; }
+#xp-filter-message { display: block; font-size: .9em; }

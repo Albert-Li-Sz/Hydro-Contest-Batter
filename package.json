@@ -1,6 +1,6 @@
 {
   "name": "hydro-scoreboard-xcpcio-plus",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Hydro XCPCIO 榜单增强、Resolver 滚榜、大屏、ICPC Live 直播与 CCS Contest API 2026-01",
   "repository": {
     "type": "git",
@@ -72,7 +72,7 @@
     "postinstall": "node scripts/assets.mjs",
     "prepack": "node scripts/assets.mjs",
     "typecheck": "node scripts/typecheck.mjs",
-    "test": "vitest run",
+    "test": "vitest run --dir test",
     "test:ui": "node scripts/ui-smoke.mjs",
     "preview": "tsx scripts/preview.ts",
     "logos": "node scripts/fetch-logos.mjs",

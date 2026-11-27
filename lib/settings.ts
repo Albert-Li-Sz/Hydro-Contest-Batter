@@ -23,6 +23,16 @@ export const medalBases = ['count', 'ratio', 'multiple'] as const;
 export type MedalBase = 'solved' | 'submitted' | 'registered';
 export const medalPoolKinds = ['solved', 'submitted', 'registered'] as const;
 export type MedalRounding = 'tier' | 'cumulative';
+/**
+ * Under `ratio`, tiers marked here hold a number of teams instead of a percentage (e.g. 金 15 队, 银 20%, 铜 30%).
+ * Cumulative rounding includes whole fixed awards and the exact share of every percentage tier so far.
+ */
+export interface MedalFixed {
+    gold: boolean;
+    silver: boolean;
+    bronze: boolean;
+}
+export const noFixedMedals = (): MedalFixed => ({ gold: false, silver: false, bronze: false });
 
 /** Official teams of one board: all of them, those with a submission in the contest, those that solved something. */
 export interface MedalPool {
@@ -55,6 +65,7 @@ export interface BoardAwards {
     medalBasis: MedalBasis;
     medalBase: MedalBase;
     medalRounding: MedalRounding;
+    medalFixed: MedalFixed;
     medalRanking: MedalRanking;
     goldCitation: string;
     silverCitation: string;
@@ -66,6 +77,7 @@ export interface BoardAwards {
     podiumTie: PodiumTie;
     /** One trophy per name, in order: 1 to 10 names. */
     podiumNames: string[];
+    unofficialMedals: boolean;
     unofficialFirstSolve: boolean;
     honors: Honors;
 }
@@ -83,16 +95,19 @@ export const tieBreaks: readonly TieBreak[] = ['hydro', 'icpc', 'ccpc'];
 
 /**
  * CCPC 新榜单模式 (2026.9.14): until the freeze, the public board hides problem labels. A problem's label shows
- * once `reveal` teams solved it (a number of teams, or a percentage of the contest's teams rounded down); each
+ * once `reveal` teams solved it (a number of teams, or a percentage of the contest's teams rounded down, or with
+ * `min` the smaller of `reveal` teams and `revealPercent` percent of the teams); each
  * team's row lists the shown problems first, then its other accepts by time, then its other attempts by the
  * last submission, then the problems it never tried. Staff and the frozen board see the usual board.
  */
 export interface CcpcBoard {
     enabled: boolean;
-    revealBasis: 'count' | 'percent';
+    revealBasis: 'count' | 'percent' | 'min';
     reveal: number;
+    /** The percentage compared with `reveal` teams under `min`. */
+    revealPercent: number;
 }
-export const defaultCcpcBoard = (): CcpcBoard => ({ enabled: false, revealBasis: 'count', reveal: 50 });
+export const defaultCcpcBoard = (): CcpcBoard => ({ enabled: false, revealBasis: 'count', reveal: 50, revealPercent: 20 });
 
 /**
  * 特别奖, named by the organiser and given by rule:
@@ -102,7 +117,8 @@ export const defaultCcpcBoard = (): CcpcBoard => ({ enabled: false, revealBasis:
  * firstSolution: the team with the contest's first accept (ICPC World Finals First Solution Award);
  * honorable: every team that solved something without a medal (CCPC 总决赛优胜奖);
  * manual: the teams chosen by hand.
- * Rule-based awards require an accept. Unofficial teams take part only with `unofficial`. Conditions:
+ * Rule-based awards require `minSolved` accepted problems (at least one). Unofficial teams take part only with
+ * `unofficial`. Conditions:
  * `minTeams` teams on the board (unofficial ones counted with `unofficial`), a standing no lower than the last
  * team holding the `floor` medal or a better one on the main board (最佳女队: not below the last bronze), and
  * with `excludeMedalists` no gold, silver or bronze on the main board (顽强拼搏奖).
@@ -126,6 +142,8 @@ export interface SpecialAward {
     count: number;
     /** No award when fewer teams are on the board (0: no threshold). */
     minTeams: number;
+    /** Problems a team must have solved to be considered (1 to 1000; 优胜奖的过题门槛). */
+    minSolved: number;
     floor: SpecialFloor;
     excludeMedalists: boolean;
 }
@@ -144,6 +162,7 @@ export interface BoardSettings extends BoardAwards {
     /** Serve the contest through the ICPC CCS Contest API (lib/ccs). */
     ccsApi: boolean;
     ccsAutoFinalize: boolean;
+    autoUnfreezeMinutes: number | null;
     ccpcBoard: CcpcBoard;
     /** Submissions to a problem the team already solved are left out everywhere (CCPC 新榜单模式). */
     ignoreAfterAccept: boolean;
@@ -153,9 +172,9 @@ export const defaultPodiumNames = ['冠军', '亚军', '季军'];
 
 export const defaultSettings: BoardSettings = {
     medals: { gold: 1, silver: 2, bronze: 3 },
-    medalBasis: 'count', medalBase: 'solved', medalRounding: 'tier', medalRanking: 'team',
+    medalBasis: 'count', medalBase: 'solved', medalRounding: 'tier', medalFixed: noFixedMedals(), medalRanking: 'team',
     goldCitation: '金奖', silverCitation: '银奖', bronzeCitation: '铜奖',
-    medalSameScore: true, firstSolve: false, podiumEnabled: false, unofficialFirstSolve: false,
+    medalSameScore: true, firstSolve: false, podiumEnabled: false, unofficialMedals: false, unofficialFirstSolve: false,
     podiumBasis: 'team', podiumTie: 'lastAccept', podiumNames: defaultPodiumNames, honors: defaultHonors(),
     tieBreak: 'hydro',
     specialAwards: [],
@@ -168,6 +187,7 @@ export const defaultSettings: BoardSettings = {
     showIdentity: false,
     ccsApi: false,
     ccsAutoFinalize: false,
+    autoUnfreezeMinutes: null,
     ccpcBoard: defaultCcpcBoard(),
     ignoreAfterAccept: false,
 };
@@ -220,13 +240,26 @@ function normalizeAwards(input: Record<string, unknown>, fallback: BoardAwards):
     const medalBase: MedalBase = (input.medalBase as MedalBase | undefined) ?? (own ? 'solved' : fallback.medalBase ?? 'solved');
     const medalRounding: MedalRounding = (input.medalRounding as MedalRounding | undefined) ?? (own ? 'tier' : fallback.medalRounding ?? 'tier');
     const counts = medals(input.medals ?? fallback.medals, '奖牌数量');
-    if (medalBasis === 'ratio' && counts.gold + counts.silver + counts.bronze > 100) throw new Error('按比例设奖时，金银铜比例之和不能超过 100%');
+    let medalFixed = own ? noFixedMedals() : { ...fallback.medalFixed ?? noFixedMedals() };
+    if (input.medalFixed !== undefined) {
+        const fixed = object(input.medalFixed, '固定名额的奖牌');
+        medalFixed = noFixedMedals();
+        for (const key of ['gold', 'silver', 'bronze'] as const) {
+            if (fixed[key] === undefined) continue;
+            if (typeof fixed[key] !== 'boolean') throw new Error(`medalFixed.${key} 必须是布尔值`);
+            medalFixed[key] = fixed[key];
+        }
+    }
+    // Only 按比例 mixes percentages with numbers of teams.
+    if (medalBasis !== 'ratio') medalFixed = noFixedMedals();
+    const percents = (['gold', 'silver', 'bronze'] as const).filter((key) => !medalFixed[key]).reduce((sum, key) => sum + counts[key], 0);
+    if (medalBasis === 'ratio' && percents > 100) throw new Error('按比例设奖时，金银铜比例之和不能超过 100%');
     if (medalBasis === 'multiple' && (counts.gold > 100 || counts.silver > 20 || counts.bronze > 20)) throw new Error('按金牌倍数设奖时，金牌比例不超过 100%，银、铜不超过金牌的 20 倍');
-    const result: BoardAwards = { medals: counts, medalBasis, medalBase, medalRounding, medalRanking: fallback.medalRanking ?? 'team',
+    const result: BoardAwards = { medals: counts, medalBasis, medalBase, medalRounding, medalFixed, medalRanking: fallback.medalRanking ?? 'team',
         goldCitation: fallback.goldCitation, silverCitation: fallback.silverCitation, bronzeCitation: fallback.bronzeCitation,
         medalSameScore: fallback.medalSameScore, firstSolve: fallback.firstSolve,
         podiumEnabled: fallback.podiumEnabled, podiumBasis: fallback.podiumBasis ?? 'team', podiumTie: fallback.podiumTie ?? 'lastAccept',
-        podiumNames: [...fallback.podiumNames ?? defaultPodiumNames], unofficialFirstSolve: fallback.unofficialFirstSolve,
+        podiumNames: [...fallback.podiumNames ?? defaultPodiumNames], unofficialMedals: fallback.unofficialMedals ?? false, unofficialFirstSolve: fallback.unofficialFirstSolve,
         honors: normalizeHonors(input.honors, fallback.honors ?? defaultHonors()) };
     const choice = <K extends 'medalRanking' | 'podiumBasis' | 'podiumTie'>(key: K, allowed: BoardAwards[K][], label: string) => {
         if (input[key] === undefined) return;
@@ -243,7 +276,7 @@ function normalizeAwards(input: Record<string, unknown>, fallback: BoardAwards):
             return name.trim();
         });
     }
-    for (const key of ['medalSameScore', 'firstSolve', 'podiumEnabled', 'unofficialFirstSolve'] as const) {
+    for (const key of ['medalSameScore', 'firstSolve', 'podiumEnabled', 'unofficialMedals', 'unofficialFirstSolve'] as const) {
         if (input[key] === undefined) continue;
         if (typeof input[key] !== 'boolean') throw new Error(`${key} 必须是布尔值`);
         result[key] = input[key];
@@ -258,7 +291,7 @@ function normalizeAwards(input: Record<string, unknown>, fallback: BoardAwards):
 
 export type BoardRules = BoardAwards & { tieBreak: TieBreak };
 
-const boardIdPattern = /^(all|official|unofficial|school-[a-f0-9]{16}|manual-[a-z0-9][a-z0-9_-]{0,47})$/;
+const boardIdPattern = /^(all|official|unofficial|girl|school-[a-f0-9]{16}|manual-[a-z0-9][a-z0-9_-]{0,47})$/;
 
 function specialAwards(value: unknown, manualIds: Set<string>): SpecialAward[] {
     if (value === undefined) return [];
@@ -290,6 +323,8 @@ function specialAwards(value: unknown, manualIds: Set<string>): SpecialAward[] {
         if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 1 || count > 10) throw new Error(`特别奖“${name}”的获奖队数应为 1 至 10`);
         const minTeams = award.minTeams === undefined ? 0 : award.minTeams;
         if (typeof minTeams !== 'number' || !Number.isSafeInteger(minTeams) || minTeams < 0 || minTeams > 100000) throw new Error(`特别奖“${name}”的最少队数应为 0 至 100000`);
+        const minSolved = award.minSolved === undefined ? 1 : award.minSolved;
+        if (typeof minSolved !== 'number' || !Number.isSafeInteger(minSolved) || minSolved < 1 || minSolved > 1000) throw new Error(`特别奖“${name}”的过题门槛应为 1 至 1000 题`);
         const floor = award.floor === undefined ? 'none' : award.floor;
         if (!specialFloors.includes(floor as SpecialFloor)) throw new Error(`特别奖“${name}”的成绩线无效`);
         const rule = kind !== 'manual';
@@ -299,7 +334,7 @@ function specialAwards(value: unknown, manualIds: Set<string>): SpecialAward[] {
             // Before 打星资格 applied to every rule, only 分榜名次 could include unofficial teams.
             unofficial: rule && award.unofficial === true, ties: award.ties !== false,
             count: kind === 'lastAccept' || kind === 'lastSolver' ? count : 1,
-            minTeams: rule ? minTeams : 0, floor: rule ? floor as SpecialFloor : 'none',
+            minTeams: rule ? minTeams : 0, minSolved: rule ? minSolved : 1, floor: rule ? floor as SpecialFloor : 'none',
             excludeMedalists: rule && kind !== 'honorable' && award.excludeMedalists === true,
         }];
     });
@@ -309,7 +344,7 @@ function specialAwards(value: unknown, manualIds: Set<string>): SpecialAward[] {
  * Medals of each tier for a board (before capping at the teams that solved something). `pool` counts the board's
  * official teams; a bare number counts all three the same (official teams that solved something).
  */
-export function medalCounts(rules: Pick<BoardAwards, 'medals' | 'medalBasis'> & Partial<Pick<BoardAwards, 'medalBase' | 'medalRounding'>>,
+export function medalCounts(rules: Pick<BoardAwards, 'medals' | 'medalBasis'> & Partial<Pick<BoardAwards, 'medalBase' | 'medalRounding' | 'medalFixed'>>,
     pool: number | MedalPool): Medals {
     if (rules.medalBasis !== 'ratio' && rules.medalBasis !== 'multiple') return rules.medals;
     const teams = typeof pool === 'number' ? pool : pool[rules.medalBase ?? 'solved'];
@@ -320,12 +355,21 @@ export function medalCounts(rules: Pick<BoardAwards, 'medals' | 'medalBasis'> & 
         const golds = share(gold);
         return { gold: golds, silver: golds * silver, bronze: golds * bronze };
     }
+    const fixed = rules.medalFixed ?? noFixedMedals();
     if (rules.medalRounding === 'cumulative') {
-        const golds = share(gold);
-        const silvers = share(gold + silver) - golds;
-        return { gold: golds, silver: silvers, bronze: share(gold + silver + bronze) - golds - silvers };
+        const result = { gold: 0, silver: 0, bronze: 0 };
+        let hundredths = 0;
+        let given = 0;
+        for (const key of ['gold', 'silver', 'bronze'] as const) {
+            hundredths += rules.medals[key] * (fixed[key] ? 100 : teams);
+            const cumulative = Math.ceil(hundredths / 100);
+            result[key] = cumulative - given;
+            given = cumulative;
+        }
+        return result;
     }
-    return { gold: share(gold), silver: share(silver), bronze: share(bronze) };
+    const tier = (key: 'gold' | 'silver' | 'bronze') => (fixed[key] ? rules.medals[key] : share(rules.medals[key]));
+    return { gold: tier('gold'), silver: tier('silver'), bronze: tier('bronze') };
 }
 
 /** Never more medals than teams that solved something, gold first. */
@@ -339,6 +383,12 @@ export function cappedMedals(configured: Medals, solvedTeams: number): Medals {
     return result;
 }
 
+/** A virtual placing can reach a fixed award even when no official team has solved a problem. */
+export function boardMedalCounts(awards: BoardAwards, pool: MedalPool) {
+    const counts = medalCounts(awards, pool);
+    return awards.unofficialMedals ? counts : cappedMedals(counts, pool.solved);
+}
+
 /** A board override is shared by the live board and new resolver snapshots; the ranking rule is the contest's. */
 export function awardsFor(settings: BoardSettings, boardId: string): BoardRules {
     const tieBreak = settings.tieBreak ?? 'hydro';
@@ -346,11 +396,12 @@ export function awardsFor(settings: BoardSettings, boardId: string): BoardRules 
     const manual = settings.manualBoards.find((board) => `manual-${board.id}` === boardId);
     return { medals: manual?.medals || settings.medals, medalBasis: manual?.medals ? 'count' : settings.medalBasis ?? 'count',
         medalBase: manual?.medals ? 'solved' : settings.medalBase ?? 'solved', medalRounding: manual?.medals ? 'tier' : settings.medalRounding ?? 'tier',
+        medalFixed: manual?.medals ? noFixedMedals() : settings.medalFixed ?? noFixedMedals(),
         medalRanking: settings.medalRanking ?? 'team',
         goldCitation: settings.goldCitation, silverCitation: settings.silverCitation, bronzeCitation: settings.bronzeCitation,
         medalSameScore: settings.medalSameScore, firstSolve: settings.firstSolve,
         podiumEnabled: settings.podiumEnabled, podiumBasis: settings.podiumBasis ?? 'team', podiumTie: settings.podiumTie ?? 'lastAccept',
-        podiumNames: settings.podiumNames ?? defaultPodiumNames, unofficialFirstSolve: settings.unofficialFirstSolve,
+        podiumNames: settings.podiumNames ?? defaultPodiumNames, unofficialMedals: settings.unofficialMedals ?? false, unofficialFirstSolve: settings.unofficialFirstSolve,
         honors: settings.honors ?? defaultHonors(), tieBreak };
 }
 
@@ -362,6 +413,10 @@ export function normalizeSettings(value: unknown): BoardSettings {
     if (input.tieBreak !== undefined && !tieBreaks.includes(input.tieBreak as TieBreak)) throw new Error('同分规则无效');
     if (!Array.isArray(input.manualBoards) || input.manualBoards.length > 50) {
         throw new Error('手动分榜必须是数组，最多 50 个');
+    }
+    const minutes = input.autoUnfreezeMinutes;
+    if (minutes != null && (typeof minutes !== 'number' || !Number.isSafeInteger(minutes) || minutes < 0 || !Number.isFinite(new Date(Date.now() + minutes * 60000).getTime()))) {
+        throw new Error('请填写有效的非负整数分钟，留空表示关闭');
     }
     const ids = new Set<string>();
     const manualBoards = input.manualBoards.map((value, index): ManualBoard => {
@@ -405,6 +460,7 @@ export function normalizeSettings(value: unknown): BoardSettings {
         publicAccess: input.publicAccess === true,
         replaceNative: input.replaceNative === undefined ? true : input.replaceNative as boolean,
         showIdentity: input.showIdentity === true,
+        autoUnfreezeMinutes: minutes ?? null,
         ccsApi: input.ccsApi === true,
         ccsAutoFinalize: input.ccsAutoFinalize === true,
         ccpcBoard: normalizeCcpcBoard(input.ccpcBoard),
@@ -419,7 +475,7 @@ export function normalizeCcpcBoard(value: unknown): CcpcBoard {
     if (input.enabled !== undefined && typeof input.enabled !== 'boolean') throw new Error('ccpcBoard.enabled 必须是布尔值');
     board.enabled = input.enabled === true;
     if (input.revealBasis !== undefined) {
-        if (input.revealBasis !== 'count' && input.revealBasis !== 'percent') throw new Error('题号显示门槛的方式无效');
+        if (input.revealBasis !== 'count' && input.revealBasis !== 'percent' && input.revealBasis !== 'min') throw new Error('题号显示门槛的方式无效');
         board.revealBasis = input.revealBasis;
     }
     if (input.reveal !== undefined) {
@@ -429,6 +485,12 @@ export function normalizeCcpcBoard(value: unknown): CcpcBoard {
         }
         board.reveal = input.reveal;
     } else if (board.revealBasis === 'percent') board.reveal = 20;
+    if (input.revealPercent !== undefined) {
+        if (typeof input.revealPercent !== 'number' || !Number.isSafeInteger(input.revealPercent) || input.revealPercent < 1 || input.revealPercent > 100) {
+            throw new Error('题号显示门槛的比例应为 1% 至 100%');
+        }
+        board.revealPercent = input.revealPercent;
+    }
     return board;
 }
 

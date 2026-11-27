@@ -89,9 +89,9 @@ export function createControlPreview(env: Environment, version: string, demo: ()
             preset: presetOf(settings, balloons), presets: presetIds.map((id) => ({ id, name: presets[id].name })),
             medalTemplate: medalTemplateOf(settings), medalTemplates,
             board: {
-                tieBreak: settings.tieBreak, ccpcBoard: settings.ccpcBoard, ignoreAfterAccept: settings.ignoreAfterAccept,
-                medals: settings.medals, medalBasis: settings.medalBasis, medalBase: settings.medalBase, medalRounding: settings.medalRounding, honors: settings.honors,
-                medalRanking: settings.medalRanking, medalSameScore: settings.medalSameScore,
+                tieBreak: settings.tieBreak, ccpcBoard: settings.ccpcBoard, ignoreAfterAccept: settings.ignoreAfterAccept, autoUnfreezeMinutes: settings.autoUnfreezeMinutes,
+                medals: settings.medals, medalBasis: settings.medalBasis, medalBase: settings.medalBase, medalRounding: settings.medalRounding, medalFixed: settings.medalFixed, honors: settings.honors,
+                medalRanking: settings.medalRanking, medalSameScore: settings.medalSameScore, unofficialMedals: settings.unofficialMedals,
                 podiumEnabled: settings.podiumEnabled, podiumBasis: settings.podiumBasis, podiumTie: settings.podiumTie, podiumNames: settings.podiumNames,
                 firstSolve: settings.firstSolve, unofficialFirstSolve: settings.unofficialFirstSolve,
                 schoolBoards: settings.schoolBoards, participationBoards: settings.participationBoards, manualBoards: settings.manualBoards.length,

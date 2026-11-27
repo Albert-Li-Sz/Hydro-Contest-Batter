@@ -24,7 +24,7 @@ function contest(): BoardData {
         ],
     };
 }
-const award = (input: Partial<SpecialAward>): SpecialAward => ({ id: 'a', name: '奖', kind: 'rank', board: 'all', rank: 1, teamIds: [], unofficial: false, ties: true, count: 1, minTeams: 0, floor: 'none', excludeMedalists: false, ...input });
+const award = (input: Partial<SpecialAward>): SpecialAward => ({ id: 'a', name: '奖', kind: 'rank', board: 'all', rank: 1, teamIds: [], unofficial: false, ties: true, count: 1, minTeams: 0, minSolved: 1, floor: 'none', excludeMedalists: false, ...input });
 const results = (awards: Partial<SpecialAward>[], extra: Record<string, unknown> = {}) => {
     const settings = { ...defaultSettings, ...extra, specialAwards: awards.map((item, index) => award({ id: `a${index}`, ...item })) };
     // Teams sharing an award are listed in board order; compare them as sets.
@@ -37,6 +37,26 @@ describe('特别奖', () => {
         expect(results([{ rank: 1 }, { rank: 2 }, { rank: 3 }, { rank: 1, ties: false }, { rank: 2, ties: false }])).toEqual([['1', '2'], [], ['3', '4'], ['2'], ['1']]);
         // Under the ICPC rule 乙's last accept (15) is earlier than 甲's (20).
         expect(results([{ rank: 1 }], { tieBreak: 'icpc' })).toEqual([['2']]);
+    });
+
+    it('excludes starred medal winners from honorable mentions while keeping the official medal floor', () => {
+        const data = contest();
+        data.submissions.push(
+            { submission_id: 'star-a', team_id: '5', problem_id: 0, timestamp: 2 * minute, status: 'CORRECT' },
+            { submission_id: 'star-b', team_id: '5', problem_id: 1, timestamp: 3 * minute, status: 'CORRECT' },
+        );
+        const winners = (unofficialMedals: boolean) => {
+            const settings = normalizeSettings({ ...defaultSettings, unofficialMedals, medals: { gold: 1, silver: 0, bronze: 0 }, specialAwards: [
+                award({ id: 'honorable', kind: 'honorable', unofficial: true }), award({ id: 'minimum', kind: 'lastSolver', unofficial: true, floor: 'gold' }),
+            ] });
+            return specialAwardResults(enhanceBoard(data, settings), settings).map(item => item.teamIds.sort());
+        };
+        expect(winners(false)).toEqual([['3', '4', '5'], ['1', '2']]);
+        expect(winners(true)).toEqual([['3', '4'], ['1', '2']]);
+
+        // With no official medal holder, no team meets a gold floor even if a starred team receives gold.
+        data.submissions = data.submissions.filter(run => run.team_id === '5');
+        expect(winners(true)).toEqual([[], []]);
     });
 
     it('finds the last accept and the last team that solved, without starred or zero-solve teams', () => {
@@ -53,6 +73,22 @@ describe('特别奖', () => {
     it('limits rule-based awards to the board, and keeps hand-picked teams that exist', () => {
         const manualBoards = [{ id: 'girls', name: '女队榜', teamIds: ['3', '4', '6'] }];
         expect(results([{ board: 'manual-girls' }, { kind: 'manual', teamIds: ['6', '99'] }], { manualBoards })).toEqual([['3', '4'], ['6']]);
+    });
+
+    it('awards the automatic girl board only when identity is visible', () => {
+        const data = contest();
+        data.teams[1].girl = true;
+        data.teams[2].girl = true;
+        const settings = normalizeSettings({ ...defaultSettings, showIdentity: true, specialAwards: [
+            { id: 'best', name: '最佳女队', kind: 'rank', board: 'girl', rank: 1 },
+        ] });
+        const awarded = (identity: boolean, showIdentity: boolean) => {
+            const rules = { ...settings, showIdentity };
+            return specialAwardResults(enhanceBoard(data, rules, { identity }), rules)[0].teamIds;
+        };
+        expect(awarded(true, true)).toEqual(['2']);
+        expect(awarded(false, true)).toEqual([]);
+        expect(awarded(true, false)).toEqual([]);
     });
 
     it('can share the last-accept award for simultaneous first accepts', () => {
@@ -99,7 +135,7 @@ describe('特别奖', () => {
         const save = (specialAwards: unknown[], manualBoards: unknown[] = []) => normalizeSettings({ ...defaultSettings, manualBoards, specialAwards }).specialAwards;
         expect(save([{ id: 'girls', name: ' 最佳女队 ', kind: 'rank', board: 'manual-g', rank: 1 }], [{ id: 'g', name: '女队榜', teamIds: [] }]))
             .toEqual([{ id: 'girls', name: '最佳女队', kind: 'rank', board: 'manual-g', rank: 1, teamIds: [], unofficial: false, ties: true,
-                count: 1, minTeams: 0, floor: 'none', excludeMedalists: false }]);
+                count: 1, minTeams: 0, minSolved: 1, floor: 'none', excludeMedalists: false }]);
         // A deleted manual board takes its award along; manual awards need teams and ignore the board.
         expect(save([{ id: 'x', name: '奖', kind: 'rank', board: 'manual-gone' }])).toEqual([]);
         expect(save([{ id: 'm', name: '风采', kind: 'manual', board: 'official', teamIds: ['-1001', '-1001', '7'] }])[0]).toMatchObject({ board: 'all', teamIds: ['-1001', '7'] });

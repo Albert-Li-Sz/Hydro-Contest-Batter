@@ -2,6 +2,8 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { Readable } from 'node:stream';
 import type { CcsSource } from '../lib/ccs/model';
+import { normalizeSettings } from '../lib/settings';
+import { resolverBoards } from '../lib/resolver-data';
 import { ccsFixture } from './ccs-fixture';
 import { previewDatabase } from '../preview/resolver-memory-db';
 import { readZip, writeZip } from '../lib/ccs/zip';
@@ -246,6 +248,45 @@ describe('CCS writer and callbacks', () => {
         expect((await app.request('/finalize', { uid: 99, method: 'post', body: {} })).status).toBe(409);
         state.source.records[0].judgings.at(-1)!.status = 1;
         expect((await app.request('/finalize', { uid: 99, method: 'post', body: {} })).status).toBe(202);
+    });
+    it('applies current girl privacy to previously finalized public and team groups, awards and membership', async () => {
+        const source = state.source;
+        source.settings = normalizeSettings({ ...source.settings, specialAwards: [
+            { id: 'best', name: '最佳女队', kind: 'rank', board: 'girl' },
+            { id: 'last', name: '压轴奖', kind: 'lastAccept', board: 'all' },
+        ] });
+        source.full.teams[0].girl = true;
+        source.public.teams[0].girl = true;
+        source.boards = resolverBoards(source.full, source.settings, true);
+        source.publicBoards = resolverBoards(source.public, source.settings, true);
+        const app = setup();
+        expect((await app.request('/groups/girl')).body).toMatchObject({ id: 'girl' });
+        expect((await app.request('/awards/group-winner-girl')).body.team_ids).toEqual(['1']);
+        expect((await app.request('/awards/special-best')).body.team_ids).toEqual(['1']);
+        expect((await app.request('/finalize', { uid: 99, method: 'post', body: {} })).status).toBe(202);
+        await app.writer.tick();
+        expect(await app.store.frozenSource(app.key)).toBeTruthy();
+        source.settings.showIdentity = false;
+        source.settings.specialAwards = [];
+        for (const uid of [0, 1]) {
+            expect((await app.request('/groups/girl', { uid })).status).toBe(404);
+            expect((await app.request('/awards/group-winner-girl', { uid })).status).toBe(404);
+            expect((await app.request('/awards/special-best', { uid })).status).toBe(404);
+            expect((await app.request('/awards/special-last', { uid })).status).toBe(200);
+            const team = await app.request('/teams/1', { uid });
+            expect(team.status).toBe(200);
+            expect(team.body.group_ids).toContain('official');
+            expect(team.body.group_ids).not.toContain('girl');
+        }
+        const publicFeed = await app.request('/event-feed');
+        expect(publicFeed.status).toBe(200);
+        let feed = '';
+        for await (const chunk of publicFeed.body) feed += String(chunk);
+        const events = feed.split('\n').filter(Boolean).map(line => JSON.parse(line));
+        expect(events.some(event => event.id === 'special-last')).toBe(true);
+        expect(events.filter(event => event.type === 'awards').map(event => event.id)).not.toContain('special-best');
+        expect(events.find(event => event.type === 'teams' && event.id === '1')?.data.group_ids).not.toContain('girl');
+        expect((await app.request('/groups/girl', { uid: 99 })).status).toBe(200);
     });
     it('automatically finalizes only after the configured quiet period', async () => {
         state.source.settings.ccsAutoFinalize = true;

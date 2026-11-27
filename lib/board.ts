@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { BoardSettings, MedalPool, Medals } from './settings';
-import { awardsFor, cappedMedals, medalCounts } from './settings';
+import { awardsFor, boardMedalCounts } from './settings';
 import { AWARD_EXEMPT_TAG, SCHOOL_TAG } from './award-policy.mjs';
 
 export interface BoardTeam {
@@ -10,6 +10,9 @@ export interface BoardTeam {
     group: string[];
     /** Members of a Hydro team (team contests only); XCPCIO shows them with the team. */
     members?: string[];
+    girl?: true;
+    coaches?: string[];
+    location?: string;
     /** Which school the team counts for in school ranks (`s1`, `s2`…), also when the school name is private. */
     school_key?: string;
     [key: string]: unknown;
@@ -99,14 +102,19 @@ export function medalPool(data: Pick<BoardData, 'contest' | 'teams' | 'submissio
     return { registered: official.size, submitted: submitted.size, solved: solved.size };
 }
 
-/** Names the board switcher already shows for automatic boards, which manual boards must not repeat. */
+/** Automatic sub-boards derived from public identity fields. */
+export function identityBoard(id?: string | null) {
+    return id === 'girl' || !!id?.startsWith('school-');
+}
+
+/** Names already used in the board switcher. */
 export function reservedBoardNames(teams: BoardTeam[], settings: BoardSettings): string[] {
-    return ['所有队伍', '主榜', '总榜', ...(settings.participationBoards ? ['正式参赛', '非正式参赛'] : []),
+    return ['所有队伍', '主榜', '总榜', ...(settings.showIdentity ? ['女队', 'Girls'] : []), ...(settings.participationBoards ? ['正式参赛', '非正式参赛'] : []),
         ...(settings.schoolBoards ? [...new Set(teams.map((team) => `${schoolName(team.organization)}榜`))] : [])];
 }
 
 export function automaticBoards(teams: BoardTeam[]) {
-    return [{ id: 'official', name: '正式参赛', kind: 'participation' },
+    return [{ id: 'girl', name: '女队', kind: 'identity' }, { id: 'official', name: '正式参赛', kind: 'participation' },
         { id: 'unofficial', name: '非正式参赛', kind: 'participation' },
         ...[...new Set(teams.map((team) => schoolName(team.organization)))].sort((a, b) => a.localeCompare(b, 'zh-CN'))
             .map((school) => ({ id: schoolGroup(school), name: `${school}榜`, kind: 'school' }))];
@@ -121,6 +129,8 @@ export function enhanceBoard(data: BoardData, settings: BoardSettings, { identit
         groups.official = '正式参赛';
         groups.unofficial = '非正式参赛';
     }
+    const profiles = settings.showIdentity && identity;
+    if (profiles && data.teams.some((team) => team.girl)) groups.girl = '女队';
     const membership = new Map(settings.manualBoards.map((board) => [board.id, new Set(board.teamIds)]));
     // Hand-made boards come before the school list, which can run to hundreds of entries.
     for (const board of settings.manualBoards) groups[`manual-${board.id}`] = board.name;
@@ -128,8 +138,11 @@ export function enhanceBoard(data: BoardData, settings: BoardSettings, { identit
     if (schoolBoards) {
         for (const school of schools) groups[schoolGroup(school)] = `${school}榜`;
     }
-    const teams = data.teams.map((team) => ({
+    const teams = data.teams.map(({ girl, coaches, location, ...team }) => ({
         ...team,
+        ...(profiles && girl ? { girl } : {}),
+        ...(profiles && coaches ? { coaches } : {}),
+        ...(profiles && location ? { location } : {}),
         tag: [
             ...(Array.isArray(team.tag) ? team.tag.filter((tag) => typeof tag === 'string' && tag !== AWARD_EXEMPT_TAG && !tag.startsWith(SCHOOL_TAG)) : []),
             ...(team.group.includes('unofficial') ? [AWARD_EXEMPT_TAG] : []),
@@ -137,7 +150,8 @@ export function enhanceBoard(data: BoardData, settings: BoardSettings, { identit
         ],
         organization: identity ? schoolName(team.organization) : '',
         group: [...new Set([
-            ...team.group,
+            ...team.group.filter((id) => id !== 'girl'),
+            ...(profiles && girl ? ['girl'] : []),
             ...(schoolBoards ? [schoolGroup(schoolName(team.organization))] : []),
             ...settings.manualBoards.filter((board) => membership.get(board.id)!.has(team.team_id)).map((board) => `manual-${board.id}`),
         ])],
@@ -149,9 +163,8 @@ export function enhanceBoard(data: BoardData, settings: BoardSettings, { identit
     for (const id of allGroups) {
         const members = teams.filter((team) => id === 'all' || team.group.includes(id));
         const awards = awardsFor(settings, id);
-        // Medals go to official teams on this board that solved something; the counts may rest on more of them.
         const pool = medalPool(data, members.map((team) => team.team_id));
-        medal[id] = { ...cappedMedals(medalCounts(awards, pool), pool.solved), hydroAwards: hiddenFrom === undefined ? awards : { ...awards, hiddenFrom } };
+        medal[id] = { ...boardMedalCounts(awards, pool), hydroAwards: hiddenFrom === undefined ? awards : { ...awards, hiddenFrom } };
     }
     return {
         ...data,

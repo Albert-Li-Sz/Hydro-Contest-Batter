@@ -11,7 +11,8 @@ export function medalCutoff(info: ContestInfo, board: ScoreboardState, group: st
     const award = awards?.find((item) => item.id === medal + '-medal');
     const order = ranking.order.filter((id) => teams.has(id) && !teams.get(id)!.isOutOfContest
         && (group === 'all' || local?.ranks[id]) && rows.get(id)!.totalScore > 0);
-    const insideId = award?.teams.at(-1);
+    const winners = new Set(award?.teams);
+    const insideId = order.filter((id) => winners.has(id)).at(-1);
     const insideIndex = insideId ? order.indexOf(insideId) : -1;
     const outsideId = insideIndex >= 0 ? order[insideIndex + 1] : undefined;
     const entry = (id: string | undefined) => {

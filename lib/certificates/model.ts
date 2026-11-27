@@ -5,7 +5,7 @@
  *
  * Kinds: a team certificate per award and team, a member certificate per award and member, a coach certificate
  * per award and coach, and a participation certificate (参赛证明) per member of an official team. Awards follow
- * the results: unofficial teams receive what their awards allow them (最快解题奖, 顽强拼搏奖…), never a medal.
+ * the results: unofficial teams receive the medals and other awards granted by the contest rules.
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { BLACK, isInkColor } from '../../resolver/public/js/certificate-colors.js';

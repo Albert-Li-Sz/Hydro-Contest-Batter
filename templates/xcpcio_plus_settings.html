@@ -64,13 +64,15 @@
       <section class="section visible" id="board-mode">
         <div class="section__header"><h2 class="section__title">CCPC 新榜单模式</h2></div>
         <div class="section__body">
+          <label class="xp-field">结束后自动解封（分钟）<input class="textbox" id="xp-auto-unfreeze" type="number" min="0" step="1" placeholder="留空关闭，0 表示结束即解封"></label>
           <div class="xp-checks">
             <label class="checkbox"><input type="checkbox" id="xp-ccpc-board"><span>封榜前隐藏题号</span></label>
             <label class="checkbox"><input type="checkbox" id="xp-ignore-after-accept"><span>过题后忽略再次提交</span></label>
           </div>
           <div class="xp-inline-fields" id="xp-ccpc-reveal">
             <label class="xp-field">过题达到<input class="textbox" id="xp-ccpc-reveal-value" type="number" min="1" step="1" required></label>
-            <label class="xp-field">单位<select class="select" id="xp-ccpc-reveal-basis"><option value="count">队</option><option value="percent">% 队伍（下取整）</option></select></label>
+            <label class="xp-field">单位<select class="select" id="xp-ccpc-reveal-basis"><option value="count">队</option><option value="percent">% 队伍（下取整）</option><option value="min">队或比例，取较小</option></select></label>
+            <label class="xp-field" id="xp-ccpc-reveal-percent-field">比例<input class="textbox" id="xp-ccpc-reveal-percent" type="number" min="1" max="100" step="1" required>%</label>
             <span class="xp-muted">时显示题号</span>
           </div>
         </div>

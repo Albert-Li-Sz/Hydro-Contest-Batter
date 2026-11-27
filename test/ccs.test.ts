@@ -86,7 +86,7 @@ describe('CCS 2026-01 objects', () => {
     });
     it('publishes special awards only when the results are final and visible', () => {
         const source = ccsFixture();
-        source.settings.specialAwards = [{ id: 'last', name: '顽强拼搏奖', kind: 'lastAccept', board: 'all', rank: 1, teamIds: [], unofficial: false, ties: true, count: 1, minTeams: 0, floor: 'none', excludeMedalists: false }];
+        source.settings.specialAwards = [{ id: 'last', name: '顽强拼搏奖', kind: 'lastAccept', board: 'all', rank: 1, teamIds: [], unofficial: false, ties: true, count: 1, minTeams: 0, minSolved: 1, floor: 'none', excludeMedalists: false }];
         const special = (view: 'public' | 'full') => buildObjects(structuredClone(source), view).awards.find(item => item.id === 'special-last');
         expect(special('public')).toMatchObject({ citation: '顽强拼搏奖', team_ids: ['3'] });
         source.contest.lockAt = source.contest.beginAt + 3600_000;
