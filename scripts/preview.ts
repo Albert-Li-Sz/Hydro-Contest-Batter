@@ -4,6 +4,7 @@ import path from 'node:path';
 import nunjucks from 'nunjucks';
 import { automaticBoards, enhanceBoard, reservedBoardNames } from '../lib/board';
 import { checkBoardNames, defaultSettings, normalizeSettings, pruneMembers, toScriptJson } from '../lib/settings';
+import { resolverCodeBase } from '../lib/resolver-data';
 import { displaySpecialAwards } from '../lib/special-awards';
 import { demoData, demoRoster } from '../test/fixture';
 import { defaultProfileFields, rosterFields } from '../lib/roster';
@@ -114,6 +115,14 @@ const server = http.createServer(async (request, response) => {
         if (await presencePreview(request, response, url)) return;
         if (await overviewPreview(request, response, url)) return;
         if (await ceremonyPreview(request, response, url, displayData, settings)) return;
+        if (url.pathname === '/contest/demo/perspective') {
+            // 选手视角 picker; in Hydro the choice opens Hydro's own contest pages as that team (lib/perspective.ts).
+            if (request.method === 'POST') { response.writeHead(303, { Location: '/contest/demo/scoreboard/xcpcio-plus' }).end(); return; }
+            response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(env.render('xcpcio_perspective.html', {
+                tdoc: { title: displayData.contest.contest_name }, codeBase: resolverCodeBase(pluginVersion), contestUrl: '/contest/demo',
+                runtimeJson: toScriptJson({ teams: displayData.teams.map((team) => ({ uid: Number(team.team_id), name: team.name, school: team.organization || '' })) }),
+            })); return;
+        }
         if (await resultsPreview.handle(request, response, url, displayData, settings)) return;
         if (await certificatesPreview.handle(request, response, url)) return;
         if (await juryPreview.handle(request, response, url)) return;
@@ -173,7 +182,7 @@ const server = http.createServer(async (request, response) => {
             }
             response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(env.render('xcpcio_plus_board.html', {
                 ...displayDefaults, ...manifest, settingsUrl: audience ? null : settingsUrl,
-                audienceUrl: audience ? null : `${boardUrl}?view=audience${boardQuery}`, managerUrl: audience ? `${boardUrl}?view=manager${boardQuery}` : null,
+                audienceUrl: audience ? null : `${boardUrl}?view=audience${boardQuery}`, perspectiveUrl: audience ? null : "/contest/demo/perspective", managerUrl: audience ? `${boardUrl}?view=manager${boardQuery}` : null,
                 hideSubmissions: audience && url.searchParams.get('running') === '1',
                 unlock: audience || unlocked ? null : { url: `${base}/scoreboard`, ready: true },
                 runtimeJson: toScriptJson({ dataSource: `${boardUrl}?json=true${audience ? '&view=audience' : '&view=manager'}${boardQuery}#allInOne=true`, refreshInterval: 5000 }),

@@ -101,3 +101,10 @@
 - `server/lib/engine.js` 接受比赛内的滚榜照片地址。`public/js/render/resolver-view.js` 在选中队伍时预载照片，在获奖画面使用会话里的地址。已在播放的获奖页每 5 秒轻量核对照片凭据，作废后回退到比赛标志。
 - `public/js/playback-model.js` 与可打印台本共用奖级顺序，定位各奖区首支队伍的前一个可操作步骤，并提供带时钟参数的双按判定。
 - `public/js/play.js` 与 `templates/xcpcio_resolver_play.html` 增加 J、工具栏「下一奖区」及快捷键帮助。再次按 J 直接抵达，Esc 暂停。键盘和右键回退需在 1.5 秒内连按两次。
+
+## 2.1.0 奖区边界、按队跳转与大屏缩放
+
+- `server/lib/engine.js` 在逐行选中和获奖高亮的 `selectTeam` 步骤上记录光标所在行 `row`。
+- `public/js/playback-model.js` 按行号定位奖区：取该奖级各队获奖高亮中最低的一行，停在光标第一次到达这一行之前，也就是奖区前一名的边界。没有行号的旧会话沿用 2.0.0 的规则。新增 `teamJump()`，从光标所在行前进或后退 10 行；前进最多停在榜首一行之前。
+- `public/js/play.js` 与 `templates/xcpcio_resolver_play.html` 增加 G、I：1.5 秒内双按前进或回退 10 队，前进时快速揭晓（再按 J 直接抵达，Esc 停止），回退立即生效。双按判定按键分别计时。
+- `public/js/render/presentation-ports.js` 与 `presentation-view.js` 接收大屏设备的缩放倍数：榜单类画面（带 `teamsPerScreen` 的 ICPC Tools 画面）按倍数减少每屏行数，缓存键包含倍数。其余画布画面不受缩放影响。

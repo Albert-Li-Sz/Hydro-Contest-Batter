@@ -7,21 +7,21 @@ Hydro OJ 的 ACM 办赛插件。工作人员可以在 Hydro 内配置赛制与�
 
 [快速安装](#快速安装) · [比赛操作手册](https://albert-li-sz.github.io/Hydro-Contest-Better/) · [媒体机安装教程](https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.html) · [版本下载](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/latest)
 
-## v2.0.0 更新
+## v2.1.0 更新
 
-- **滚榜主持**可按队伍账号、UID 或队名批量添加合影，在获奖画面展示。按 `J` 推进到下一奖区，键盘或鼠标右键回退需要在 1.5 秒内连按两次。[滚榜操作](https://albert-li-sz.github.io/Hydro-Contest-Better/#resolver)
-- **颁奖投影**可从当前成绩或定稿快照生成多榜单幻灯片。选定奖项顺序、学校校徽和背景后，可全屏播放，也可下载单个 HTML 到断网的投屏电脑播放。[颁奖幻灯片](https://albert-li-sz.github.io/Hydro-Contest-Better/#ceremony)
-- **榜单管理员**可切换到观众视角，核对封榜、CCPC 题号和学校的显示效果。公开榜关闭时也能检查，完成后可回到原分榜。[检查观众视角](https://albert-li-sz.github.io/Hydro-Contest-Better/#audience)
-- **大屏值守**可用投屏电脑上的六位配对码连接设备，在管理页查看哪块屏在线、远程切换画面与分榜、调节缩放。已有固定链接仍可使用。[连接大屏](https://albert-li-sz.github.io/Hydro-Contest-Better/#screen-devices)
+- **颁奖投影**重做版式：封面、带中英文奖名的奖级牌匾、半透明名单底板、名次徽标和按实测文字选择的分栏，8 套主题，页眉页脚可按左中右三格避让背景上的徽标。编辑页可用缩略条翻页，并按奖项核对名单。[颁奖幻灯片](https://albert-li-sz.github.io/Hydro-Contest-Better/#ceremony)
+- **滚榜主持**按 `J` 停在奖区前一名的边界，修正了 v2.0.0 可能停在低一档奖区中间的问题。新增 `G` / `I` 前进或回退 10 队，同样需要双按确认。队伍照片统一裁成 4:3，单张上传可手动取景。[滚榜操作](https://albert-li-sz.github.io/Hydro-Contest-Better/#resolver)
+- **榜单管理员**除观众视角外，还可以选择一支队伍进入选手视角，只读查看 Hydro 题目列表、评测状态和榜单在该队眼中的样子。[检查观众视角与选手视角](https://albert-li-sz.github.io/Hydro-Contest-Better/#audience)
+- **大屏值守**可在设备行查看每块屏的实时缩略图，开启遥控后翻页、暂停轮播和请求全屏，并看到大屏的执行回执。缩放改为榜单类画面减少每屏行数，不再裁掉画面四周。[连接大屏](https://albert-li-sz.github.io/Hydro-Contest-Better/#screen-devices)
 
 ## 快速安装
 
 需要 Hydro 5.x 和 Node.js 22 或更高版本。以运行 Hydro 的系统用户执行以下 Linux 命令。使用自定义 profile、容器或其他进程管理器时，请按部署方式选择安装步骤。[安装与升级图解](https://albert-li-sz.github.io/Hydro-Contest-Better/#install)
 
 ```sh
-release=https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/download/v2.0.0
-package=hydro-scoreboard-xcpcio-plus-2.0.0.tgz
-mkdir -p hydro-contest-2.0.0 && cd hydro-contest-2.0.0
+release=https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/download/v2.1.0
+package=hydro-scoreboard-xcpcio-plus-2.1.0.tgz
+mkdir -p hydro-contest-2.1.0 && cd hydro-contest-2.1.0
 curl -fLO "$release/$package" && curl -fLO "$release/$package.sha256"
 sha256sum -c "$package.sha256" && tar -xzf "$package"
 ```
@@ -44,7 +44,7 @@ sha256sum -c "$package.sha256" && tar -xzf "$package"
 | 制作颁奖台本与离线幻灯片，设计、签发与更正双语证书 | [赛后滚榜](https://albert-li-sz.github.io/Hydro-Contest-Better/#resolver) · [颁奖幻灯片](https://albert-li-sz.github.io/Hydro-Contest-Better/#ceremony) · [证书制作与领取](https://albert-li-sz.github.io/Hydro-Contest-Better/#certificates) · [中文赛事模板与左侧标识样张](docs/examples/certificate-event-zh.pdf) · [赛事模板与自定义签名样张](docs/examples/certificate-event.pdf) · [五套横竖版样张](docs/examples/certificate-styles.pdf) |
 | 复核重测结果、导出获奖名单或对接 CCS | [赛后滚榜](https://albert-li-sz.github.io/Hydro-Contest-Better/#resolver) · [成绩与导出](https://albert-li-sz.github.io/Hydro-Contest-Better/#results) · [CCS API](https://albert-li-sz.github.io/Hydro-Contest-Better/#integration) |
 
-媒体机是可选组件。在 **采集与播出 → 媒体机连接** 创建连接，将复制的 `HYDRO_MEDIA_CONNECTION` 写入媒体机的 `.env`，再用 Docker Compose 启动。插件 v2.0.0 搭配公共镜像 `ghcr.io/albert-li-sz/reactions-generator-hydro:2.0.0`，支持 Linux amd64 和 arm64。[Compose 配置](https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.compose.yaml)
+媒体机是可选组件。在 **采集与播出 → 媒体机连接** 创建连接，将复制的 `HYDRO_MEDIA_CONNECTION` 写入媒体机的 `.env`，再用 Docker Compose 启动。插件 v2.1.0 搭配公共镜像 `ghcr.io/albert-li-sz/reactions-generator-hydro:2.1.0`，支持 Linux amd64 和 arm64。[Compose 配置](https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.compose.yaml)
 
 ## 开发与许可
 

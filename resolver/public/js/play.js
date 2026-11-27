@@ -1,4 +1,4 @@
-import { actionIndicesFor, startIndexFor, nextAutomaticAction, awardStops, nextAwardStop, confirmPrevious } from './playback-model.js';
+import { actionIndicesFor, startIndexFor, nextAutomaticAction, awardStops, nextAwardStop, teamJump, hasRows, confirmPrevious } from './playback-model.js';
 import { AutomaticAdvance } from './automatic-advance.js';
 import { ResolverView } from './render/resolver-view.js';
 import { readJSONResponse } from './http.js';
@@ -74,7 +74,14 @@ const teamById = new Map();
 let awardTarget = null;
 let skipToTarget = false;
 let stops = [];
-let armedAt = null;
+// Keyboard and right-click jumps backward or by ten teams need a second press within 1.5 s.
+let armed = null;
+function confirmed(key) {
+  const now = performance.now();
+  if (armed?.key === key && confirmPrevious(armed.at, now)) { armed = null; return true; }
+  armed = { key, at: now };
+  return false;
+}
 function stopAdvance() {
   awardTarget = null;
   skipToTarget = false;
@@ -88,7 +95,7 @@ function nextAdvance() {
 }
 function goToAward() {
   if (!game || !connected) return;
-  armedAt = null;
+  armed = null;
   if (awardTarget !== null) {
     skipToTarget = true;
     fastForward.schedule();
@@ -305,7 +312,7 @@ function applyActionAt(pos) {
 
 async function goNext() {
   if (!game) return;
-  armedAt = null;
+  armed = null;
   stopAdvance();
   if (actionPos + 1 >= actionIndices.length) {
     mode = 'end';
@@ -320,14 +327,30 @@ async function goNext() {
 function goPrevious(guarded = false) {
   stopAdvance();
   if (!game || actionPos <= 0) return;
-  const now = performance.now();
-  if (guarded === true && !isPreview && !confirmPrevious(armedAt, now)) {
-    armedAt = now;
+  if (guarded === true && !isPreview && !confirmed('previous')) {
     toast('再按一次撤回上一步');
     return;
   }
-  armedAt = null;
+  armed = null;
   return moveTo(actionIndices[actionPos - 1], { instant: true, relative: -1 });
+}
+
+// G / I: ten teams on (revealed quickly, J arrives at once, Esc stops) or back (at once).
+function jumpTeams(delta) {
+  if (!game || !connected || ended) return;
+  stopAdvance();
+  if (!hasRows(game)) { toast('重新创建会话后可按队跳转'); return; }
+  const key = delta > 0 ? 'forward' : 'back';
+  if (!isPreview && !confirmed(key)) {
+    toast(delta > 0 ? '再按一次前进 10 队' : '再按一次回退 10 队');
+    return;
+  }
+  armed = null;
+  const target = teamJump(game, actionIndices, actionPos, delta);
+  if (target === null) { toast(delta > 0 ? '已到榜首' : '已在开头'); return; }
+  if (delta < 0) { moveTo(target, { instant: true }); return; }
+  awardTarget = target;
+  fastForward.start();
 }
 
 const confirmEl = document.getElementById('confirm');
@@ -661,6 +684,7 @@ window.addEventListener('keydown', (event) => {
     return;
   }
   if (key.toLowerCase() === 'j') { event.preventDefault(); if (!event.repeat) goToAward(); return; }
+  if (key.toLowerCase() === 'g' || key.toLowerCase() === 'i') { event.preventDefault(); if (!event.repeat) jumpTeams(key.toLowerCase() === 'g' ? 10 : -10); return; }
   if (key === 'Home' || key === '0') {
     event.preventDefault();
     restart();

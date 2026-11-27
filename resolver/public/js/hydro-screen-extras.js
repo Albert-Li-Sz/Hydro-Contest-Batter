@@ -98,9 +98,9 @@ export class HydroScreenExtras {
         this.fontLocale = null;
     }
 
-    show(state, elapsed) {
+    show(state, elapsed, offset = 0) {
         const { type, item, data } = state;
-        if (!item || !(type in titles)) return false;
+        if (!item || !(type in titles)) { this.page = null; return false; }
         this.root.hidden = false;
         this.root.dataset.type = type;
         const interval = (item.interval || 10) * 1000;
@@ -114,7 +114,8 @@ export class HydroScreenExtras {
             'team-intro': data.length, reactions: data.length, poster: data.length, clarifications: data.length, announce: data.length,
             'problem-list': count(data, rows), judges: count(data.machines || [], rows),
         })[type] || 1;
-        const current = tick % Math.max(1, total);
+        const current = ((tick + offset) % Math.max(1, total) + Math.max(1, total)) % Math.max(1, total);
+        this.page = { current, total };
         // Charts and the seat grids are laid out for the window, so they are redrawn when it changes size.
         const size = ['rank-trend', 'floor', 'balloons'].includes(type) ? `${innerWidth}x${innerHeight}` : portrait;
         const key = JSON.stringify([type, item, data, state.title, state.locale, current, size]);

@@ -1411,7 +1411,8 @@ function buildStepsInternal(contest, options, frozenView, finalView) {
 
       // Highlight the team at the current row. The original Resolver selects
       // every team while scrolling up, even the ones with nothing to resolve.
-      push({ type: 'selectTeam', teamIds: [teamId], selectType: 'NORMAL' });
+      // HydroXCPCIO: the row lets the host jump to award-zone boundaries and by ten teams.
+      push({ type: 'selectTeam', teamIds: [teamId], selectType: 'NORMAL', row: currentRow });
       if (singleStep) push(pause('select team'));
       else push(stepDelay('selectTeam'));
 
@@ -1475,7 +1476,7 @@ function buildStepsInternal(contest, options, frozenView, finalView) {
         const hasFts = teamAwards.some((award) => award.awardType === 'first-to-solve');
         const selectType = hasFts ? (showDetail ? 'FTS_HIGHLIGHT' : 'FTS') : 'HIGHLIGHT';
         if (singleStep && steps[steps.length - 1]?.type !== 'pause') push(pause());
-        push({ type: 'selectTeam', teamIds: [teamId], selectType });
+        push({ type: 'selectTeam', teamIds: [teamId], selectType, row: currentRow });
         push(pause('award highlight'));
         if (showDetail) {
           push({ type: 'presentation', screen: 'teamAward', teamId, awards: teamAwards.map(publicAward) });

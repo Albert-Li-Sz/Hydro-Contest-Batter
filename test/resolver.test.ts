@@ -463,3 +463,68 @@ describe('队伍照片和主持控制', () => {
         expect(confirmPrevious(20, 1521)).toBe(false);
     });
 });
+
+import { teamJump, hasRows } from '../resolver/public/js/playback-model.js';
+import { cropBox } from '../resolver/public/js/image-upload.js';
+
+describe('奖区边界与按队跳转', () => {
+    const real = () => prepare({ freezeAtSeconds: 2000 }).game;
+    const rowsOf = (game: ReturnType<typeof real>) => game.steps.map((step, index) => ({ step, index }))
+        .filter(({ step }) => step.type === 'selectTeam' && Number.isInteger(step.row));
+    it('stops each award zone before the cursor first reaches its lowest row, with every lower row resolved', () => {
+        const game = real();
+        const actions = actionIndicesFor(game.steps);
+        const rows = rowsOf(game);
+        const stops = awardStops(game);
+        expect(stops.length).toBeGreaterThan(1);
+        for (const stop of stops) {
+            const next = game.steps[actions[actions.indexOf(stop) + 1]];
+            expect(next).toMatchObject({ type: 'selectTeam', selectType: 'NORMAL' });
+            const row = next.row as number;
+            // The cursor had not reached this row before the stop, and it is the lowest row of some award zone.
+            expect(rows.filter(({ index }) => index <= stop).every(({ step }) => (step.row as number) > row)).toBe(true);
+            const finals = rows.filter(({ step }) => step.selectType !== 'NORMAL').map(({ step }) => ({ team: (step.teamIds as string[])[0], row: step.row as number }));
+            const awards = game.contest.awards as { id: string; teamIds: string[] }[];
+            const zone = awards.filter(a => /medal|winner|honors|podium|rank/.test(a.id))
+                .some(a => Math.max(...finals.filter(f => a.teamIds.includes(f.team)).map(f => f.row)) === row);
+            expect(zone).toBe(true);
+        }
+        // A medal team selected low before climbing no longer places its tier's stop inside a lower zone.
+        expect(new Set(stops).size).toBe(stops.length);
+        expect([...stops].sort((a, b) => a - b)).toEqual(stops);
+    });
+    it('keeps the 2.0.0 rule for sessions without rows', () => {
+        const game = real();
+        game.steps = game.steps.map(({ row: _row, ...step }) => step);
+        expect(hasRows(game)).toBe(false);
+        expect(awardStops(game).length).toBeGreaterThan(0);
+        expect(teamJump(game, actionIndicesFor(game.steps), 0, 10)).toBeNull();
+    });
+    it('jumps ten rows forward short of the top row, and back to where the cursor was', () => {
+        const game = real();
+        const actions = actionIndicesFor(game.steps);
+        const rows = rowsOf(game).filter(({ step }) => step.selectType === 'NORMAL');
+        const top = rows.find(({ step }) => step.row === 0)!.index;
+        // Fewer than ten rows: forward stops before the top row is selected.
+        expect(teamJump(game, actions, 0, 10)).toBe(actions[actions.indexOf(top) - 1]);
+        expect(teamJump(game, actions, actions.indexOf(actions[actions.indexOf(top) - 1]), 10)).toBeNull();
+        const two = teamJump(game, actions, 0, 2)!;
+        const next = game.steps[actions[actions.indexOf(two) + 1]];
+        expect(next.row).toBe((rows[0].step.row as number) + 1 - 2);
+        const end = actions.length - 1;
+        const back = teamJump(game, actions, end, -2)!;
+        expect(game.steps[actions[actions.indexOf(back) + 1]]).toMatchObject({ type: 'selectTeam', row: 2 });
+        expect(teamJump(game, actions, 0, -10)).toBeNull();
+    });
+    it('frames a 4:3 crop on the focus, clamped to the picture', () => {
+        expect(cropBox(1600, 1200, 4 / 3)).toEqual({ x: 0, y: 0, width: 1600, height: 1200 });
+        expect(cropBox(2000, 1000, 4 / 3)).toMatchObject({ y: 0, height: 1000, width: 4000 / 3 });
+        expect(cropBox(2000, 1000, 4 / 3).x).toBeCloseTo((2000 - 4000 / 3) / 2);
+        const tall = cropBox(900, 1600, 4 / 3);
+        expect([tall.width, tall.height]).toEqual([900, 675]);
+        expect(tall.y + tall.height / 2).toBeCloseTo(1600 * 0.35);
+        expect(cropBox(900, 1600, 4 / 3, { x: 0.5, y: 0 }).y).toBe(0);
+        expect(cropBox(900, 1600, 4 / 3, { x: 0.5, y: 1 }).y).toBe(1600 - 675);
+        expect(cropBox(2000, 1000, 4 / 3, { x: 0.9, y: 0.5 }).x).toBeCloseTo(2000 - 4000 / 3);
+    });
+});

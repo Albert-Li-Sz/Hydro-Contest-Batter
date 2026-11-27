@@ -206,7 +206,7 @@ function work({ review, links }) {
             link('气球配送', links.balloons + '#deliver'), link('评测队列与监控', links.monitor))),
         group('成绩与复核', review ? el('p', { text: '结果变更 ' + review.changes + ' · 评测中 ' + review.pending + ' · 待更新会话 ' + review.stale }) : null,
             related(link('重测复核', links.review), link('批量重测', links.rejudge), link('成绩快照与导出', links.results), link('颁奖幻灯片', links.ceremony), link('证书', links.certificates), link('裁判操作', links.jury), link('诚信复核', links.integrity))),
-        group('观看比赛', related(link('比赛榜单', links.board), link('赛况总览', links.overview),
+        group('观看比赛', related(link('比赛榜单', links.board), link('选手视角', links.perspective), link('赛况总览', links.overview),
             link('录像回看', links.capture && links.capture + '#recordings'), link('反应视频与渲染', data.reactions && links.reactions))),
         group('比赛管理', related(link('编辑比赛', links.edit), link('评测机与调度', links.judges))),
     ];

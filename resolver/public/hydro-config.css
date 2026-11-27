@@ -54,3 +54,10 @@
 #team-photos .button:has(.resolver-file-input) { position:relative; }
 #team-photos .button:focus-within { outline:2px solid currentColor; outline-offset:2px; }
 .resolver-file-input { position:absolute; width:1px; height:1px; clip-path:inset(50%); overflow:hidden; }
+#hydro-resolver-config .resolver-photo-crop { display:block; max-width:100%; cursor:move; touch-action:none; }
+#hydro-resolver-config .resolver-photo-crop:focus-visible { outline:2px solid currentColor; outline-offset:2px; }
+#hydro-resolver-config .resolver-perspective { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,16rem),1fr)); gap:0 1rem; margin-top:12px; }
+#hydro-resolver-config .resolver-perspective button { width:100%; border:0; border-bottom:1px solid #8883; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer; }
+#hydro-resolver-config .resolver-perspective button:hover, #hydro-resolver-config .resolver-perspective button:focus-visible { background:#8881; }
+#hydro-resolver-config .resolver-perspective button[hidden] { display:none; }
+#hydro-resolver-config #perspective-search { width:100%; max-width:24rem; }

@@ -30,6 +30,16 @@ let lastFrame = performance.now();
 let loaded = null;
 let nextContentFrame = 0;
 let paintedState = null;
+// Remote keys from the device row: page offset and pause apply to the current item only.
+let pageOffset = 0;
+let paused = false;
+let pausedElapsed = 0;
+let acks = [];
+const executed = new Set();
+let watching = false;
+let thumbAt = 0;
+let thumbType = null;
+let thumbBusy = false;
 
 function status(text) {
     statusEl.textContent = text || '';
@@ -39,7 +49,7 @@ function status(text) {
 function size() {
     // Render at the physical resolution of the screen, capped at 4K.
     const ratio = Math.min(window.devicePixelRatio || 1, 3);
-    const width = Math.min(3840, Math.round(window.innerWidth * ratio / scale));
+    const width = Math.min(3840, Math.round(window.innerWidth * ratio));
     const height = Math.round(width * window.innerHeight / window.innerWidth);
     // ResolverView sizes its own canvas from the display settings.
     if (!(resolver && !state) && (canvas.width !== width || canvas.height !== height)) {
@@ -144,6 +154,106 @@ async function requestPair() {
     status(''); failures = 0;
     return false;
 }
+function currentElapsed() { return paused ? pausedElapsed : Math.max(0, performance.now() - itemStartedAt); }
+function remoteState() {
+    const page = type !== 'resolver' && extras.page?.total > 1 ? { page: extras.page.current + 1, pages: extras.page.total } : {};
+    return { ...page, paused, fullscreen: !!document.fullscreenElement };
+}
+async function runCommand(key) {
+    if (key === 'prev' || key === 'next') {
+        // A command can arrive with the poll that switched the screen: lay out the current item first.
+        const custom = type !== 'resolver' && !!state && extras.show(state, currentElapsed(), pageOffset);
+        if (!custom || !(extras.page?.total > 1)) return { ok: false, message: '该画面不能翻页' };
+        const { total, current } = extras.page;
+        pageOffset += key === 'next' ? 1 : -1;
+        paintedState = null;
+        return { ok: true, message: '', state: { ...remoteState(), page: ((current + (key === 'next' ? 1 : -1)) % total + total) % total + 1 } };
+    }
+    if (key === 'pause') {
+        if (type === 'resolver') return { ok: false, message: '滚榜画面跟随主持人' };
+        if (paused) { itemStartedAt = performance.now() - pausedElapsed; paused = false; }
+        else { pausedElapsed = currentElapsed(); paused = true; }
+        paintedState = null;
+        return { ok: true, message: paused ? '已暂停' : '已继续' };
+    }
+    if (key === 'fullscreen') {
+        if (document.fullscreenElement) return { ok: true, message: '' };
+        try { await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); return { ok: true, message: '' }; }
+        catch { return { ok: false, message: '需在大屏上点击一次' }; }
+    }
+    if (key === 'exit-fullscreen') {
+        if (!document.fullscreenElement) return { ok: false, message: '未处于全屏' };
+        try { await document.exitFullscreen(); return { ok: true, message: '' }; }
+        catch { return { ok: false, message: '浏览器未退出全屏' }; }
+    }
+    return { ok: false, message: '未知按键' };
+}
+async function runCommands(commands) {
+    let ran = false;
+    for (const command of commands) {
+        if (executed.has(command.id)) continue;
+        executed.add(command.id);
+        if (executed.size > 64) executed.delete(executed.values().next().value);
+        const result = await runCommand(command.key);
+        acks.push({ id: command.id, ok: result.ok, message: result.message, state: result.state || remoteState() });
+        ran = true;
+    }
+    return ran;
+}
+// What the manager's device row shows: a frame of the canvas, or the markup of a DOM screen.
+function frameData(source, width, height) {
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(width)); c.height = Math.max(1, Math.round(height));
+    c.getContext('2d').drawImage(source, 0, 0, c.width, c.height);
+    const webp = c.toDataURL('image/webp', 0.6);
+    return webp.startsWith('data:image/webp') ? webp : c.toDataURL('image/jpeg', 0.7);
+}
+function snapshot() {
+    const clone = content.cloneNode(true);
+    clone.removeAttribute('hidden');
+    clone.style.setProperty('--screen-scale', String(scale));
+    // Media the manager's browser cannot load (device routes, videos) become small still images.
+    const live = [...content.querySelectorAll('video, img')], copies = [...clone.querySelectorAll('video, img')];
+    live.forEach((element, i) => {
+        const copy = copies[i];
+        const local = element.tagName === 'VIDEO' || new URL(element.currentSrc || element.src, location.href).pathname.startsWith('/xcpcio-screen/');
+        if (!local) return;
+        const width = element.tagName === 'VIDEO' ? element.videoWidth : element.naturalWidth, height = element.tagName === 'VIDEO' ? element.videoHeight : element.naturalHeight;
+        let src = '';
+        try { if (width && height) src = frameData(element, 320, 320 * height / width); } catch { src = ''; }
+        const image = document.createElement('img');
+        for (const name of ['class', 'style', 'alt']) if (copy.hasAttribute(name)) image.setAttribute(name, copy.getAttribute(name));
+        if (src) image.src = src;
+        copy.replaceWith(image);
+    });
+    for (const element of clone.querySelectorAll('script, iframe, frame, object, embed, form, link, meta, base, portal')) element.remove();
+    for (const element of [clone, ...clone.querySelectorAll('*')]) {
+        for (const { name, value } of [...element.attributes]) {
+            if (/^on/i.test(name) || /^\s*javascript:/i.test(value)) element.removeAttribute(name);
+        }
+    }
+    let html = clone.outerHTML;
+    if (html.length > 96 * 1024) {
+        const heading = clone.querySelector('.screen-heading');
+        clone.replaceChildren(...heading ? [heading] : []);
+        html = clone.outerHTML;
+    }
+    return html;
+}
+async function sendThumb() {
+    if (thumbBusy || pairing || !watching) return;
+    thumbBusy = true;
+    try {
+        let payload = null;
+        if (!canvas.hidden && canvas.width) {
+            payload = { kind: 'image', data: frameData(canvas, 384, 384 * canvas.height / canvas.width) };
+        } else if (!content.hidden) payload = { kind: 'html', data: snapshot() };
+        if (!payload) return;
+        const response = await fetch(runtime.thumbUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ ...payload, width: innerWidth, height: innerHeight, type }), signal: AbortSignal.timeout(10000) });
+        if (response.ok) { thumbAt = Date.now(); thumbType = type; }
+    } catch { /* the next poll tries again */ } finally { thumbBusy = false; }
+}
 async function poll() {
     let delay = type === 'resolver' ? 1000 : 3000;
     try {
@@ -153,6 +263,8 @@ async function poll() {
             width: innerWidth, height: innerHeight, screenWidth: screen.width, screenHeight: screen.height,
             dpr: devicePixelRatio, fullscreen: !!document.fullscreenElement, version: runtime.version,
         }));
+        const sent = acks;
+        if (sent.length) url.searchParams.set('acks', JSON.stringify(sent));
         if (type === 'resolver' && resolver) {
             url.searchParams.set('revision', resolver.playback.revision);
             url.searchParams.set('session', resolver.session);
@@ -170,6 +282,7 @@ async function poll() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         if (runtime.device) {
+            acks = acks.filter(ack => !sent.includes(ack));
             if (!data.paired) { pairing = true; await requestPair(); return; }
             switchDevice(data);
             delay = type === 'resolver' ? 1000 : 3000;
@@ -186,9 +299,15 @@ async function poll() {
         }
         else state = data.notice ? { item: noticeItem(data.notice), data: null, locale: data.locale } : data;
         const key = JSON.stringify([state?.item, state?.type === 'announce' ? state.data?.[0]?.id : undefined]);
-        if (key !== itemKey) { itemKey = key; itemStartedAt = performance.now(); }
+        // Paging and pause from the device row apply to the item on screen; the next item starts afresh.
+        if (key !== itemKey) { itemKey = key; itemStartedAt = performance.now(); pageOffset = 0; paused = false; pausedElapsed = 0; }
         failures = 0;
         status('');
+        if (runtime.device) {
+            const ran = await runCommands(data.device.commands || []);
+            watching = !!data.device.watch;
+            if (watching && (ran || thumbType !== type || Date.now() - thumbAt >= 10000)) setTimeout(sendThumb, ran ? 400 : 0);
+        }
     } catch (error) {
         if (pairing) status(error.message);
         // Keep the last picture; only mention the problem when it persists.
@@ -221,11 +340,11 @@ function frame(now) {
         }
     } else if (state) {
         // A frame's timestamp can precede a poll that has just restarted the item's clock.
-        const elapsed = Math.max(0, now - itemStartedAt);
+        const elapsed = paused ? pausedElapsed : Math.max(0, now - itemStartedAt);
         if (paintedState !== state || now >= nextContentFrame) {
             paintedState = state;
             nextContentFrame = now + 250;
-            const custom = extras.show(state, elapsed);
+            const custom = extras.show(state, elapsed, pageOffset);
             content.hidden = !custom;
             canvas.hidden = custom;
             if (custom && !failures) status('');
@@ -236,7 +355,7 @@ function frame(now) {
         // render() returns false until the fonts (including the large Chinese font) have loaded.
         const drawn = presentation.render(ctx, state.data, state.item, {
             width: canvas.width, height: canvas.height, now: Date.now() + offset,
-            elapsed, locale: state.locale,
+            elapsed, locale: state.locale, scale,
         });
         if (drawn !== loaded) { loaded = drawn; if (!failures) status(drawn ? '' : '正在加载字体…'); }
     }

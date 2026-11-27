@@ -21,7 +21,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const contest = '/contest/demo';
 const screen = `${contest}/screen/preview0000000000000000000000000000000000000000`;
 const themed = [
-    `${contest}/scoreboard/xcpcio-plus`, `${contest}/scoreboard/xcpcio-plus?view=audience&running=1`, `${contest}/ceremony`, `${contest}/xcpcio-settings`, `${contest}/resolver`, `${contest}/screens`,
+    `${contest}/scoreboard/xcpcio-plus`, `${contest}/scoreboard/xcpcio-plus?view=audience&running=1`, `${contest}/ceremony`, `${contest}/perspective`, `${contest}/xcpcio-settings`, `${contest}/resolver`, `${contest}/screens`,
     `${contest}/live`, `${contest}/live/capture`, `${contest}/monitor`, `${contest}/presence`, `${contest}/overview`, `${contest}/balloons`,
     '/manage/xcpcio-users', '/manage/xcpcio-users#seats', '/manage/xcpcio-judges', '/manage/xcpcio-rejudge', '/manage/xcpcio-printers',
     `${contest}/clarification-desk`, ...['recordings', 'settings', 'tests'].map((tab) => `${contest}/live/capture#${tab}`),

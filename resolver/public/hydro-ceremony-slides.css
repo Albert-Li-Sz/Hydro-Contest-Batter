@@ -1,27 +1,218 @@
-.ceremony-layout { display:grid; grid-template-columns:minmax(210px, 1fr) minmax(0, 3fr); gap:1rem; align-items:start; }
-.ceremony-layout .section { min-width:0; }
-#ceremony-form label { display:block; margin-bottom:.65rem; }
-#ceremony-form fieldset { border:0; padding:0; margin:0 0 .65rem; }
-#ceremony-form fieldset label { display:inline-block; margin:0 .7rem .2rem 0; }
-.ceremony-fields { display:grid; grid-template-columns:1fr 1fr; gap:.6rem; }
-.ceremony-stage { display:grid; place-items:center; width:100%; aspect-ratio:16/9; background:#000; outline-offset:2px; }
-.ceremony-stage:fullscreen, .ceremony-offline .ceremony-stage { height:100vh; width:100vw; }
+/* 颁奖幻灯片. The slide is sized in container units of its own width, so the editor preview, the
+   thumbnails, full screen and the offline copy lay out identically. */
+
+/* ---- Themes: base colours, soft lights, the content panel, ink and accent ---- */
+.cs-theme {
+  --cs-base:#0e1a3d; --cs-bg:linear-gradient(155deg,#0a1330 0%,#152a5e 52%,#0b122c 100%);
+  --cs-glow-a:rgba(92,132,255,.4); --cs-glow-b:rgba(229,190,112,.28);
+  --cs-ink:#fbf6ea; --cs-muted:rgba(251,246,234,.7); --cs-accent:#e7c47c; --cs-accent-ink:#2b1c03;
+  --cs-frame:rgba(231,196,124,.5); --cs-panel:rgba(7,13,34,.52); --cs-line:rgba(255,255,255,.14);
+  --cs-pill:rgba(255,255,255,.07); --cs-shadow:rgba(0,0,0,.4);
+  --cs-gold:linear-gradient(135deg,#fff4cc 0%,#e9bd55 34%,#fde7a4 54%,#c38d2e 100%);
+  --cs-silver:linear-gradient(135deg,#fff 0%,#c7d0db 36%,#eef2f7 55%,#98a4b3 100%);
+  --cs-bronze:linear-gradient(135deg,#ffe3c9 0%,#cc8752 36%,#f2bd92 55%,#955429 100%);
+  --cs-trophy:linear-gradient(135deg,#fff0b3 0%,#e2a425 34%,#ffe9a0 54%,#b27412 100%);
+  --cs-first:linear-gradient(135deg,#dcfff6 0%,#5fc8b2 36%,#b1f0e0 55%,#2c8c79 100%);
+}
+.cs-theme[data-theme=red] {
+  --cs-base:#6b141e; --cs-bg:linear-gradient(150deg,#4a0b12 0%,#8a1a25 55%,#4d0c14 100%);
+  --cs-glow-a:rgba(255,138,96,.3); --cs-glow-b:rgba(255,214,128,.26);
+  --cs-ink:#fff5df; --cs-muted:rgba(255,245,223,.74); --cs-accent:#f4cf7c; --cs-accent-ink:#3a1d00;
+  --cs-frame:rgba(244,207,124,.55); --cs-panel:rgba(48,6,12,.45); --cs-line:rgba(255,230,180,.18); --cs-shadow:rgba(30,0,0,.45);
+}
+.cs-theme[data-theme=blue] {
+  --cs-base:#0c3557; --cs-bg:linear-gradient(155deg,#061f36 0%,#0d4775 55%,#06223b 100%);
+  --cs-glow-a:rgba(64,196,255,.32); --cs-glow-b:rgba(120,240,220,.2);
+  --cs-ink:#eefaff; --cs-muted:rgba(238,250,255,.72); --cs-accent:#8fdcf0; --cs-accent-ink:#032434;
+  --cs-frame:rgba(143,220,240,.5); --cs-panel:rgba(3,22,40,.5);
+}
+.cs-theme[data-theme=celadon] {
+  --cs-base:#0f3f39; --cs-bg:linear-gradient(155deg,#0a2e2a 0%,#1a5f54 55%,#0b302b 100%);
+  --cs-glow-a:rgba(150,235,205,.28); --cs-glow-b:rgba(235,220,170,.2);
+  --cs-ink:#f1fbf6; --cs-muted:rgba(241,251,246,.72); --cs-accent:#bfe9d3; --cs-accent-ink:#0b2d24;
+  --cs-frame:rgba(191,233,211,.5); --cs-panel:rgba(6,34,30,.48);
+}
+.cs-theme[data-theme=night] {
+  --cs-base:#1a1240; --cs-bg:linear-gradient(155deg,#0c0826 0%,#251a5c 50%,#0d0a28 100%);
+  --cs-glow-a:rgba(140,120,255,.36); --cs-glow-b:rgba(255,150,210,.2);
+  --cs-ink:#f4f1ff; --cs-muted:rgba(244,241,255,.7); --cs-accent:#d3cbff; --cs-accent-ink:#1b1240;
+  --cs-frame:rgba(211,203,255,.45); --cs-panel:rgba(10,6,32,.5);
+}
+.cs-theme[data-theme=ink] {
+  --cs-base:#111; --cs-bg:linear-gradient(155deg,#050505 0%,#1b1b1d 55%,#070707 100%);
+  --cs-glow-a:rgba(212,175,55,.2); --cs-glow-b:rgba(255,255,255,.06);
+  --cs-ink:#f7f2e6; --cs-muted:rgba(247,242,230,.66); --cs-accent:#d4af37; --cs-accent-ink:#1a1300;
+  --cs-frame:rgba(212,175,55,.55); --cs-panel:rgba(255,255,255,.05); --cs-line:rgba(212,175,55,.22);
+}
+.cs-theme[data-theme=light] {
+  --cs-base:#f6f0e2; --cs-bg:linear-gradient(155deg,#fdfaf2 0%,#f3ead6 60%,#ece1c8 100%);
+  --cs-glow-a:rgba(214,168,80,.22); --cs-glow-b:rgba(160,120,60,.12);
+  --cs-ink:#2a241c; --cs-muted:rgba(42,36,28,.66); --cs-accent:#9b742f; --cs-accent-ink:#fff8ea;
+  --cs-frame:rgba(155,116,47,.45); --cs-panel:rgba(255,255,255,.72); --cs-line:rgba(120,90,40,.16);
+  --cs-pill:rgba(255,255,255,.7); --cs-shadow:rgba(90,60,20,.14);
+}
+.cs-theme[data-theme=mist] {
+  --cs-base:#e8eef5; --cs-bg:linear-gradient(155deg,#f7f9fc 0%,#e4ebf3 58%,#d7e1ec 100%);
+  --cs-glow-a:rgba(90,140,210,.2); --cs-glow-b:rgba(160,190,230,.22);
+  --cs-ink:#1b2a3c; --cs-muted:rgba(27,42,60,.66); --cs-accent:#3a6ea8; --cs-accent-ink:#fff;
+  --cs-frame:rgba(58,110,168,.38); --cs-panel:rgba(255,255,255,.7); --cs-line:rgba(30,60,100,.12);
+  --cs-pill:rgba(255,255,255,.72); --cs-shadow:rgba(30,60,100,.14);
+}
+/* A custom background picks the panel and ink from its brightness. */
+.ceremony-slide[data-tone=dark] {
+  --cs-ink:#fff; --cs-muted:rgba(255,255,255,.8); --cs-panel:rgba(0,0,0,.42); --cs-line:rgba(255,255,255,.18);
+  --cs-pill:rgba(0,0,0,.28); --cs-frame:rgba(255,255,255,.45); --cs-shadow:rgba(0,0,0,.35);
+}
+.ceremony-slide[data-tone=light] {
+  --cs-ink:#1b1c1f; --cs-muted:rgba(27,28,31,.7); --cs-panel:rgba(255,255,255,.76); --cs-line:rgba(0,0,0,.1);
+  --cs-pill:rgba(255,255,255,.62); --cs-frame:rgba(0,0,0,.25); --cs-shadow:rgba(0,0,0,.18);
+}
+/* Award tiers: the plaque, the rank badges and the editor's list share these. */
+:is(.ceremony-slide, .ce-award)[data-tier=gold] { --cs-plate:var(--cs-gold); --cs-plate-ink:#3b2603; --cs-solid:#dcae48; }
+:is(.ceremony-slide, .ce-award)[data-tier=silver] { --cs-plate:var(--cs-silver); --cs-plate-ink:#1d2632; --cs-solid:#c3ccd7; }
+:is(.ceremony-slide, .ce-award)[data-tier=bronze] { --cs-plate:var(--cs-bronze); --cs-plate-ink:#2e1607; --cs-solid:#c98b5a; }
+:is(.ceremony-slide, .ce-award)[data-tier=trophy] { --cs-plate:var(--cs-trophy); --cs-plate-ink:#2c1800; --cs-solid:#e3a62c; }
+:is(.ceremony-slide, .ce-award)[data-tier=first] { --cs-plate:var(--cs-first); --cs-plate-ink:#052a23; --cs-solid:#5cc5af; }
+:is(.ceremony-slide, .ce-award):is([data-tier=special], [data-tier=honors]) {
+  --cs-plate:linear-gradient(135deg,var(--cs-accent),var(--cs-accent)); --cs-plate-ink:var(--cs-accent-ink); --cs-solid:var(--cs-accent);
+}
+
+/* ---- Slide ---- */
+.ceremony-slide { position:relative; container-type:inline-size; box-sizing:border-box; width:100%; aspect-ratio:16/9; overflow:hidden;
+  color:var(--cs-ink); background:var(--cs-bg); background-position:center; background-size:cover; background-repeat:no-repeat;
+  font:400 16px/1.25 "Helvetica Neue",Arial,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC","Source Han Sans SC",sans-serif;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; animation:cs-in .25s ease-out; }
+@keyframes cs-in { from { opacity:0; } to { opacity:1; } }
+@media (prefers-reduced-motion:reduce) { .ceremony-slide { animation:none; } }
+.ceremony-slide *, .ceremony-slide *::before, .ceremony-slide *::after { box-sizing:border-box; }
+.cs-backdrop { position:absolute; inset:0; pointer-events:none; }
+.cs-backdrop::before, .cs-backdrop::after { content:""; position:absolute; border-radius:50%; }
+.cs-backdrop::before { width:64cqw; height:64cqw; left:-20cqw; top:-30cqw; background:radial-gradient(circle,var(--cs-glow-a) 0%,transparent 68%); }
+.cs-backdrop::after { width:72cqw; height:72cqw; right:-24cqw; bottom:-44cqw; background:radial-gradient(circle,var(--cs-glow-b) 0%,transparent 66%); }
+.cs-backdrop i { position:absolute; inset:2.2cqw 1.6cqw; border:1px solid var(--cs-frame); outline:1px solid var(--cs-frame); outline-offset:-.55cqw; }
+.cs-backdrop i::before, .cs-backdrop i::after { content:""; position:absolute; left:50%; width:.9cqw; height:.9cqw;
+  background:var(--cs-base); border:1px solid var(--cs-frame); transform:translate(-50%,-50%) rotate(45deg); }
+.cs-backdrop i::before { top:0; }
+.cs-backdrop i::after { top:100%; }
+.ceremony-slide[data-background] .cs-backdrop { display:none; }
+.cs-frame { position:absolute; inset:0; display:flex; flex-direction:column; padding:3.4cqw 5.2cqw 3cqw; }
+.cs-band { flex:none; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); align-items:center; gap:2cqw; min-height:2.8cqw; font-size:1.3cqw; }
+.cs-band.cs-head { padding:0 .4cqw; }
+.cs-cell { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.cs-cell:nth-child(2) { text-align:center; }
+.cs-cell:nth-child(3) { text-align:right; }
+.cs-title { color:var(--cs-muted); letter-spacing:.1em; }
+.cs-pill { display:inline-block; max-width:100%; overflow:hidden; text-overflow:ellipsis; vertical-align:middle; padding:.26em 1.1em;
+  border:1px solid var(--cs-frame); border-radius:999px; background:var(--cs-pill); letter-spacing:.08em; font-variant-numeric:tabular-nums; }
+.cs-body { flex:1; min-height:0; display:flex; flex-direction:column; padding:1.4cqw 0 1.2cqw; }
+
+/* Award plaque: the name in large type, the English title spaced below, rules either side. */
+.cs-plaque { flex:none; display:flex; align-items:center; justify-content:center; gap:1.8cqw; margin:0 0 2cqw; filter:drop-shadow(0 .5cqw 1.1cqw var(--cs-shadow)); }
+.cs-orn { position:relative; flex:1; max-width:15cqw; height:.42cqw; border-top:1px solid var(--cs-accent); border-bottom:1px solid var(--cs-accent); opacity:.8; }
+.cs-orn::after { content:""; position:absolute; top:50%; width:.7cqw; height:.7cqw; background:var(--cs-accent); transform:translateY(-50%) rotate(45deg); }
+.cs-orn:first-child::after { right:-1.1cqw; }
+.cs-orn:last-child::after { left:-1.1cqw; }
+.cs-plate { max-width:62cqw; padding:.85cqw 4.4cqw 1cqw; text-align:center; color:var(--cs-plate-ink);
+  background-image:linear-gradient(180deg,rgba(255,255,255,.4),rgba(255,255,255,0) 50%),var(--cs-plate);
+  clip-path:polygon(2.2cqw 0,calc(100% - 2.2cqw) 0,100% 50%,calc(100% - 2.2cqw) 100%,2.2cqw 100%,0 50%); }
+.cs-plate strong { display:block; font-size:3.3cqw; font-weight:800; line-height:1.15; letter-spacing:.14em; text-indent:.14em; overflow-wrap:anywhere; }
+.cs-plate em { display:block; margin-top:.3cqw; font:600 1cqw/1.2 Georgia,"Times New Roman",serif; font-style:normal; letter-spacing:.42em; text-indent:.42em; opacity:.82; }
+
+/* The winners on a translucent panel. Type size and columns come from measuring the names. */
+.cs-panel { flex:1; min-height:0; display:flex; padding:1.8cqw 2.8cqw; border-radius:1.4cqw; background:var(--cs-panel);
+  border:1px solid var(--cs-line); box-shadow:0 1.4cqw 3.6cqw var(--cs-shadow); -webkit-backdrop-filter:blur(.6cqw); backdrop-filter:blur(.6cqw); }
+.cs-panel.cs-compact { flex:none; align-self:center; min-width:min(46cqw,100%); max-width:100%; margin:auto 0; padding:2.2cqw 3.6cqw; }
+.cs-panel.cs-compact .cs-list { flex:none; height:auto; overflow:visible; }
+.cs-list { flex:1; min-width:0; min-height:0; display:grid; grid-template-columns:repeat(var(--cols,2),minmax(0,1fr)); align-content:center;
+  gap:.72em 2.4em; font-size:2cqw; overflow:hidden; }
+.cs-list[data-cols="1"] { justify-items:center; }
+.cs-list[data-cols="1"] .cs-entry { max-width:100%; }
+.cs-entry { display:flex; align-items:center; gap:.6em; min-width:0; }
+.cs-rank { flex:none; display:grid; place-items:center; min-width:1.9em; height:1.9em; padding:0 .32em; border-radius:1em;
+  background:var(--cs-solid); color:var(--cs-plate-ink); font:700 .6em/1 "Helvetica Neue",Arial,sans-serif; font-variant-numeric:tabular-nums; }
+.cs-logo { flex:none; display:grid; place-items:center; width:2.2em; height:2.2em; border-radius:50%; background:#fff; overflow:hidden; box-shadow:0 .1em .32em rgba(0,0,0,.25); }
+.cs-logo img { width:84%; height:84%; object-fit:contain; }
+.cs-text { flex:1; min-width:0; }
+.cs-text > * { display:block; white-space:nowrap; overflow:hidden; }
+.cs-text b { font-weight:700; line-height:1.2; letter-spacing:.02em; }
+.cs-text small { margin-top:.16em; font-size:.62em; line-height:1.25; color:var(--cs-muted); }
+.cs-list.cs-wrap .cs-text > * { white-space:normal; overflow-wrap:anywhere; }
+
+/* Cover */
+.cs-cover { justify-content:center; align-items:center; text-align:center; }
+.ceremony-slide .cs-cover p, .ceremony-slide .cs-cover h1 { margin:0; color:inherit; }
+.cs-kicker { font:600 1.15cqw/1 Georgia,"Times New Roman",serif; letter-spacing:.6em; text-indent:.6em; color:var(--cs-accent) !important; }
+.ceremony-slide .cs-cover h1 { margin-top:2.2cqw; max-width:84cqw; font-size:4.8cqw; font-weight:800; line-height:1.2; letter-spacing:.08em; text-wrap:balance; }
+.cs-rule { display:flex; align-items:center; justify-content:center; gap:1.4cqw; width:38cqw; margin:2.6cqw auto 2.2cqw; }
+.cs-rule .cs-orn { max-width:none; }
+.cs-rule .cs-orn::after { display:none; }
+.cs-gem { flex:none; width:1.1cqw; height:1.1cqw; background:var(--cs-accent); transform:rotate(45deg); }
+.ceremony-slide .cs-sub { font-size:2.6cqw; font-weight:700; letter-spacing:.9em; text-indent:.9em; }
+.ceremony-slide .cs-date { margin-top:1.8cqw; font-size:1.3cqw; letter-spacing:.2em; color:var(--cs-muted); }
+.ceremony-slide .cs-empty { font-size:2.4cqw; color:var(--cs-muted); }
+
+/* ---- Stage: the editor preview, full screen and the offline page ---- */
+.ceremony-stage { position:relative; display:grid; place-items:center; width:100%; aspect-ratio:16/9; overflow:hidden; background:#000; outline-offset:2px; }
+.ceremony-stage > .ceremony-slide { width:100%; }
+.ceremony-stage:fullscreen, .ceremony-offline .ceremony-stage { width:100vw; height:100vh; aspect-ratio:auto; }
+.ceremony-stage:fullscreen > .ceremony-slide, .ceremony-offline .ceremony-stage > .ceremony-slide { width:min(100vw,177.7778vh); }
+.ceremony-stage.cs-idle { cursor:none; }
+.ceremony-stage[data-black] > .ceremony-slide { visibility:hidden; }
 .ceremony-offline { margin:0; background:#000; overflow:hidden; }
-.ceremony-slide { --paper:#121b2d; --type:#fff5df; --accent:#e1bd77; position:relative; container-type:inline-size; display:flex; align-items:stretch; flex-direction:column; box-sizing:border-box; width:100%; aspect-ratio:16/9; overflow:hidden; color:var(--type); font:normal 400 16px/1.25 system-ui,"Microsoft YaHei","PingFang SC",sans-serif; background:var(--paper) center/cover no-repeat; }
-.ceremony-slide[data-theme=red] { --paper:#6a1823; --type:#fff4db; --accent:#f1cb7b; }
-.ceremony-slide[data-theme=blue] { --paper:#113a5a; --type:#edfaff; --accent:#8ad8e7; }
-.ceremony-slide[data-theme=light] { --paper:#faf5e9; --type:#272728; --accent:#785a2e; }
-.ceremony-slide::before { content:""; position:absolute; inset:2.2% 1.4%; border:1px solid var(--accent); opacity:.55; pointer-events:none; }
-.ceremony-slide[data-background]::before { display:none; }
-.ceremony-stage:fullscreen .ceremony-slide, .ceremony-offline .ceremony-slide { width:min(100vw, 177.7778vh); }
-.ceremony-slide header { display:flex; justify-content:space-between; align-items:baseline; gap:1em; padding:0 5%; font-size:1.75cqw; }
-.ceremony-slide h2 { font:700 4.3cqw/1.12 Georgia,"Songti SC","SimSun",serif; margin:.3em 5% .45em; color:inherit; }
-.ceremony-slide .ceremony-winners { flex:1; min-height:0; display:grid; align-content:center; grid-template-columns:repeat(var(--columns),minmax(0,1fr)); padding:0 5%; column-gap:2.2cqw; row-gap:.85cqw; }
-.ceremony-winner { display:flex; align-items:center; gap:.7cqw; min-width:0; }
-.ceremony-winner img { width:1.8em; height:1.8em; object-fit:contain; flex:none; }
-.ceremony-winner strong, .ceremony-winner small { display:block; overflow-wrap:anywhere; line-height:1.15; }
-.ceremony-winner small { font-size:.66em; margin-top:.15em; }
-.ceremony-slide footer { padding:.7% 5% 0; text-align:right; font-size:1.4cqw; }
-.ceremony-stage[data-black] .ceremony-slide { visibility:hidden; }
-.ceremony-preview .resolver-actions { margin:.8rem 0; display:flex; gap:.4rem; flex-wrap:wrap; }
-@media (max-width:760px) { .ceremony-layout { grid-template-columns:1fr; } }
+
+/* ---- Editor ---- */
+.ceremony-layout { display:grid; grid-template-columns:minmax(260px,1fr) minmax(0,2.7fr); gap:1rem; align-items:start; }
+.ceremony-layout > .section { min-width:0; margin-bottom:0; }
+#ceremony-form .ce-group { border:0; margin:0 0 1.2rem; padding:0; min-width:0; }
+#ceremony-form .ce-group > legend { padding:0; margin-bottom:.55rem; font-size:15px; font-weight:600; }
+#ceremony-form .ce-field { display:block; margin-bottom:.65rem; line-height:1.6; }
+#ceremony-form .ce-field > :is(.select, .textbox) { display:block; width:100%; margin:.25rem 0 0; }
+#ceremony-form .ce-row { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.6rem; }
+#ceremony-form .ce-checks { display:flex; flex-wrap:wrap; gap:.3rem 1.1rem; margin-top:.25rem; }
+#ceremony-form .ce-check { display:inline-flex; align-items:center; gap:.4rem; line-height:1.7; white-space:nowrap; cursor:pointer; }
+#ceremony-form .ce-check input { flex:none; width:auto; margin:0; }
+#ceremony-form .ce-themes { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.5rem; margin-top:.3rem; }
+#ceremony-form .ce-theme { position:relative; display:block; cursor:pointer; font-size:12px; text-align:center; line-height:1.6; }
+#ceremony-form .ce-theme input { position:absolute; inset:0; opacity:0; margin:0; cursor:pointer; z-index:1; }
+.ce-chip { position:relative; display:block; aspect-ratio:16/9; border-radius:5px; overflow:hidden; background:var(--cs-bg); box-shadow:inset 0 0 0 1px #8885; }
+.ce-chip::after { content:""; position:absolute; left:22%; right:22%; top:36%; height:26%; background:var(--cs-gold);
+  clip-path:polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%); }
+#ceremony-form .ce-theme input:checked + .ce-chip { box-shadow:0 0 0 2px currentColor; }
+#ceremony-form .ce-theme input:focus-visible + .ce-chip { outline:2px solid currentColor; outline-offset:3px; }
+#ceremony-form .ce-background { display:flex; flex-wrap:wrap; gap:.5rem; margin-bottom:.65rem; }
+#ceremony-form .ce-background .button { margin:0; }
+#ceremony-form .ce-band { display:grid; grid-template-columns:auto 4.2em auto minmax(0,1fr); align-items:center; gap:.4rem; margin-top:.35rem; white-space:nowrap; }
+#ceremony-form .ce-band .textbox { width:100%; margin:0; }
+#ceremony-form .ce-zones { display:flex; justify-content:flex-end; gap:.25rem; }
+#ceremony-form .ce-zone { position:relative; cursor:pointer; }
+#ceremony-form .ce-zone input { position:absolute; inset:0; opacity:0; margin:0; cursor:pointer; z-index:1; }
+#ceremony-form .ce-zone span { display:block; min-width:2.2em; padding:.05rem .4rem; text-align:center; border:1px solid #8887; border-radius:4px; line-height:1.7; }
+#ceremony-form .ce-zone input:checked + span { background:#3b7fc4; border-color:#3b7fc4; color:#fff; }
+#ceremony-form .ce-zone input:focus-visible + span { outline:2px solid currentColor; outline-offset:2px; }
+.ceremony-file { position:absolute; width:1px; height:1px; clip-path:inset(50%); overflow:hidden; }
+.ceremony-preview .resolver-heading { flex-wrap:wrap; }
+.ce-tabs { display:flex; gap:.2rem; }
+.ce-tabs button { padding:.2rem .7rem; border:0; border-bottom:2px solid transparent; background:none; color:inherit; font:inherit; font-size:16px; cursor:pointer; opacity:.7; }
+.ce-tabs button[aria-selected=true] { border-bottom-color:currentColor; font-weight:600; opacity:1; }
+.ce-nav { display:flex; align-items:center; gap:.5rem; }
+.ce-nav .button { margin:0; }
+#ceremony-count { min-width:4.5em; text-align:right; font-variant-numeric:tabular-nums; opacity:.75; }
+.ce-strip { display:flex; gap:.55rem; overflow-x:auto; padding:.7rem 2px .3rem; scrollbar-width:thin; }
+.ce-thumb { position:relative; flex:none; width:168px; padding:0; border:0; border-radius:4px; overflow:hidden; background:#000; cursor:pointer; }
+.ce-thumb[aria-current=true] { outline:2px solid currentColor; outline-offset:2px; }
+.ce-thumb > .ceremony-slide { animation:none; pointer-events:none; }
+.ce-thumb > b { position:absolute; left:4px; bottom:4px; padding:0 .35em; border-radius:3px; background:#000a; color:#fff; font:600 11px/1.5 system-ui,sans-serif; }
+.ce-awards { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:.8rem; }
+.ce-award { border:1px solid #8884; border-radius:6px; overflow:hidden; }
+.ce-award header { display:flex; align-items:baseline; gap:.5rem; padding:.5rem .75rem; border-left:4px solid var(--cs-solid,#888); background:#8881; }
+.ce-award header em { white-space:nowrap; font:600 11px/1.4 Georgia,serif; font-style:normal; letter-spacing:.14em; opacity:.7; }
+.ce-award header span { margin-left:auto; font-size:12px; opacity:.7; white-space:nowrap; }
+.ce-award ol { margin:0; padding:.2rem 0; list-style:none; }
+.ce-award li button { display:grid; grid-template-columns:2.4em minmax(0,1fr) auto; gap:.5rem; width:100%; padding:.28rem .75rem; border:0;
+  background:none; color:inherit; font:inherit; text-align:left; cursor:pointer; }
+.ce-award li button:hover, .ce-award li button:focus-visible { background:#8882; }
+.ce-award li span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ce-award li small { opacity:.65; }
+.ce-award li i { font-style:normal; font-size:12px; opacity:.6; white-space:nowrap; }
+#ceremony-status { min-height:1.6em; margin-top:.5rem; }
+@media (max-width:900px) { .ceremony-layout { grid-template-columns:1fr; } }

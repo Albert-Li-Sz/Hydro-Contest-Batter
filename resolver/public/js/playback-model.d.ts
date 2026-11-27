@@ -4,4 +4,6 @@ export function startIndexFor(game: ResolverGame): number;
 export function tierOrder(award: { id: string; awardType?: string }): number;
 export function awardStops(game: ResolverGame): number[];
 export function nextAwardStop(game: ResolverGame, actions: number[], position: number, stops?: number[]): number | null;
+export function teamJump(game: ResolverGame, actions: number[], position: number, delta: number): number | null;
+export function hasRows(game: ResolverGame): boolean;
 export function confirmPrevious(armedAt: number | null, now: number): boolean;

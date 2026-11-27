@@ -660,7 +660,7 @@ export class PresentationView {
     ctx,
     data,
     item,
-    { width: w, height: h, now, elapsed, restore = false, locale = "en" },
+    { width: w, height: h, now, elapsed, restore = false, locale = "en", scale = 1 },
   ) {
     this.locale = locale === "zh-CN" ? locale : "en";
     // Hydro: like ResolverView, wait only for the Latin face. The 17 MB Chinese face keeps loading
@@ -687,6 +687,7 @@ export class PresentationView {
         item,
         w,
         h,
+        scale,
         Math.floor(now / 1000),
         item.type === "scoreboard"
           ? trunc(
@@ -736,6 +737,7 @@ export class PresentationView {
         now,
         elapsed,
         words: javaWords(this.locale),
+        scale,
       });
     if (ported);
     else if (type === "scoreboard" || type === "leaders")

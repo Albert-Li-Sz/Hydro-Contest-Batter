@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { actionIndicesFor } from '../resolver/public/js/playback-model.js';
+import { actionIndicesFor, awardStops, teamJump } from '../resolver/public/js/playback-model.js';
 
 const contest = '/contest/demo';
 const timeout = { timeout: 12000 };
@@ -28,14 +28,17 @@ async function resolver(context, base, image) {
     await page.getByText('已上传 8 / 9 张照片').waitFor();
     assert.match(await page.locator('#photo-unmatched').innerText(), /unknown.png/);
     assert.equal(await page.locator('#photo-teams img').count(), 8);
+    // Batch uploads are cut to 4:3 on their own; a single photo is framed in the dialog first.
+    assert.ok(await page.locator('#photo-teams img').first().evaluate(img => img.decode().then(() => Math.abs(img.naturalWidth / img.naturalHeight - 4 / 3) < 0.01)));
     const oldPhoto = await page.locator('#photo-teams img').first().getAttribute('src');
     const firstRow = page.locator('#photo-teams .resolver-session').first();
-    await firstRow.locator('input[type=file]').setInputFiles(image);
+    const frame = async () => { await page.locator('#photo-crop[open]').waitFor(); await page.locator('#photo-crop').getByRole('button', { name: '上传' }).click(); };
+    await firstRow.locator('input[type=file]').setInputFiles(image); await frame();
     await page.waitForFunction(old => document.querySelector('#photo-teams img').getAttribute('src') !== old, oldPhoto);
     assert.equal((await context.request.get(base + oldPhoto)).status(), 404);
     await firstRow.getByText('删除照片').click();
     await firstRow.locator('img').waitFor({ state: 'detached' });
-    await firstRow.locator('input[type=file]').setInputFiles(image);
+    await firstRow.locator('input[type=file]').setInputFiles(image); await frame();
     await firstRow.locator('img').waitFor();
     await page.locator('[name=freezeMode]').selectOption('custom');
     await page.locator('[name=freezeMinutes]').fill('250');
@@ -44,21 +47,36 @@ async function resolver(context, base, image) {
     await page.waitForFunction(() => window.ICPCResolver?.game);
     const game = await page.evaluate(() => window.ICPCResolver.game);
     const actions = actionIndicesFor(game.steps);
+    // The bronze zone begins before the cursor first reaches the zone's lowest row.
     const bronze = new Set(game.contest.awards.filter(a => /bronze/.test(a.id)).flatMap(a => a.teamIds));
-    const firstBronze = actions.findIndex(i => game.steps[i].type === 'selectTeam' && game.steps[i].teamIds.length === 1 && bronze.has(game.steps[i].teamIds[0]));
-    assert.ok(firstBronze > 1);
+    const lowest = Math.max(...game.steps.filter(s => s.type === 'selectTeam' && s.selectType !== 'NORMAL' && Number.isInteger(s.row) && bronze.has(s.teamIds[0])).map(s => s.row));
+    const stop = awardStops(game)[0];
+    const position = actions.indexOf(stop);
+    assert.ok(position > 0);
+    const entering = game.steps[actions[position + 1]];
+    assert.equal(entering.row, lowest);
+    const early = game.steps.slice(0, stop + 1).map((s, i) => ({ i, type: s.type, selectType: s.selectType, row: s.row, team: s.teamIds?.[0] })).filter(s => s.type === 'selectTeam' && Number.isInteger(s.row) && s.row <= lowest);
+    assert.deepEqual(early, [], JSON.stringify({ stop, lowest, entering, stops: awardStops(game) }));
     const at = i => page.waitForFunction(index => window.ICPCResolver.index === index, i, timeout);
-    const stop = actions[firstBronze - 1];
     await page.keyboard.press('j'); await page.keyboard.press('j'); await at(stop);
     await page.keyboard.press('ArrowLeft');
     await page.getByText('再按一次撤回上一步', { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => window.ICPCResolver.index), stop);
-    await page.keyboard.press('ArrowLeft'); await at(actions[firstBronze - 2]);
+    await page.keyboard.press('ArrowLeft'); await at(actions[position - 1]);
     await page.locator('#btn-award').click(); await at(stop);
-    await page.locator('#btn-prev').click(); await at(actions[firstBronze - 2]);
+    // G / I: ten teams on and back, each confirmed by a second press.
+    const ahead = teamJump(game, actions, position, 10);
+    await page.keyboard.press('g');
+    await page.getByText('再按一次前进 10 队', { exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => window.ICPCResolver.index), stop);
+    await page.keyboard.press('g'); await page.keyboard.press('j'); await at(ahead);
+    await page.keyboard.press('i'); await page.keyboard.press('i');
+    await at(teamJump(game, actions, actions.indexOf(ahead), -10));
+    await page.locator('#btn-award').click(); await at(stop);
+    await page.locator('#btn-prev').click(); await at(actions[position - 1]);
     const award = actions.find(i => i > stop && game.steps[i].type === 'presentation' && game.steps[i].screen === 'teamAward');
     assert.ok(award);
-    for (const i of actions.slice(firstBronze - 1).filter(i => i <= award)) {
+    for (const i of actions.slice(position).filter(i => i <= award)) {
         await page.locator('#btn-next').click(); await at(i);
     }
     await page.waitForFunction(() => window.paintedTeamPhoto, null, timeout);
@@ -73,17 +91,21 @@ async function slides(context, browser, base, folder, image) {
     assert.ok(source);
     const page = await context.newPage();
     await page.goto(base + contest + '/ceremony?source=' + source);
-    await page.locator('.ceremony-winner').first().waitFor();
+    await page.locator('#ceremony-strip .ce-thumb').first().waitFor();
     assert.equal(await page.locator('[name=source]').inputValue(), source);
-    await page.getByLabel('主题').selectOption('blue');
+    assert.equal(await page.locator('#ceremony-stage .cs-cover h1').count(), 1);
+    await page.getByLabel('海蓝').check();
     await page.getByLabel('队员', { exact: true }).check();
-    await page.getByLabel('自定义背景').setInputFiles(image);
-    await page.locator('.ceremony-slide[data-background]').waitFor();
+    await page.locator('#ceremony-background').setInputFiles(image);
+    await page.locator('#ceremony-stage .ceremony-slide[data-background]').waitFor();
     await page.getByRole('button', { name: '保存设置' }).click();
     await page.getByText('设置已保存').waitFor();
     await page.reload();
-    await page.locator('.ceremony-slide[data-theme=blue][data-background]').waitFor();
+    await page.locator('#ceremony-stage .ceremony-slide[data-theme=blue][data-background]').waitFor();
     assert.ok(await page.getByLabel('队员', { exact: true }).isChecked());
+    // Keys reach the slides only while the stage has focus or is full screen.
+    await page.locator('h1.section__title').click();
+    await page.keyboard.press('b'); assert.equal(await page.locator('#ceremony-stage[data-black]').count(), 0);
     await page.locator('#ceremony-play').click();
     assert.ok(await page.evaluate(() => !!document.fullscreenElement));
     const count = page.locator('#ceremony-count');
@@ -102,12 +124,14 @@ async function slides(context, browser, base, folder, image) {
         const external = [];
         playback.on('request', request => { if (/^https?:/.test(request.url())) external.push(request.url()); });
         await playback.goto(pathToFileURL(local).href);
-        const first = await playback.locator('main h2').innerText();
+        const text = () => playback.locator('main .ceremony-slide').innerText();
+        const first = await text();
         assert.match(await playback.locator('.ceremony-slide').evaluate(el => el.style.backgroundImage), /data:image/);
         await playback.keyboard.press('PageDown');
-        assert.notEqual(await playback.locator('main h2').innerText(), first);
-        await playback.keyboard.press('Home'); assert.equal(await playback.locator('main h2').innerText(), first);
+        assert.notEqual(await text(), first);
+        await playback.waitForFunction(() => document.querySelector('.cs-plate strong')?.textContent);
         await playback.waitForFunction(() => [...document.images].some(img => img.src.startsWith('data:image/') && img.naturalWidth > 0));
+        await playback.keyboard.press('Home'); assert.equal(await text(), first);
         assert.deepEqual(external, []);
     } finally { await offline.close(); }
     await page.close();
@@ -160,6 +184,14 @@ async function devices(context, browser, base, photo) {
         await connect(await pairCode(display), true); await program(display, 'team-intro');
         const row = admin.locator('.device-row').filter({ has: admin.locator('input.device-name') }).last();
         await row.getByText('在线', { exact: true }).waitFor(timeout);
+        // The row shows what the screen shows, and the remote's keys come back with the screen's receipt.
+        await row.locator('.device-thumb iframe[sandbox=""]').waitFor(timeout);
+        await row.getByRole('button', { name: '遥控', exact: true }).click();
+        await row.getByRole('button', { name: '→', exact: true }).click();
+        await row.locator('.device-receipt').filter({ hasText: /^→ 已执行 · 第 \d+ \/ \d+ 页$/ }).waitFor(timeout);
+        await admin.keyboard.press('f');
+        await row.locator('.device-receipt').filter({ hasText: '全屏 失败：需在大屏上点击一次' }).waitFor(timeout);
+        await row.getByRole('button', { name: '遥控', exact: true }).click();
         const endpoint = base + contest + '/screens/devices';
         const id = await row.getAttribute('data-device');
         const issue = async () => {

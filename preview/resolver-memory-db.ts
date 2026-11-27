@@ -19,6 +19,16 @@ export function previewDatabase() {
         for (const [key, value] of Object.entries(update.$addToSet || {})) {
             changeField(row, key, [...new Set([...(field(row, key) || []), value])]);
         }
+        for (const [key, value] of Object.entries(update.$push || {})) {
+            const spec = value as { $each?: unknown[]; $slice?: number };
+            let list = [...(field(row, key) || []), ...(spec && typeof spec === 'object' && '$each' in spec ? spec.$each! : [value])];
+            if (typeof spec?.$slice === 'number') list = spec.$slice < 0 ? list.slice(spec.$slice) : list.slice(0, spec.$slice);
+            changeField(row, key, list);
+        }
+        for (const [key, condition] of Object.entries(update.$pull || {})) {
+            changeField(row, key, (field(row, key) || []).filter((item: any) => !matches({ item }, { item: condition }) && !(
+                condition && typeof condition === 'object' && item && typeof item === 'object' && matches(item, condition))));
+        }
     };
     const comparable = (value: unknown) => (value instanceof Date ? value.getTime() : value as any);
     const operators: Record<string, (actual: any, expected: any) => boolean> = {

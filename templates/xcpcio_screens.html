@@ -33,10 +33,11 @@
   </div></div>
   <dialog id="device-dialog" aria-labelledby="device-dialog-title"><form id="device-form">
     <h2 id="device-dialog-title">连接大屏</h2>
-    <label>配对码<input class="textbox" name="code" autocomplete="off" maxlength="7" placeholder="K7Q-3MX" required></label>
+    <label>配对码<input class="textbox" name="code" autocomplete="off" maxlength="7" required></label>
     <div id="device-initial"><label>名称<input class="textbox" name="name" maxlength="80" required></label><label>初始画面<select class="select" name="type"></select></label><label>分榜<select class="select" name="boardId"></select></label></div>
     <p id="device-error" role="alert"></p><div class="resolver-actions"><button class="button" type="button" id="device-cancel">取消</button><button class="button primary" type="submit">确认连接</button></div>
   </form></dialog>
+  <dialog id="device-thumb-dialog" aria-labelledby="device-thumb-title"><form method="dialog" class="screen-preview-header"><h2 id="device-thumb-title"></h2><button class="button">关闭</button></form><div id="device-thumb-large" class="device-thumb-large"></div></dialog>
   <dialog id="screen-preview" aria-labelledby="preview-title"><form method="dialog" class="screen-preview-header"><h2 id="preview-title"></h2><button class="button">关闭</button></form><iframe id="screen-preview-frame" title="大屏预览" allowfullscreen></iframe></dialog>
   <dialog id="reset-confirm" aria-labelledby="reset-title"><form method="dialog"><h2 id="reset-title">作废全部大屏链接</h2><p>通过固定链接打开的大屏需要换用新链接。确定继续？</p><div class="resolver-actions"><button class="button" value="cancel">取消</button><button class="button primary" value="confirm">作废并重新生成</button></div></form></dialog>
 </div></div>

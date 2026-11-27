@@ -11,6 +11,7 @@ import { buildRosterTeam, defaultProfileFields, FilterField, rosterFields } from
 import { replacementRequest } from './lib/access';
 import { describeTeam, memberIds, type TeamEntry } from './lib/teams';
 import { applyCeremony } from './lib/ceremony-routes';
+import { applyPerspective } from './lib/perspective';
 import { applyResolver } from './lib/resolver-routes';
 import { applyReactions } from './lib/reactions-routes';
 import { applyScreens } from './lib/screens-routes';
@@ -255,6 +256,7 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
         handler.response.body = {
             tdoc: publicView ? { title: tdoc.title, domainId: tdoc.domainId, docId: tdoc.docId } : tdoc,
             audienceUrl: canManage && !audience ? `${base}/scoreboard/xcpcio-plus?view=audience` : null,
+            perspectiveUrl: canManage && !audience && !publicView ? `${base}/perspective` : null,
             managerUrl: audience ? `${base}/scoreboard/xcpcio-plus?view=manager` : null,
             settingsUrl: canManage && !audience ? `${base}/xcpcio-settings` : null,
             publicUrl: settings.publicAccess && !publicView ? publicPath(tdoc) : null,
@@ -384,6 +386,9 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     const results = applyResults(ctx, { loadSettings, loadData, statusOf: boardStatus, resolver });
     applyCertificates(ctx, { loadSettings, snapshot: results.snapshot });
     applyCeremony(ctx, results);
+    // 选手视角: Hydro's contest pages as one team sees them (team names as on the board, identities shown).
+    applyPerspective(ctx, { teams: async (tdoc) => (await loadData(tdoc, true, true)).teams
+        .map((team) => ({ uid: Number(team.team_id), name: team.name, school: team.organization || '' })).filter((team) => Number.isSafeInteger(team.uid)) });
     const juryRoutes = applyJuryRoutes(ctx, { store: jury, loadData: (tdoc) => loadData(tdoc, true, true, true), snapshot: results.snapshot });
     applyIntegrity(ctx, { loadData: (tdoc) => loadData(tdoc, true, true, true), snapshot: results.snapshot, jury: jury.load });
     applyCcs(ctx, { loadSettings, loadData: loadContestData, loadJury: jury.load });

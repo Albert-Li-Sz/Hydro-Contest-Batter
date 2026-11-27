@@ -19,6 +19,7 @@ export function applyIpLoginGuard(ctx: Context) {
     });
 
     ctx.on('handler/before-prepare', async (handler: Handler) => {
+        if ((handler as { xcpcioPerspective?: unknown }).xcpcioPerspective) return;
         const initial = initialSessions.get(handler);
         const { session } = handler;
         if (!initial || !Object.hasOwn(session, 'ipLoggedIn') || typeof session.ipLoggedIn !== 'string') return;

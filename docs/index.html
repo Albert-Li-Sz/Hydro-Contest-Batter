@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Hydro Contest Better v2.0.0 办赛手册。了解如何安装升级、核对榜单观众视角、配对场馆大屏、主持带队伍照片的滚榜、制作离线颁奖幻灯片，以及配置答疑、气球、打印、直播和证书。">
+  <meta name="description" content="Hydro Contest Better v2.1.0 办赛手册。了解如何安装升级、核对观众视角与选手视角、配对并遥控场馆大屏、主持带队伍照片的滚榜、制作离线颁奖幻灯片，以及配置答疑、气球、打印、直播和证书。">
   <meta name="theme-color" content="#811c39">
   <title>Hydro Contest Better 操作手册</title>
   <link rel="stylesheet" href="./manual.css">
@@ -15,7 +15,7 @@
       <a class="brand" href="./">Hydro Contest Better</a>
       <nav aria-label="项目链接">
         <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better">源码</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.0.0">下载 v2.0.0</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.1.0">下载 v2.1.0</a>
       </nav>
     </div>
   </header>
@@ -27,7 +27,7 @@
         <a href="#install">安装与升级</a>
         <a href="#configuration">比赛配置与工作台</a>
         <a href="#prepare">赛前配置</a>
-        <a href="#audience">检查榜单观众视角</a>
+        <a href="#audience">检查观众视角与选手视角</a>
         <a href="#presence">机位签到与监控</a>
         <a href="#clarifications">答疑与公告</a>
         <a href="#screens">现场大屏</a>
@@ -48,7 +48,7 @@
     </aside>
     <main id="manual">
       <header class="intro">
-        <p class="version">适用于插件 v2.0.0 · Hydro 5.x</p>
+        <p class="version">适用于插件 v2.1.0 · Hydro 5.x</p>
         <h1>Hydro 比赛操作手册</h1>
         <p class="lead">从安装插件、配置 ACM 比赛，到现场投屏、气球配送、打印、直播、赛后滚榜和闭幕式颁奖。</p>
         <p>界面截图使用演示比赛数据。点击配图可查看原图。</p>
@@ -73,19 +73,19 @@
       <section id="install" aria-labelledby="install-heading">
         <h2 id="install-heading">安装与升级</h2>
         <p>使用运行 Hydro 的系统账号执行命令。需要 Hydro 5.x、Node.js 22 或以上。用 PM2 管理 Hydro 时，默认进程名为 <code>hydrooj</code>。</p>
-        <p>从发布页下载 <code>hydro-scoreboard-xcpcio-plus-2.0.0.tgz</code> 和同名 <code>.sha256</code> 文件，放在同一个目录。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.0.0">v2.0.0 下载</a></p>
+        <p>从发布页下载 <code>hydro-scoreboard-xcpcio-plus-2.1.0.tgz</code> 和同名 <code>.sha256</code> 文件，放在同一个目录。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.1.0">v2.1.0 下载</a></p>
 
         <h3>校验并解压</h3>
-        <pre><code>sha256sum -c hydro-scoreboard-xcpcio-plus-2.0.0.tgz.sha256
-mkdir xcpcio-v2.0.0
-tar -xzf hydro-scoreboard-xcpcio-plus-2.0.0.tgz -C xcpcio-v2.0.0</code></pre>
+        <pre><code>sha256sum -c hydro-scoreboard-xcpcio-plus-2.1.0.tgz.sha256
+mkdir xcpcio-v2.1.0
+tar -xzf hydro-scoreboard-xcpcio-plus-2.1.0.tgz -C xcpcio-v2.1.0</code></pre>
 
         <figure class="guide-shot">
           <a href="./images/manual/install-archive.svg"><img src="./images/manual/install-archive.svg" width="840" height="262" loading="lazy" alt="终端示例中的 SHA-256 校验显示 OK，解压后可找到 package/install.sh"></a>
           <figcaption>校验结果显示 OK 后再解压。进入新目录，确认 package 下有 install.sh。</figcaption>
         </figure>
         <h3>首次安装</h3>
-        <pre><code>bash xcpcio-v2.0.0/package/install.sh install</code></pre>
+        <pre><code>bash xcpcio-v2.1.0/package/install.sh install</code></pre>
         <p>脚本将插件复制到 <code>$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus</code>，执行 <code>hydrooj addon add</code>，然后重启 Hydro。</p>
         <figure class="guide-shot">
           <a href="./images/manual/install-choice.svg"><img src="./images/manual/install-choice.svg" width="840" height="298" loading="lazy" alt="首次安装选 install，已有安装从新包执行 upgrade，两种方式都要验证比赛入口"></a>
@@ -95,7 +95,7 @@ tar -xzf hydro-scoreboard-xcpcio-plus-2.0.0.tgz -C xcpcio-v2.0.0</code></pre>
           <summary>手动安装到新目录</summary>
           <pre><code>addon_dir="$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 mkdir -p "$addon_dir"
-tar -xzf hydro-scoreboard-xcpcio-plus-2.0.0.tgz -C "$addon_dir" --strip-components=1
+tar -xzf hydro-scoreboard-xcpcio-plus-2.1.0.tgz -C "$addon_dir" --strip-components=1
 hydrooj addon add "$addon_dir"
 pm2 restart hydrooj</code></pre>
           <figure class="guide-shot">
@@ -105,7 +105,7 @@ pm2 restart hydrooj</code></pre>
         </details>
 
         <h3>已有安装时升级</h3>
-        <pre><code>bash xcpcio-v2.0.0/package/install.sh upgrade
+        <pre><code>bash xcpcio-v2.1.0/package/install.sh upgrade
 pm2 status hydrooj</code></pre>
         <p>在浏览器打开 Hydro 首页和一场 ACM 比赛，确认榜单、滚榜和大屏入口可用。自定义目录用 <code>--dir</code> 指向原安装位置，非默认 PM2 进程用 <code>--service</code>。容器部署用 <code>--no-restart</code>，然后通过容器管理方式重启 Hydro。</p>
         <figure class="guide-shot">
@@ -167,8 +167,9 @@ pm2 status hydrooj</code></pre>
         </figure>
         <p><strong>打星选手</strong>以星号显示，不占正式名次、奖牌或奖杯。能否获得一血由各榜的「允许打星选手获一血奖」决定。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/usage.md#规则">完整计分与奖项规则</a></p>
         <p>赛前核对常用开关时，可按<a href="#configuration">比赛配置图解</a>逐项检查。</p>
-        <h3 id="audience">检查榜单观众视角</h3>
+        <h3 id="audience">检查观众视角与选手视角</h3>
         <p>比赛所有者或有「编辑比赛」权限的管理员可在增强榜点「观众视角」。公开榜尚未开放时也能预览。先检查队伍的公开显示名、学校和分榜，再核对封榜结果和 CCPC 已公开的题号。比赛进行中，观众看不到提交列表。点「返回管理视角」即可回到原分榜。</p>
+        <p>点「选手视角」并选择一支已报名的队伍，可以只读查看 Hydro 的比赛首页、题目列表、题目页、答疑、评测状态和榜单在该队眼中的样子，用来核对 CCPC 隐藏题号和「选手可见他人状态」。查看期间交题、提问和报名会被拒绝，也不会替该队开始计时。点页面左下角的「返回管理视角」结束。</p>
         <p class="path"><strong>常用地址</strong><br>榜单设置 <code>/d/&lt;域ID&gt;/contest/&lt;比赛ID&gt;/xcpcio-settings</code><br>公开榜单 <code>/d/&lt;域ID&gt;/contest/&lt;比赛ID&gt;/xcpcio-public</code></p>
       </section>
 
@@ -205,10 +206,11 @@ pm2 status hydrooj</code></pre>
         <h2 id="screens-heading">现场大屏</h2>
         <p>在比赛侧边栏打开「大屏画面与链接」。选画面并调整分榜、样式或轮播间隔，设置自动保存，点「预览」查看。确认后复制链接，在投屏电脑的浏览器打开。点击画面或按 <kbd>F</kbd> 进入全屏，按 <kbd>Esc</kbd> 退出。</p>
         <h3 id="screen-devices">按设备管理场馆屏幕</h3>
-        <p>在投影电脑打开 <code>/xcpcio-screen</code>，在管理页点「连接大屏」，输入屏上显示的六位配对码、名称、画面和分榜。配对码 10 分钟有效。设备行会显示在线状态、分辨率和全屏状态。可以远程切换画面、调整缩放，或点「识别」在对应屏上显示名称 5 秒。</p>
+        <p>在投影电脑打开 <code>/xcpcio-screen</code>，在管理页点「连接大屏」，输入屏上显示的六位配对码、名称、画面和分榜。配对码 10 分钟有效。设备行会显示在线状态、分辨率、全屏状态和这块屏当前画面的缩略图。可以远程切换画面、调整缩放，或点「识别」在对应屏上显示名称 5 秒。缩放会放大 DOM 画面的字号，并让实时榜单类画面每屏显示更少的行。</p>
+        <p>点「遥控」后可向这块屏发送按键：<kbd>←</kbd> / <kbd>→</kbd> 翻页，<kbd>空格</kbd> 暂停轮播，<kbd>F</kbd> 请求全屏，<kbd>Esc</kbd> 退出全屏。大屏执行后会回执，例如「→ 已执行 · 第 2 / 5 页」。浏览器不允许远程进入全屏，需要无人值守时请以 kiosk 模式打开启动链接。</p>
         <p>同一浏览器下次会自动重连。无人值守的屏幕可用「复制启动链接」，清空浏览器数据后可在原设备行「重新配对」。删除设备只断开该屏，比赛的「全部更换」会作废设备凭据和固定画面链接。</p>
         <figure class="guide-shot">
-          <a href="./images/manual/screen-device-controls.jpg"><img src="./images/manual/screen-device-controls.jpg" width="882" height="236" loading="lazy" alt="大屏设备列表里，主会场投影显示在线，可选择画面、切换分榜并调节缩放"></a>
+          <a href="./images/manual/screen-device-controls.jpg"><img src="./images/manual/screen-device-controls.jpg" width="848" height="183" loading="lazy" alt="大屏设备行左侧是主会场投影的实时榜单缩略图，右侧可选择画面、分榜和缩放，遥控按键下方显示暂停已执行的回执"></a>
           <figcaption>不确定现场哪块屏对应这行设备时，点「识别」，在场馆内查看哪块屏幕显示设备名。</figcaption>
         </figure>
         <figure class="guide-shot">
@@ -361,8 +363,8 @@ pm2 status hydrooj</code></pre>
           <li>在比赛侧边栏打开「滚榜预演与播放」。赛前可彩排。正式滚榜应在比赛结束、相关提交评测或重测完成之后进行。</li>
           <li>选择「仅滚所选榜单」来显示该榜成员，或选择「所选分榜正式，其余非正式」来展示全部队伍并按所选榜决定正式资格。</li>
           <li>核对封榜点和奖项。比赛没有封榜时间时，选择「本场滚榜自定义」，填写最后多少分钟封榜。核对分榜、学校显示、每屏行数和播放速度。</li>
-          <li>在「队伍照片」批量选图，按账号、UID 或队名匹配。核对缩略图和未匹配文件，每支队伍也可以单独替换或删除照片。</li>
-          <li>点击「开始滚榜」生成会话。获奖画面展示队伍照片。按 <kbd>J</kbd> 推进到下一奖区，再按一次立即抵达，<kbd>Esc</kbd> 停止。键盘和鼠标右键回退须在 1.5 秒内连按两次，工具栏「上一步」单击生效。在主持端点「投到观众屏」，打开生成的观众链接，即可在另一台电脑投屏。</li>
+          <li>在「队伍照片」批量选图，按账号、UID 或队名匹配，照片自动裁成 4:3 并尽量保住头部。核对缩略图和未匹配文件，每支队伍也可以单独替换（在取景框里调整）或删除照片。</li>
+          <li>点击「开始滚榜」生成会话。获奖画面展示队伍照片。按 <kbd>J</kbd> 推进到下一奖区的边界，再按一次立即抵达，<kbd>Esc</kbd> 停止。<kbd>G</kbd> / <kbd>I</kbd> 双按前进或回退 10 队。键盘和鼠标右键回退须在 1.5 秒内连按两次，工具栏「上一步」单击生效。在主持端点「投到观众屏」，打开生成的观众链接，即可在另一台电脑投屏。</li>
           <li>滚榜结束后，在增强榜页或比赛配置与工作台点击「解除封榜」公开全部结果（比赛结束后可用，不可撤销）。比赛结束后封榜不会自动解除。</li>
         </ol>
         <figure class="guide-shot">
@@ -389,10 +391,10 @@ pm2 status hydrooj</code></pre>
           <figcaption>选择重测前的快照与当前成绩对比，确认变化后再导出成绩和获奖名单。</figcaption>
         </figure>
         <h3 id="ceremony">颁奖幻灯片</h3>
-        <p>在成绩页或赛事工作台打开「颁奖幻灯片」。选择当前成绩或已保存的快照，勾选榜单后按奖项分页。可更换主题、上传背景、调整页眉页脚避让，并决定是否显示学校、校徽及队员。在右侧预览确认后保存设置。</p>
-        <p>「全屏播放」支持方向键、空格和翻页笔。按 <kbd>B</kbd> 切换黑屏，<kbd>Home</kbd> 和 <kbd>End</kbd> 跳到首尾。「下载离线网页」会把成绩、图片和播放脚本保存到同一个 HTML 文件，复制到投屏电脑后可断网播放。</p>
+        <p>在成绩页或赛事工作台打开「颁奖幻灯片」。选择当前成绩或已保存的快照，勾选榜单后按奖项分页。每页上方是按奖级着色的中英文奖项牌匾，下方的半透明底板列出名次、校徽、队名，可选学校和队员，分栏按实际文字长度自动选择。可在 8 套主题间切换，或上传背景，并勾选页眉页脚需要避让的左、中、右三格。在「名单」里按奖项核对队伍和页码，在预览缩略条里翻页，确认后保存设置。</p>
+        <p>「全屏播放」支持方向键、空格、翻页笔和鼠标单击。按 <kbd>B</kbd> 切换黑屏，<kbd>Home</kbd> 和 <kbd>End</kbd> 跳到首尾。「下载离线网页」会把成绩、图片和播放脚本保存到同一个 HTML 文件，使用投屏电脑的系统字体，复制后可断网播放。</p>
         <figure class="guide-shot">
-          <a href="./images/manual/ceremony-slides.jpg"><img src="./images/manual/ceremony-slides.jpg" width="1182" height="810" loading="lazy" alt="颁奖幻灯片编辑页左侧可选成绩来源和主题，右侧是铜奖队伍预览及全屏、下载按钮"></a>
+          <a href="./images/manual/ceremony-slides.jpg"><img src="./images/manual/ceremony-slides.jpg" width="1200" height="801" loading="lazy" alt="颁奖幻灯片编辑页左侧分组设置名单、内容和外观，右侧是带奖项牌匾的预览和全部页面的缩略条"></a>
           <figcaption>彩排时先在右侧翻页，核对每批上台的队伍，再下载离线网页交给投影席。</figcaption>
         </figure>
         <p><a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/usage.md#成绩与导出">成绩快照与导出说明</a></p>
@@ -419,7 +421,7 @@ pm2 status hydrooj</code></pre>
           <a href="./examples/certificate-styles.pdf"><img src="./images/manual/certificate-styles.jpg" width="1800" height="960" loading="lazy" alt="典雅雕花、ICPC、CCPC、天梯赛和蓝桥杯五种证书配色对照"></a>
           <figcaption>每套各有一张横版和一张竖版。CCPC 横版含一张透明枝叶装饰图。<a href="./examples/certificate-styles.pdf">查看十页 A4 样张（PDF）</a> · <a href="./examples/certificates.pdf">v1.24.1 校徽位置示例</a></figcaption>
         </figure>
-        <div class="callout"><strong>正式颁证前请替换默认样例素材</strong><p>赛事模板中随附的 2026 ICPC 沈阳区域赛抬头、徽标、个人手写签名样例及嵌入 Arial 字体子集仅作排版参考，归原权利人所有。主办方在对外签发证书前，务必在编辑器中替换或清除所有第三方徽标、默认个人签名与专有字体，详情见 <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v2.0.0/NOTICE">NOTICE</a>。</p></div>
+        <div class="callout"><strong>正式颁证前请替换默认样例素材</strong><p>赛事模板中随附的 2026 ICPC 沈阳区域赛抬头、徽标、个人手写签名样例及嵌入 Arial 字体子集仅作排版参考，归原权利人所有。主办方在对外签发证书前，务必在编辑器中替换或清除所有第三方徽标、默认个人签名与专有字体，详情见 <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v2.1.0/NOTICE">NOTICE</a>。</p></div>
       </section>
 
       <section id="cleanup" aria-labelledby="cleanup-heading">
@@ -593,8 +595,8 @@ pm2 status hydrooj</code></pre>
       </section>
       <footer class="manual-footer">
         <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/usage.md">完整使用文档</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v2.0.0/docs/verification.md">验证记录</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v2.0.0/NOTICE">来源与许可</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v2.1.0/docs/verification.md">验证记录</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v2.1.0/NOTICE">来源与许可</a>
         <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/issues">报告问题</a>
       </footer>
     </main>

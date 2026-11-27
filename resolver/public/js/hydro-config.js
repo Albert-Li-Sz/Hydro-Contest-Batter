@@ -332,14 +332,16 @@ loadSessions();
 requestAnimationFrame(frame);
 
 import { matchPhoto } from './photo-matching.js';
-import { imageData, printableImage } from './image-upload.js';
+import { cropBox, imageData, photoFocus, printableImage } from './image-upload.js';
 
 const photos = runtime.photos || {};
 const photoTeams = document.getElementById('photo-teams');
 const photoProgress = document.getElementById('photo-progress');
 const unmatched = document.getElementById('photo-unmatched');
-async function savePhoto(uid, file) {
-    const image = file ? await imageData(await printableImage(file, 1600, 'image/jpeg', 1024 ** 2)) : undefined;
+// Team photos are 4:3 landscape: batch uploads are framed on the faces (or above the middle), a single one by hand.
+const PHOTO_ASPECT = 4 / 3;
+async function savePhoto(uid, file, focus = 'auto') {
+    const image = file ? await imageData(await printableImage(file, 1600, 'image/jpeg', 1024 ** 2, { aspect: PHOTO_ASPECT, focus })) : undefined;
     const result = await request(`${runtime.base}/photos`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uid, image }),
     });
@@ -365,7 +367,11 @@ function renderPhotos() {
         const input = document.createElement('input');
         input.type = 'file'; input.accept = 'image/*'; input.className = 'resolver-file-input';
         input.setAttribute('aria-label', `为${team.name}选择照片`);
-        input.onchange = () => input.files[0] && savePhoto(team.uid, input.files[0]).then(refreshPreview).catch(showError);
+        input.onchange = () => {
+            const file = input.files[0];
+            input.value = '';
+            if (file) framePhoto(team, file).then(focus => focus && savePhoto(team.uid, file, focus)).then(refreshPreview).catch(showError);
+        };
         upload.append(input); row.append(name, upload);
         if (photos[team.uid]) {
             const remove = document.createElement('button');
@@ -375,6 +381,51 @@ function renderPhotos() {
         }
         photoTeams.append(row);
     }
+}
+// Drag (or move with the arrow keys) the 4:3 frame; resolves with its centre, or null when cancelled.
+async function framePhoto(team, file) {
+    const dialog = document.getElementById('photo-crop');
+    const canvas = document.getElementById('photo-crop-canvas');
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    try {
+        document.getElementById('photo-crop-title').textContent = team.name;
+        const fit = Math.min(1, 720 / bitmap.width, 480 / bitmap.height);
+        canvas.width = Math.round(bitmap.width * fit); canvas.height = Math.round(bitmap.height * fit);
+        let box = cropBox(bitmap.width, bitmap.height, PHOTO_ASPECT, await photoFocus(bitmap));
+        const ctx = canvas.getContext('2d');
+        const draw = () => {
+            ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#000a';
+            ctx.beginPath(); ctx.rect(0, 0, canvas.width, canvas.height);
+            ctx.rect(box.x * fit, box.y * fit, box.width * fit, box.height * fit); ctx.fill('evenodd');
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(box.x * fit + 1, box.y * fit + 1, box.width * fit - 2, box.height * fit - 2);
+        };
+        const move = (dx, dy) => {
+            box = { ...box, x: Math.max(0, Math.min(bitmap.width - box.width, box.x + dx)), y: Math.max(0, Math.min(bitmap.height - box.height, box.y + dy)) };
+            draw();
+        };
+        let drag = null;
+        canvas.onpointerdown = (event) => { drag = { x: event.clientX, y: event.clientY }; canvas.setPointerCapture(event.pointerId); };
+        canvas.onpointermove = (event) => {
+            if (!drag) return;
+            const scale = bitmap.width / canvas.getBoundingClientRect().width;
+            move((event.clientX - drag.x) * scale, (event.clientY - drag.y) * scale);
+            drag = { x: event.clientX, y: event.clientY };
+        };
+        canvas.onpointerup = canvas.onpointercancel = () => { drag = null; };
+        canvas.onkeydown = (event) => {
+            const step = (event.shiftKey ? 0.1 : 0.02) * Math.max(bitmap.width, bitmap.height);
+            const delta = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[event.key];
+            if (delta) { event.preventDefault(); move(...delta); }
+        };
+        draw();
+        dialog.returnValue = '';
+        dialog.showModal();
+        canvas.focus();
+        await new Promise(resolve => dialog.addEventListener('close', resolve, { once: true }));
+        if (dialog.returnValue !== 'confirm') return null;
+        return { x: (box.x + box.width / 2) / bitmap.width, y: (box.y + box.height / 2) / bitmap.height };
+    } finally { bitmap.close(); }
 }
 renderPhotos();
 document.getElementById('photo-files').addEventListener('change', async ({ target }) => {

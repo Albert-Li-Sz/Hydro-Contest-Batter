@@ -580,6 +580,8 @@ export function applyCapture(ctx: Context, helpers: CaptureHelpers) {
     const promptCache = new Map<string, { expires: number; value: Promise<CaptureSettings> }>();
     on('handler/after', async (handler: Handler) => {
         const tdoc = (handler.response?.body as { tdoc?: Tdoc } | undefined)?.tdoc;
+        // 选手视角 (lib/perspective.ts): a manager looking through a team's eyes is not that team.
+        if ((handler as { xcpcioPerspective?: unknown }).xcpcioPerspective) return;
         if (!tdoc || tdoc.rule !== 'acm' || !tdoc.docId || !handler.user?._id || handler.user._id <= 1 || !handler.UiContext) return;
         if (handler.response.template === 'xcpcio_live_capture_device.html' || Date.now() >= new Date(tdoc.endAt).getTime()) return;
         // Contest staff manage capture; they are not asked to capture themselves.

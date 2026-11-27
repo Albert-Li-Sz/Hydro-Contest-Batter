@@ -87,6 +87,8 @@ export function applyPresence(ctx: Context) {
     // Every contest page a participant opens counts as a report, and carries the reporting script.
     on('handler/after', async (handler: Handler) => {
         const tdoc = (handler.response?.body as { tdoc?: Tdoc } | undefined)?.tdoc;
+        // 选手视角 (lib/perspective.ts): a manager looking through a team's eyes is not that team.
+        if ((handler as { xcpcioPerspective?: unknown }).xcpcioPerspective) return;
         if (!tdoc || tdoc.rule !== 'acm' || !tdoc.docId || !handler.user?._id || handler.user._id <= 1 || !handler.UiContext) return;
         if (Date.now() >= new Date(tdoc.endAt).getTime() || isStaff(handler, tdoc)) return;
         try {

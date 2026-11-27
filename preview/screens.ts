@@ -7,12 +7,12 @@ import type { BoardSettings } from '../lib/settings';
 import { awardsFor, toScriptJson } from '../lib/settings';
 import { resolverBoards, resolverCodeBase } from '../lib/resolver-data';
 import { hideProblemLabels } from '../lib/ccpc-board';
-import { ScreenDevices, screenClient, deviceItem } from '../lib/screen-devices';
+import { ScreenDevices, screenClient, deviceItem, deviceState } from '../lib/screen-devices';
 import type { ContestLinks } from '../lib/links';
 import { ResolverSessions } from '../lib/resolver-sessions';
 import {
     decodePoster, defaultScreenConfig, groupSources, hiddenBeforeStart, intervalTypes, maxPosterImages, presentationItem,
-    eligibleScreenReaction, reactionPlaylist, saveScreenConfig, screenCategories, screenData, ScreenError, screenLabels, screenProjection, ScreenType, screenTypes, screenVariants, standingsTypes,
+    eligibleScreenReaction, reactionPlaylist, saveScreenConfig, screenCategories, screenData, ScreenError, screenLabels, screenProjection, ScreenType, screenTypes, screenVariants, standingsTypes, scalableTypes,
 } from '../lib/screens-data';
 
 /** Local preview of the big-screen pages. Mirrors lib/screens-routes.ts without Hydro or MongoDB. */
@@ -47,12 +47,13 @@ export function createScreensPreview(env: Environment, logoNames: Record<string,
                 if (request.method === 'POST') {
                     let text = ''; for await (const chunk of request) { text += chunk; if (text.length > 8000) throw new ScreenError('设备请求过大'); }
                     json(await devices.action(contestKey, JSON.parse(JSON.parse(text).payload), boards.map(b => b.id)));
-                } else json({ devices: await devices.list(contestKey) });
+                } else if (url.searchParams.get('thumb')) json({ thumb: await devices.thumb(contestKey, url.searchParams.get('thumb')!) });
+                else { await devices.watch(contestKey); json({ devices: await devices.list(contestKey) }); }
                 return true;
             }
             if (url.pathname === site) {
                 response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(env.render('xcpcio_screen_device.html', {
-                    codeBase, title: '大屏设备', runtimeJson: toScriptJson({ device: true, version, dataUrl: site + '/data', pairUrl: site + '/pair' }),
+                    codeBase, title: '大屏设备', runtimeJson: toScriptJson({ device: true, version, dataUrl: site + '/data', pairUrl: site + '/pair', thumbUrl: site + '/thumb' }),
                 }));
                 return true;
             }
@@ -60,6 +61,12 @@ export function createScreensPreview(env: Environment, logoNames: Record<string,
                 const result = await devices.pair(cookie, request.socket.remoteAddress || '');
                 if ('cookie' in result && result.cookie) setCookie(result.cookie);
                 json('code' in result ? { code: result.code, expiresAt: result.expiresAt } : { paired: true }); return true;
+            }
+            if (url.pathname === site + '/thumb' && request.method === 'POST') {
+                const device = await devices.authenticate(cookie);
+                if (!device) { json({ error: '设备未配对' }, 404); return true; }
+                let text = ''; for await (const chunk of request) { text += chunk; if (text.length > 200_000) throw new ScreenError('缩略图过大'); }
+                json({ saved: await devices.saveThumb(device, JSON.parse(text)) }); return true;
             }
             if (url.pathname.startsWith(site + '/k/')) {
                 const cookie = await devices.redeem(url.pathname.slice((site + '/k/').length));
@@ -107,7 +114,7 @@ export function createScreensPreview(env: Environment, logoNames: Record<string,
                         base: `${base}/screens`, contestUrl: `${base}/scoreboard/xcpcio-plus`, linkBase: `${base}/screen/${token}`,
                         title: data.contest.contest_name, config, types: screenTypes, labels: screenLabels, variants: screenVariants, query: url.search,
                         categories: screenCategories, groupSources, intervalTypes: [...intervalTypes],
-                        reactionLayouts: reactionLayouts(), standingsTypes: [...standingsTypes], boards: boards.map(({ id, name }) => ({ id, name })),
+                        reactionLayouts: reactionLayouts(), standingsTypes: [...standingsTypes], scalableTypes: [...scalableTypes], boards: boards.map(({ id, name }) => ({ id, name })),
                         sessions: own.map((row) => ({ id: row.id, createdAt: row.createdAt, title: row.overview.title,
                             board: boards.find((board) => board.id === row.config.boardId)?.name || row.config.boardId, rehearsal: row.config.rehearsal })),
                         contest: { start: new Date(data.contest.start_time * 1000).toISOString(), end: new Date(data.contest.end_time * 1000).toISOString() },
@@ -144,7 +151,8 @@ export function createScreensPreview(env: Environment, logoNames: Record<string,
             }
             if (device) {
                 await devices.heartbeat(device, screenClient(JSON.parse(url.searchParams.get('client') || '{}'), request.socket.remoteAddress || '', request.headers['user-agent'] || ''));
-                commands = { paired: true, device: { id: device._id, name: device.name, scale: device.scale, reloadAt: device.reloadAt, identifyUntil: device.identifyUntil } };
+                if (url.searchParams.get('acks')) await devices.acknowledge(device, JSON.parse(url.searchParams.get('acks')!));
+                commands = { paired: true, device: deviceState(device) };
             }
             if (match && !match[3]) {
                 response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(env.render('xcpcio_screen_view.html', {

@@ -25,6 +25,11 @@ export const standingsTypes = new Set<ScreenType>([
     'scoreboard', 'leaders', 'tiles', 'first-solves', 'queue', 'problem-stats', 'rank-trend', 'outcomes', 'groups', 'logo-wall', 'team-intro',
     'floor', 'balloons', 'announce', 'reactions',
 ]);
+/** A device's zoom enlarges these: DOM screens through the font unit, the resolver and the ICPC scoreboard family through fewer rows. */
+export const scalableTypes = new Set<ScreenType>([
+    'scoreboard', 'leaders', 'first-solves', 'resolver', 'rank-trend', 'outcomes', 'groups', 'team-intro', 'floor', 'balloons',
+    'announce', 'judges', 'reactions', 'poster', 'clarifications', 'problem-list',
+]);
 /** Like the public board, these show nothing before the contest starts. */
 export const hiddenBeforeStart = new Set<ScreenType>([
     'scoreboard', 'leaders', 'tiles', 'first-solves', 'queue', 'problem-stats', 'rank-trend', 'outcomes', 'groups', 'floor', 'balloons', 'announce', 'problem-list', 'problem-colors', 'reactions',

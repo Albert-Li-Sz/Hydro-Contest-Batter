@@ -27,8 +27,8 @@ export function applyResolver(ctx: Context, dependencies: {
     const photoBase = (tdoc: Tdoc) => `/d/${encodeURIComponent(tdoc.domainId)}/contest/${tdoc.docId}/resolver`;
     dependencies.links.add({ id: 'resolver-photos', label: '滚榜队伍照片',
         status: tdoc => photos.status(key(tdoc)), revoke: tdoc => photos.rotate(key(tdoc)) });
-    ctx.on('contest/del', (domain, tid) => photos.remove(`${domain}/${tid}`));
-    ctx.on('domain/delete', (domain) => photos.remove(new RegExp(`^${domain.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`)));
+    ctx.on('contest/del', (domain, tid) => { void photos.remove(`${domain}/${tid}`).catch(() => null); });
+    ctx.on('domain/delete', (domain) => { void photos.remove(new RegExp(`^${domain.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`)).catch(() => null); });
     const sessions = new ResolverSessions(ctx.db);
     const logoNames = JSON.parse(fs.readFileSync(path.join(__dirname, '../logos/index.json'), 'utf8')).names;
     const codeBase = resolverCodeBase(JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8')).version);

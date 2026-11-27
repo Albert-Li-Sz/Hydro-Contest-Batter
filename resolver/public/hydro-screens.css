@@ -26,12 +26,27 @@
 }
 
 #device-list { display:grid; gap:.6rem; }
-.device-row { display:flex; gap:.45rem; flex-wrap:wrap; align-items:center; padding:.7rem 0; border-bottom:1px solid #8884; }
+.device-row { display:grid; grid-template-columns:176px minmax(0,1fr); gap:.4rem .9rem; align-items:start; padding:.8rem 0; border-bottom:1px solid #8884; }
+.device-main { display:grid; gap:.4rem; min-width:0; }
+.device-status, .device-controls { display:flex; flex-wrap:wrap; align-items:center; gap:.45rem; }
+.device-thumb { display:grid; place-items:center; width:176px; aspect-ratio:16/9; padding:0; border:0; border-radius:4px; overflow:hidden; background:#000; cursor:zoom-in; }
+.device-thumb img { display:block; max-width:100%; max-height:100%; object-fit:contain; }
+.device-thumb-html, .device-thumb-large .device-thumb-html { position:relative; display:block; overflow:hidden; background:#000; pointer-events:none; }
+.device-thumb-html iframe { position:absolute; left:0; top:0; border:0; transform-origin:0 0; }
+.device-thumb-large { display:grid; place-items:center; background:#000; }
+.device-thumb-large img { display:block; max-width:min(960px, calc(100vw - 96px)); }
+.device-remote { display:flex; flex-wrap:wrap; align-items:center; gap:.25rem; }
+.device-remote .button { margin:0; min-width:2.6em; }
+.device-row.device-remote-on .device-thumb { outline:2px solid #3b7fc4; outline-offset:2px; }
+.device-receipt { margin-left:.4rem; font-variant-numeric:tabular-nums; }
+.device-row [aria-pressed=true] { background:#3b7fc4; border-color:#3b7fc4; color:#fff; }
+@media (max-width:640px) { .device-row { grid-template-columns:1fr; } }
 .device-row .textbox, .device-row .select { width:auto; max-width:100%; margin:0; }
 .device-row .device-name { width:9em; }
 .device-row .device-scale { width:4.2em; }
 .device-row small { color:inherit; opacity:.75; }
 .device-row .device-online { color:#16744c; }
 .device-row .device-actions { display:flex; flex-wrap:wrap; gap:.25rem; }
+.device-row .device-actions .button { margin:0; }
 #device-dialog label { display:block; margin:.5em 0; }
 #device-dialog [hidden] { display:none; }

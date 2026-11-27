@@ -15,11 +15,11 @@ import type { ContestLinks } from './links';
 import {
     broadcastRows, decodePoster, imageBytes, defaultScreenConfig, groupSources, hiddenBeforeStart, intervalTypes, isPosterId, judgeScreen,
     eligibleScreenReaction, maxPosterImages, reactionPlaylist, type ScreenReaction, normalizeScreenConfig, presentationItem, problemRows, saveScreenConfig, screenCategories, ScreenConfig,
-    screenData, ScreenError, screenLabels, screenProjection, ScreenType, screenTypes, screenVariants, standingsTypes,
+    screenData, ScreenError, screenLabels, screenProjection, ScreenType, screenTypes, screenVariants, standingsTypes, scalableTypes,
 } from './screens-data';
 import { judgeHealth } from './manage/judges';
 import type { MonitorMachine } from './monitor';
-import { ScreenDevices, deviceItem, screenClient, type ScreenDevice } from './screen-devices';
+import { ScreenDevices, deviceItem, deviceState, screenClient, type ScreenDevice } from './screen-devices';
 import { seatOf } from './print';
 import { isTeamEntry, loadSeats, memberIds, type TeamEntry } from './teams';
 
@@ -177,7 +177,7 @@ export function applyScreens(ctx: Context, dependencies: {
                     title: this.tdoc.title, config: doc.config, types: screenTypes, labels: screenLabels, variants: screenVariants,
                     categories: screenCategories, groupSources, intervalTypes: [...intervalTypes],
                     reactionLayouts: await dependencies.screenLayouts?.(this.tdoc) ?? [],
-                    standingsTypes: [...standingsTypes], boards: boards.map(({ id, name }) => ({ id, name })),
+                    standingsTypes: [...standingsTypes], scalableTypes: [...scalableTypes], boards: boards.map(({ id, name }) => ({ id, name })),
                     sessions: (await sessions.list(scope)).map((row) => ({
                         id: row.id, createdAt: row.createdAt, title: row.overview.title,
                         board: boards.find((board) => board.id === row.config.boardId)?.name || row.config.boardId,
@@ -440,7 +440,12 @@ export function applyScreens(ctx: Context, dependencies: {
     }
 
     class DeviceAdminHandler extends ScreensHandler {
-        async get() { this.response.body = { devices: await devices.list(key(this.tdoc)) }; }
+        async get() {
+            const thumb = typeof this.request.query?.thumb === 'string' ? this.request.query.thumb : '';
+            if (thumb) { this.response.body = { thumb: await devices.thumb(key(this.tdoc), thumb) }; return; }
+            await devices.watch(key(this.tdoc));
+            this.response.body = { devices: await devices.list(key(this.tdoc)) };
+        }
         @param('payload', Types.String)
         async post(_domain: string, payload: string) {
             let input;
@@ -468,7 +473,7 @@ export function applyScreens(ctx: Context, dependencies: {
         async get() {
             this.response.template = 'xcpcio_screen_device.html';
             this.response.body = { codeBase, title: '大屏设备', runtimeJson: toScriptJson({
-                device: true, version: codeBase.split('/').pop(), dataUrl: deviceBase + '/data', pairUrl: deviceBase + '/pair',
+                device: true, version: codeBase.split('/').pop(), dataUrl: deviceBase + '/data', pairUrl: deviceBase + '/pair', thumbUrl: deviceBase + '/thumb',
             }) };
         }
         async onerror(error: Parameters<Handler['onerror']>[0] | ScreenError) {
@@ -502,16 +507,28 @@ export function applyScreens(ctx: Context, dependencies: {
         @param('revision', Types.Int, true)
         @param('session', Types.String, true)
         @param('index', Types.Int, true)
-        async get(_domain?: string, revision?: number, known?: string, index?: number) {
+        @param('acks', Types.String, true)
+        async get(_domain?: string, revision?: number, known?: string, index?: number, acks?: string) {
             const device = await devices.authenticate(this.cookie());
             if (!device) { this.response.body = { paired: false }; return; }
             const { tdoc, doc } = await boundContest(device);
             let raw;
             try { raw = JSON.parse(this.request.query.client || '{}'); } catch { throw new ScreenError('设备状态无效'); }
             await devices.heartbeat(device, screenClient(raw, this.request.ip, this.request.headers['user-agent'] || ''));
+            if (acks) {
+                let parsed;
+                try { parsed = JSON.parse(acks); } catch { throw new ScreenError('设备回执无效'); }
+                await devices.acknowledge(device, parsed);
+            }
             const data = await readScreen(this, tdoc, doc, device.type, deviceBase, device.boardId, revision, known, index);
-            this.response.body = { ...data, paired: true, device: { id: device._id, name: device.name, scale: device.scale,
-                identifyUntil: device.identifyUntil, reloadAt: device.reloadAt } };
+            this.response.body = { ...data, paired: true, device: deviceState(device) };
+        }
+    }
+    class DeviceThumbHandler extends DeviceHandler {
+        async post() {
+            const device = await devices.authenticate(this.cookie());
+            if (!device) throw new NotFoundError('设备未配对');
+            this.response.body = { saved: await devices.saveThumb(device, this.request.body) };
         }
     }
     class DeviceMediaHandler extends DeviceHandler {
@@ -529,6 +546,7 @@ export function applyScreens(ctx: Context, dependencies: {
     ctx.Route('xcpcio_screen_device', deviceBase, DeviceHandler);
     ctx.Route('xcpcio_screen_pair', deviceBase + '/pair', PairHandler);
     ctx.Route('xcpcio_screen_data', deviceBase + '/data', DeviceDataHandler);
+    ctx.Route('xcpcio_screen_thumb', deviceBase + '/thumb', DeviceThumbHandler);
     ctx.Route('xcpcio_screen_kiosk', deviceBase + '/k/:token', KioskHandler);
     ctx.Route('xcpcio_screen_device_media', deviceBase + '/:kind/:id', DeviceMediaHandler);
     ctx.Route('contest_xcpcio_screen_devices', '/contest/:tid/screens/devices', DeviceAdminHandler);

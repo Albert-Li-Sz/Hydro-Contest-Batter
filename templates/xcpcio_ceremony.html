@@ -6,23 +6,54 @@
 <div class="row resolver-config ceremony-editor" id="hydro-resolver-config"><div class="medium-12 columns">
   <section class="section visible"><div class="section__header resolver-heading">
     <div><h1 class="section__title">颁奖幻灯片</h1><p class="resolver-muted">{{ tdoc.title }}</p></div>
-    <div class="resolver-actions"><a class="button" href="results">成绩快照与导出</a><a class="button" href="control#work">赛事工作台</a></div>
+    <div class="resolver-actions">
+      <a class="button" href="results">成绩快照与导出</a><a class="button" href="control#work">赛事工作台</a>
+      <button class="button" type="submit" form="ceremony-form">保存设置</button>
+      <button id="ceremony-export" class="button" type="button">下载离线网页</button>
+      <button id="ceremony-play" class="button primary" type="button">全屏播放</button>
+    </div>
   </div></section>
   <div class="ceremony-layout">
     <form id="ceremony-form" class="section visible"><div class="section__body">
-      <label>成绩来源<select class="select" name="source"></select></label>
-      <fieldset><legend>榜单</legend><div id="ceremony-boards"></div></fieldset>
-      <label>奖项顺序<select class="select" name="reverse"><option value="">特别奖至奖杯</option><option value="reverse">奖杯至特别奖</option></select></label>
-      <div class="ceremony-fields"><label>每页队数<input class="textbox" type="number" name="target" min="1" max="16" required></label><label>容差<input class="textbox" type="number" name="tolerance" min="0" max="4" required></label></div>
-      <fieldset><legend>显示内容</legend><label><input type="checkbox" name="showTitle"> 比赛标题</label><label><input type="checkbox" name="showSchool"> 学校</label><label><input type="checkbox" name="showMembers"> 队员</label></fieldset>
-      <label>主题<select class="select" name="theme"></select></label>
-      <label>自定义背景<input type="file" id="ceremony-background" accept="image/*"></label><button id="clear-background" class="button" type="button" hidden>移除背景</button>
-      <div class="ceremony-fields"><label>页眉留空（%）<input class="textbox" type="number" name="header" min="0" max="25" required></label><label>页脚留空（%）<input class="textbox" type="number" name="footer" min="0" max="25" required></label></div>
-      <button class="button primary" type="submit">保存设置</button>
+      <fieldset class="ce-group"><legend>名单</legend>
+        <label class="ce-field">成绩来源<select class="select" name="source"></select></label>
+        <div class="ce-field">榜单<div class="ce-checks" id="ceremony-boards"></div></div>
+        <label class="ce-field">奖项顺序<select class="select" name="reverse"><option value="">特别奖至奖杯</option><option value="reverse">奖杯至特别奖</option></select></label>
+        <label class="ce-field">同奖顺序<select class="select" name="withinOrder"><option value="rank">名次正序</option><option value="reverse">名次倒序</option></select></label>
+        <div class="ce-row">
+          <label class="ce-field">每页队数<input class="textbox" type="number" name="target" min="1" max="16" required></label>
+          <label class="ce-field">容差<input class="textbox" type="number" name="tolerance" min="0" max="4" required></label>
+          <label class="ce-field">分栏<select class="select" name="columns"><option value="0">自动</option><option value="1">1 栏</option><option value="2">2 栏</option><option value="3">3 栏</option><option value="4">4 栏</option></select></label>
+        </div>
+      </fieldset>
+      <fieldset class="ce-group"><legend>内容</legend>
+        <div class="ce-checks">
+          <label class="ce-check"><input type="checkbox" name="cover">封面</label>
+          <label class="ce-check"><input type="checkbox" name="showTitle">比赛标题</label>
+          <label class="ce-check"><input type="checkbox" name="showSchool">学校</label>
+          <label class="ce-check"><input type="checkbox" name="showMembers">队员</label>
+        </div>
+      </fieldset>
+      <fieldset class="ce-group"><legend>外观</legend>
+        <div class="ce-themes" id="ceremony-themes" role="radiogroup" aria-label="主题"></div>
+        <div class="ce-field">背景<div class="ce-background">
+          <label class="button">选择图片<input type="file" id="ceremony-background" class="ceremony-file" accept="image/*"></label>
+          <button id="clear-background" class="button" type="button" hidden>移除背景</button>
+        </div></div>
+        <div class="ce-field">避让区域
+          <div class="ce-band"><span>页眉</span><input class="textbox" type="number" name="header" min="0" max="25" required aria-label="页眉高度"><span>%</span><span class="ce-zones" data-zones="headerZones"></span></div>
+          <div class="ce-band"><span>页脚</span><input class="textbox" type="number" name="footer" min="0" max="25" required aria-label="页脚高度"><span>%</span><span class="ce-zones" data-zones="footerZones"></span></div>
+        </div>
+      </fieldset>
     </div></form>
-    <section class="section visible ceremony-preview"><div class="section__header resolver-heading"><h2 class="section__title">播放预览</h2><span id="ceremony-count" aria-live="polite"></span></div>
-      <div class="section__body"><div class="ceremony-stage" id="ceremony-stage" tabindex="0" aria-label="颁奖幻灯片播放"></div>
-        <div class="resolver-actions"><button id="ceremony-prev" class="button">上一页</button><button id="ceremony-next" class="button">下一页</button><button id="ceremony-play" class="button primary">全屏播放</button><button id="ceremony-export" class="button">下载离线网页</button></div>
+    <section class="section visible ceremony-preview">
+      <div class="section__header resolver-heading">
+        <div class="ce-tabs" role="tablist"><button type="button" role="tab" aria-selected="true" data-tab="preview">预览</button><button type="button" role="tab" aria-selected="false" data-tab="list">名单</button></div>
+        <div class="ce-nav"><span id="ceremony-count" aria-live="polite"></span><button id="ceremony-prev" class="button" type="button">上一页</button><button id="ceremony-next" class="button" type="button">下一页</button></div>
+      </div>
+      <div class="section__body">
+        <div data-panel="preview"><div class="ceremony-stage" id="ceremony-stage" tabindex="0" aria-label="颁奖幻灯片播放"></div><div class="ce-strip" id="ceremony-strip"></div></div>
+        <div data-panel="list" hidden><div class="ce-awards" id="ceremony-list"></div></div>
         <div role="status" id="ceremony-status"></div>
       </div>
     </section>

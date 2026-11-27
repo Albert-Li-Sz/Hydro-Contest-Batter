@@ -4,7 +4,9 @@ import { resolverBoards } from '../lib/resolver-data';
 import { broadcastRows, decodePoster, defaultScreenConfig, hiddenBeforeStart, normalizeScreenConfig, presentationItem, saveScreenConfig,
     reactionPlaylist, screenCategories, screenData, screenProjection, screenTypes } from '../lib/screens-data';
 import { hideProblemLabels } from '../lib/ccpc-board';
-import { ScreenDevices, pairingAlphabet, pairingCode, deviceItem, screenClient, screenOnline, writeHeartbeat } from '../lib/screen-devices';
+import { ScreenDevices, pairingAlphabet, pairingCode, deviceItem, deviceState, remoteAcks, screenClient, screenOnline, screenThumb, writeHeartbeat } from '../lib/screen-devices';
+import { scalableTypes } from '../lib/screens-data';
+import { PortHost } from '../resolver/public/js/render/presentation-ports.js';
 import { previewDatabase } from '../preview/resolver-memory-db';
 import { demoData } from './fixture';
 
@@ -291,5 +293,67 @@ describe('配对大屏', () => {
         expect(writeHeartbeat(doc, { ...client, fullscreen: false }, now + 1)).toBe(true);
         expect(screenOnline(doc.lastSeen, now + 15000)).toBe(true);
         expect((await store.list('a', now + 15001))[0].online).toBe(false);
+    });
+    it('queues remote keys, retires them with receipts and keeps thumbnails only while watched', async () => {
+        const store = new ScreenDevices(previewDatabase().db);
+        const pair = await fresh(store);
+        await store.action('a', claim(pair.code), ['official'], now);
+        const device = (await store.authenticate(pair.cookie))!;
+        await expect(store.action('a', { id: device._id, action: 'edit' }, ['official'], now)).rejects.toThrow('设备设置无效');
+        await expect(store.action('a', { id: device._id, action: 'key', key: 'reboot' }, ['official'], now)).rejects.toThrow('未知按键');
+        const sent = [];
+        for (let i = 0; i < 12; i++) sent.push((await store.action('a', { id: device._id, action: 'key', key: i % 2 ? 'next' : 'pause' }, ['official'], now + i)).command!);
+        let doc = (await store.authenticate(pair.cookie))!;
+        expect(doc.commands!.map(c => c.id)).toEqual(sent.slice(-10).map(c => c.id));
+        expect(deviceState(doc, now).commands).toHaveLength(10);
+        // Unknown ids are ignored; the screen's receipt state is trimmed to known fields.
+        expect(remoteAcks([{ id: 'nope', ok: true }], doc.commands!, now)).toEqual([]);
+        const last = sent.at(-1)!;
+        await store.acknowledge(doc, [{ id: last.id, ok: true, message: 'x'.repeat(500), state: { page: 2, pages: 5, paused: false, evil: 1 } }], now + 50);
+        expect(doc.commands).toHaveLength(9);
+        doc = (await store.authenticate(pair.cookie))!;
+        expect(doc.commands).toHaveLength(9);
+        expect(doc.ack).toMatchObject({ id: last.id, key: 'next', ok: true, state: { page: 2, pages: 5, paused: false } });
+        expect(doc.ack!.message).toHaveLength(120);
+        expect((await store.list('a', now))[0]).toMatchObject({ ack: { id: last.id }, pending: expect.any(Array) });
+        const image = { kind: 'image', data: 'data:image/webp;base64,AAAA', width: 1920, height: 1080, type: 'scoreboard' };
+        expect(await store.saveThumb(doc, image, now)).toBe(false);
+        await store.watch('a', now);
+        expect(deviceState((await store.authenticate(pair.cookie))!, now + 14999).watch).toBe(true);
+        expect(deviceState((await store.authenticate(pair.cookie))!, now + 15000).watch).toBe(false);
+        doc = (await store.authenticate(pair.cookie))!;
+        expect(await store.saveThumb(doc, image, now + 1)).toBe(true);
+        expect(await store.saveThumb(doc, image, now + 2000)).toBe(false);
+        expect(await store.thumb('a', doc._id)).toMatchObject({ kind: 'image', at: now + 1 });
+        expect(await store.thumb('other', doc._id)).toBeNull();
+        expect((await store.list('a', now))[0].thumb).toEqual({ at: now + 1, type: 'scoreboard', kind: 'image' });
+        expect(await store.revoke('a')).toBe(1);
+        expect(await store.thumb('a', doc._id)).toBeNull();
+    });
+    it('accepts screen markup without scripts and frames only as images', () => {
+        const html = (data: string) => ({ kind: 'html', data, width: 1280, height: 720, type: 'judges' });
+        expect(screenThumb(html('<main id="screen-content" data-type="judges"><p>评测机</p></main>'), now)).toMatchObject({ kind: 'html', at: now });
+        for (const bad of ['<script>alert(1)</script>', '<img src=x onerror=alert(1)>', '<a href="javascript:x">', '<meta http-equiv=refresh content=0>',
+            '<iframe srcdoc=x>', '<LINK rel=stylesheet>', '< / base href=//evil>', '<form action=//evil>']) {
+            expect(() => screenThumb(html(bad), now), bad).toThrow('缩略图无效');
+        }
+        expect(() => screenThumb({ kind: 'image', data: 'data:image/svg+xml;base64,AAAA', width: 10, height: 10, type: 'clock' }, now)).toThrow();
+        expect(() => screenThumb({ kind: 'image', data: 'data:image/png;base64,' + 'A'.repeat(100 * 1024), width: 10, height: 10, type: 'clock' }, now)).toThrow();
+        expect(() => screenThumb({ ...html('<p>x</p>'), type: 'nope' }, now)).toThrow();
+        expect(() => screenThumb({ ...html('<p>x</p>'), width: 0 }, now)).toThrow();
+    });
+    it('zooms the ICPC scoreboard family by showing fewer rows and leaves other canvas screens alone', () => {
+        expect([...scalableTypes].every(type => screenTypes.includes(type))).toBe(true);
+        for (const type of ['clock', 'countdown', 'tiles', 'message', 'logo-wall']) expect(scalableTypes.has(type as never)).toBe(false);
+        const ctx = new Proxy({}, { get: (_target, key) => key === 'canvas' ? {} : () => ({ width: 0 }) }) as unknown as CanvasRenderingContext2D;
+        const host = new PortHost(() => null);
+        const draw = (scale: number) => {
+            try { host.render(ctx, { contest: { problems: [], teams: [] }, standings: [] }, { type: 'scoreboard' }, '', { width: 1920, height: 1080, now: 0, elapsed: 0, words: {}, scale }); } catch { /* the stub cannot paint */ }
+            return (host as unknown as { instance: { teamsPerScreen: number } }).instance.teamsPerScreen;
+        };
+        expect(draw(1)).toBe(12);
+        expect(draw(1.5)).toBe(8);
+        expect(draw(0.6)).toBe(20);
+        expect(draw(2)).toBe(6);
     });
 });

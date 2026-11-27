@@ -110,13 +110,13 @@
       "source": "public/js/play.js",
       "destination": "resolver/public/js/play.js",
       "sha256": "f567d13c8cf76352d046dbe9a3e98ddd0c097c2e46b093c25da3f719fd09f65f",
-      "modifiedSha256": "427ca0ab6eb52fb0635c8898b4f26a770076f930f77eb31e2a2a031e1f623aa4"
+      "modifiedSha256": "c473f1e59076d474bb337b699472476613b2d10c7e945d07461a509f1842042d"
     },
     {
       "source": "public/js/playback-model.js",
       "destination": "resolver/public/js/playback-model.js",
       "sha256": "b0abe992806ed2da7895bfcda33ef152b1f4c6e5f1971a3a9b2d2c9d22e90623",
-      "modifiedSha256": "01c4265c34e83b9bd016b0368e2bc7203a033f7200e25db4ef1c665eb86cdc3c"
+      "modifiedSha256": "1e2aa74ab526cb4bf403ee8286bae3ae79270ae182eb7898e6c81a448a925312"
     },
     {
       "source": "public/js/playback-options.js",
@@ -170,13 +170,13 @@
       "source": "public/play.html",
       "destination": "templates/xcpcio_resolver_play.html",
       "sha256": "b99524cc2d9c548b978de1bb6d6efd39b12f5debf907bf5e693cd3a8683b30b7",
-      "modifiedSha256": "c4203be467da5ad6b12986b153bd8d9d6015f8cfa24687ef1dc23e6e6301cb93"
+      "modifiedSha256": "152a9b0790383e1839d22d023ca7da02bd98dcd5b845faa140e877f7f02c0f04"
     },
     {
       "source": "server/lib/engine.js",
       "destination": "resolver/server/lib/engine.js",
       "sha256": "b74872b78f03b96d06a0c40e94464f26d19326c6200808d9bb007e94bb39b0e1",
-      "modifiedSha256": "f1a0b38f0c86fda08dca0a1fd6c3b5dd236ee3a5b58c7e4d33ae277ecc8082d4"
+      "modifiedSha256": "c0ac9ff330c796d98dcdb038b431de7610348fdd8feaa00bf9211099aaf34f9a"
     },
     {
       "source": "server/lib/limits.js",
@@ -290,7 +290,7 @@
       "source": "public/js/render/presentation-ports.js",
       "destination": "resolver/public/js/render/presentation-ports.js",
       "sha256": "630fc99f12e41cce2136d07c0ab81e83554f0c1123f06456ec24b6154300dc88",
-      "modifiedSha256": "630fc99f12e41cce2136d07c0ab81e83554f0c1123f06456ec24b6154300dc88"
+      "modifiedSha256": "5d8e45ac990da405c92232c50dfae0bda732a595a26de7a71e54f8c73ad37a29"
     },
     {
       "source": "public/js/render/presentation-state.js",
@@ -308,7 +308,7 @@
       "source": "public/js/render/presentation-view.js",
       "destination": "resolver/public/js/render/presentation-view.js",
       "sha256": "30436cfccc9c6421e9ce7e172df2703387430025b5da8e7cf5a6946fc4bc4080",
-      "modifiedSha256": "0459b4e410ad89260c8985ce364e4347489801089a2a113aeb9e2f92bfd83589"
+      "modifiedSha256": "ff66e7485133063dd26545b30241d7aae7b2eb0440c64c20e499e64c3e67640a"
     },
     {
       "source": "public/js/render/presentation-widths.js",

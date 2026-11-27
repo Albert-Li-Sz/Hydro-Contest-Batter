@@ -108,7 +108,6 @@ body.fullscreen.idle #screen { cursor: none; }
   #screen-content .screen-table td, #screen-content .screen-table th { padding: .44em .24em; }
 }
 
-body[data-program]:not([data-program=resolver]) #screen { transform:scale(var(--screen-scale, 1)); }
 #screen-pair { position:fixed; inset:0; display:grid; place-content:center; justify-items:center; gap:2vh; color:#fff; background:#101826; font:500 clamp(18px,3vw,52px)/1.2 system-ui,sans-serif; }
 #screen-pair h1 { font:inherit; margin:0; }
 #screen-code { font:700 clamp(40px,12vw,220px)/1.2 ui-monospace,monospace; letter-spacing:.06em; }

@@ -60,13 +60,17 @@ export class PortHost {
     this.instance = null;
   }
   /** Returns false when the item has no port. */
-  render(ctx, data, item, variant, { width, height, now, elapsed, words }) {
+  render(ctx, data, item, variant, { width, height, now, elapsed, words, scale = 1 }) {
     const key = portKey(item, variant);
     if (!key) return false;
     const contest = new ContestView(data, words);
-    if (this.key !== key || this.instance?.width !== width || this.instance?.height !== height) {
+    if (this.key !== key || this.scale !== scale || this.instance?.width !== width || this.instance?.height !== height) {
       this.key = key;
+      this.scale = scale;
       this.instance = FACTORIES[key]();
+      // HydroXCPCIO: a screen device's zoom shows fewer, larger rows on the scoreboard family.
+      if (typeof this.instance.teamsPerScreen === "number" && scale !== 1)
+        this.instance.teamsPerScreen = Math.max(4, Math.round(this.instance.teamsPerScreen / scale));
       this.instance.image = this.image;
       this.instance.words = words;
       this.instance.item = item;

@@ -18,10 +18,23 @@ interface Pairing {
 export interface ScreenClient {
     width: number; height: number; screenWidth: number; screenHeight: number; dpr: number; fullscreen: boolean; version: string; ip: string; ua: string;
 }
+/** Keys a manager can press on a screen from the device row; the screen answers each with a receipt. */
+export const remoteKeys = ['prev', 'next', 'pause', 'fullscreen', 'exit-fullscreen'] as const;
+export type RemoteKey = typeof remoteKeys[number];
+export interface RemoteCommand { id: string; key: RemoteKey; at: number }
+export interface RemoteAck {
+    id: string; key: RemoteKey; ok: boolean; message: string; at: number;
+    state: { page?: number; pages?: number; paused?: boolean; fullscreen?: boolean };
+}
+/** What the screen showed: a frame of a canvas screen, or the markup of a DOM screen. */
+export interface ScreenThumb { kind: 'image' | 'html'; data: string; width: number; height: number; type: ScreenType; at: number }
 export interface ScreenDevice {
     _id: string; contestKey: string; slot: number; name: string; secretHash?: string; linkHash?: string;
     type: ScreenType; boardId: string | null; scale: number; identifyUntil: number; reloadAt: number;
     issuedAt: Date; lastSeen: Date | null; client: ScreenClient | null;
+    commands?: RemoteCommand[]; ack?: RemoteAck | null; thumb?: ScreenThumb | null;
+    /** A manager has the device list open until then; screens send thumbnails meanwhile. */
+    watchUntil?: number;
 }
 declare module 'hydrooj' {
     interface Collections { 'xcpcio.screens.pairings': Pairing; 'xcpcio.screens.devices': ScreenDevice }
@@ -31,6 +44,36 @@ export const writeHeartbeat = (device: Pick<ScreenDevice, 'lastSeen' | 'client'>
     !device.lastSeen || now - device.lastSeen.getTime() >= 10000 || JSON.stringify(client) !== JSON.stringify(device.client);
 export const deviceItem = (type: ScreenType, item: ScreenItem, boardId?: string | null) =>
     boardId && standingsTypes.has(type) ? { ...item, boardId } : item;
+export const maxThumbBytes = 96 * 1024;
+// The markup is shown in a script-less sandbox; these never belong in a screen's snapshot anyway.
+const unsafeMarkup = /<\s*\/?\s*(?:script|iframe|frame|object|embed|meta|base|link|form|portal)\b|\son[a-z]+\s*=|javascript:/i;
+export function screenThumb(raw: any, now: number): ScreenThumb {
+    const kind = raw?.kind, data = raw?.data;
+    const size = (n: unknown) => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= 10000;
+    if (!['image', 'html'].includes(kind) || typeof data !== 'string' || !data || data.length > maxThumbBytes
+        || !size(raw?.width) || !size(raw?.height) || !screenTypes.includes(raw?.type)) throw new ScreenError('缩略图无效');
+    if (kind === 'image' && !/^data:image\/(?:webp|jpeg|png);base64,[A-Za-z\d+/]+={0,2}$/.test(data)) throw new ScreenError('缩略图无效');
+    if (kind === 'html' && unsafeMarkup.test(data)) throw new ScreenError('缩略图无效');
+    return { kind, data, width: raw.width, height: raw.height, type: raw.type, at: now };
+}
+export function remoteAcks(raw: unknown, pending: RemoteCommand[], now: number): RemoteAck[] {
+    if (!Array.isArray(raw)) return [];
+    return raw.slice(0, 10).flatMap((ack: any) => {
+        const command = pending.find(c => c.id === ack?.id);
+        if (!command || typeof ack.ok !== 'boolean') return [];
+        const count = (n: unknown) => Number.isInteger(n) && (n as number) >= 0 && (n as number) < 100000 ? n as number : undefined;
+        const state = { page: count(ack.state?.page), pages: count(ack.state?.pages),
+            paused: typeof ack.state?.paused === 'boolean' ? ack.state.paused : undefined,
+            fullscreen: typeof ack.state?.fullscreen === 'boolean' ? ack.state.fullscreen : undefined };
+        return [{ id: command.id, key: command.key, ok: ack.ok, message: String(ack.message || '').slice(0, 120), at: now,
+            state: Object.fromEntries(Object.entries(state).filter(([, v]) => v !== undefined)) }];
+    });
+}
+/** What a screen reads back on each poll: its settings, pending commands and whether to send thumbnails. */
+export const deviceState = (device: ScreenDevice, now = Date.now()) => ({
+    id: device._id, name: device.name, scale: device.scale, identifyUntil: device.identifyUntil, reloadAt: device.reloadAt,
+    commands: device.commands || [], watch: (device.watchUntil || 0) > now,
+});
 export function screenClient(raw: any, ip: string, ua: string): ScreenClient {
     const px = (n: unknown) => Math.min(65535, Math.max(0, Math.round(Number(n) || 0)));
     return { width: px(raw?.width), height: px(raw?.height), screenWidth: px(raw?.screenWidth), screenHeight: px(raw?.screenHeight),
@@ -91,7 +134,7 @@ export class ScreenDevices {
     async authenticate(cookie?: string) {
         if (!isSecret(cookie)) return null;
         const digest = hash(cookie);
-        return this.devices.findOne({ $or: [{ secretHash: digest }, { linkHash: digest }] });
+        return this.devices.findOne({ $or: [{ secretHash: digest }, { linkHash: digest }] }, { projection: { thumb: 0 } });
     }
     async pair(cookie: string | undefined, ip: string, now = Date.now()) {
         await this.ensureIndexes();
@@ -128,7 +171,7 @@ export class ScreenDevices {
                 if (await this.devices.findOne({ secretHash: pair.secretHash })) throw unavailable();
                 if (input.action === 'repair') {
                     const result = await this.devices.updateOne(filter, { $set: { secretHash: pair.secretHash, issuedAt: new Date(now),
-                        lastSeen: null, client: null, identifyUntil: 0, reloadAt: 0 }, $unset: { linkHash: '' } });
+                        lastSeen: null, client: null, identifyUntil: 0, reloadAt: 0, thumb: null, commands: [], ack: null }, $unset: { linkHash: '' } });
                     if (!result.matchedCount) throw new ScreenError('设备不存在', 404);
                 } else {
                     const deviceId = randomBytes(12).toString('hex');
@@ -147,6 +190,13 @@ export class ScreenDevices {
             }
             return { ok: true };
         }
+        if (input.action === 'key') {
+            if (!remoteKeys.includes(input.key)) throw new ScreenError('未知按键');
+            const command: RemoteCommand = { id: randomBytes(6).toString('hex'), key: input.key, at: now };
+            const result = await this.devices.updateOne({ ...filter, secretHash: { $exists: true } }, { $push: { commands: { $each: [command], $slice: -10 } } });
+            if (!result.matchedCount) throw new ScreenError('设备不存在或需要重新配对', 404);
+            return { command };
+        }
         if (input.action === 'delete') {
             await this.devices.deleteOne(filter);
             return { ok: true };
@@ -154,7 +204,10 @@ export class ScreenDevices {
         const token = input.action === 'link' ? secret() : '';
         let patch: Partial<ScreenDevice>;
         switch (input.action) {
-        case 'edit': patch = settings(input, boards); break;
+        case 'edit':
+            patch = settings(input, boards);
+            if (!Object.keys(patch).length) throw new ScreenError('设备设置无效');
+            break;
         case 'identify': patch = { identifyUntil: now + 5000 }; break;
         case 'reload': patch = { reloadAt: now }; break;
         case 'link': patch = { linkHash: hash(kioskCookie(token)) }; break;
@@ -170,14 +223,42 @@ export class ScreenDevices {
         const cookie = kioskCookie(token);
         return await this.devices.findOne({ linkHash: hash(cookie) }, { projection: { _id: 1 } }) ? cookie : null;
     }
+    /** Receipts from the screen retire their commands; the latest is shown on the device row. */
+    async acknowledge(device: ScreenDevice, raw: unknown, now = Date.now()) {
+        const acks = remoteAcks(raw, device.commands || [], now);
+        if (!acks.length) return;
+        await this.devices.updateOne({ _id: device._id }, { $pull: { commands: { id: { $in: acks.map(a => a.id) } } }, $set: { ack: acks.at(-1)! } });
+        device.commands = (device.commands || []).filter(c => !acks.some(a => a.id === c.id));
+    }
+    private watched = new Map<string, number>();
+    /** Called while a manager's device list is open, at most one write per contest every 5 seconds. */
+    async watch(contestKey: string, now = Date.now()) {
+        if ((this.watched.get(contestKey) || 0) > now - 5000) return;
+        if (this.watched.size > 1000) this.watched.clear();
+        this.watched.set(contestKey, now);
+        await this.devices.updateMany({ contestKey }, { $set: { watchUntil: now + 15000 } });
+    }
+    /** Thumbnails are kept only while someone watches, and at most every 3 seconds per screen. */
+    async saveThumb(device: ScreenDevice, raw: unknown, now = Date.now()) {
+        if (!device.secretHash || (device.watchUntil || 0) <= now) return false;
+        const thumb = screenThumb(raw, now);
+        const result = await this.devices.updateOne({ _id: device._id, secretHash: device.secretHash,
+            $or: [{ 'thumb.at': { $exists: false } }, { 'thumb.at': { $lte: now - 3000 } }] }, { $set: { thumb } });
+        return result.modifiedCount > 0;
+    }
+    async thumb(contestKey: string, id: string) {
+        return (await this.devices.findOne({ _id: id, contestKey }, { projection: { thumb: 1 } }))?.thumb ?? null;
+    }
     async heartbeat(device: ScreenDevice, client: ScreenClient, now = Date.now()) {
         if (writeHeartbeat(device, client, now)) await this.devices.updateOne({ _id: device._id, secretHash: device.secretHash, lastSeen: device.lastSeen },
             { $set: { lastSeen: new Date(now), client } });
     }
     async list(contestKey: string, now = Date.now()) {
-        const docs = await this.devices.find({ contestKey }).sort({ issuedAt: 1 }).toArray();
-        return docs.map(({ _id: id, name, type, boardId, scale, lastSeen, client, secretHash }) => ({
+        const docs = await this.devices.find({ contestKey }, { projection: { 'thumb.data': 0 } }).sort({ issuedAt: 1 }).toArray();
+        return docs.map(({ _id: id, name, type, boardId, scale, lastSeen, client, secretHash, thumb, ack, commands }) => ({
             id, name, type, boardId, scale, lastSeen, client, online: !!secretHash && screenOnline(lastSeen, now), paired: !!secretHash,
+            thumb: thumb ? { at: thumb.at, type: thumb.type, kind: thumb.kind } : null, ack: ack ?? null,
+            pending: (commands || []).map(({ id: command, key, at }) => ({ id: command, key, at })),
         }));
     }
     async status(contestKey: string) {
@@ -187,7 +268,7 @@ export class ScreenDevices {
     }
     async revoke(contestKey: string) {
         const result = await this.devices.updateMany({ contestKey, secretHash: { $exists: true } },
-            { $unset: { secretHash: '', linkHash: '' }, $set: { lastSeen: null, client: null } });
+            { $unset: { secretHash: '', linkHash: '' }, $set: { lastSeen: null, client: null, thumb: null, commands: [], ack: null } });
         return result.modifiedCount;
     }
     remove(contestKey: string | RegExp) { return this.devices.deleteMany({ contestKey }); }

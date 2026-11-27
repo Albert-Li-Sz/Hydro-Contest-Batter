@@ -1,0 +1,17 @@
+{% set page_name = 'contest_xcpcio_perspective' %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<link rel="stylesheet" href="{{ codeBase }}/hydro-config.css">
+<div class="row resolver-config" id="hydro-resolver-config"><div class="medium-12 columns">
+  <section class="section visible"><div class="section__header resolver-heading">
+    <div><h1 class="section__title">选手视角</h1><p class="resolver-muted">{{ tdoc.title }}</p></div>
+    <div class="resolver-actions"><a class="button" href="{{ contestUrl }}/scoreboard/xcpcio-plus">增强榜</a><a class="button" href="{{ contestUrl }}/control#work">赛事工作台</a></div>
+  </div></section>
+  <section class="section visible"><div class="section__body">
+    <input class="textbox" type="search" id="perspective-search" aria-label="查找队伍" autocomplete="off">
+    <form method="post" class="resolver-perspective" id="perspective-teams"></form>
+  </div></section>
+</div></div>
+<script id="perspective-runtime" type="application/json">{{ runtimeJson | safe }}</script>
+<script type="module" src="{{ codeBase }}/js/hydro-perspective.js"></script>
+{% endblock %}

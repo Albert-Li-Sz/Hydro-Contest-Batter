@@ -15,8 +15,8 @@ declare module 'hydrooj' { interface Collections { 'xcpcio.ceremony': CeremonyDo
 export function applyCeremony(ctx: Context, results: { readSource(tdoc: Tdoc, id: string): Promise<ResultsData>; sources(tdoc: Tdoc): Promise<ResultOption[]> }) {
     const collection = ctx.db.collection('xcpcio.ceremony');
     const logos = JSON.parse(fs.readFileSync(path.join(__dirname, '../logos/index.json'), 'utf8')).names;
-    ctx.on('contest/del', (domain, tid) => collection.deleteOne({ _id: `${domain}/${tid}` }));
-    ctx.on('domain/delete', domain => collection.deleteMany({ _id: new RegExp('^' + domain.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '/') }));
+    ctx.on('contest/del', (domain, tid) => { void collection.deleteOne({ _id: `${domain}/${tid}` }).catch(() => null); });
+    ctx.on('domain/delete', domain => { void collection.deleteMany({ _id: new RegExp('^' + domain.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '/') }).catch(() => null); });
     class CeremonyHandler extends Handler {
         tdoc!: Tdoc;
         key!: string;

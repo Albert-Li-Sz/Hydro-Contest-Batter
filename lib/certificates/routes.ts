@@ -197,6 +197,8 @@ export function applyCertificates(ctx: Context, dependencies: {
     }
 
     ctx.on('handler/after', async (handler) => {
+        // 选手视角 (lib/perspective.ts): a manager looking through a team's eyes is not that team.
+        if ((handler as { xcpcioPerspective?: unknown }).xcpcioPerspective) return;
         if (handler.response.template !== 'contest_detail.html' || !handler.user._id) return;
         const tdoc = handler.response.body?.tdoc;
         if (tdoc?.rule !== 'acm') return;
