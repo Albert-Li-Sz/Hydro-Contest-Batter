@@ -102,8 +102,8 @@ html { scroll-padding-top: calc(var(--nav-h) + 20px); -webkit-text-size-adjust: 
 body { margin: 0; min-height: 100vh; color: var(--text-1); background: var(--bg); line-height: 1.75; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; transition: background-color .25s, color .25s; }
 a { color: var(--brand-1); text-decoration: none; font-weight: 500; transition: color .2s, opacity .2s; }
 a:hover { color: var(--brand-2); }
-main a:not(.btn):not(.feature):not(.header-anchor) { text-decoration: underline; text-underline-offset: 2px; text-decoration-color: color-mix(in srgb, var(--brand-1) 40%, transparent); }
-main a:not(.btn):not(.feature):not(.header-anchor):hover { text-decoration-color: currentColor; }
+main a:not(.btn):not(.feature):not(.header-anchor):not(.hero-badge) { text-decoration: underline; text-underline-offset: 2px; text-decoration-color: color-mix(in srgb, var(--brand-1) 40%, transparent); }
+main a:not(.btn):not(.feature):not(.header-anchor):not(.hero-badge):hover { text-decoration-color: currentColor; }
 :focus-visible { outline: 2px solid var(--brand-1); outline-offset: 3px; border-radius: 4px; }
 img { max-width: 100%; }
 .skip-link { position: fixed; z-index: 100; left: 1rem; top: .6rem; padding: .45rem .9rem; border-radius: 8px; background: var(--bg-elv); box-shadow: var(--shadow-3); transform: translateY(-160%); }
