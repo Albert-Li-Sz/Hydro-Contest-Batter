@@ -3,6 +3,10 @@ import path from 'node:path';
 import { ContestModel, Context, Handler, NotFoundError, ObjectId, param, PERM, PRIV, Tdoc, Types, UserModel } from 'hydrooj';
 import { type CaptureDevice, isCaptureOnline } from './live/capture';
 import { applyBeat, BEAT_MS, type PresenceDoc, presenceSnapshot, type PresenceTeam } from './presence';
+import { applyIpCollection } from './ip-collect-routes';
+import type { ContestLinks } from './links';
+import { ManageError } from './manage/users';
+import { timeZone } from './time-zone';
 import { seatOf } from './print';
 import { resolverCodeBase } from './resolver-data';
 import { createSeatStore } from './seat-store';
@@ -23,8 +27,9 @@ const contestBase = (tdoc: Tdoc) => `/d/${encodeURIComponent(tdoc.domainId)}/con
  * contest pages (frontend/presence.js) and from the pages it opens; with IP login (onsite-toolkit)
  * and 画面采集 compared against what is seen. Before the start it is the check-in list.
  */
-export function applyPresence(ctx: Context) {
+export function applyPresence(ctx: Context, links: ContestLinks<Tdoc>) {
     const codeBase = resolverCodeBase(JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8')).version);
+    const collection = applyIpCollection(ctx, links, codeBase);
     const records = ctx.db.collection('xcpcio.presence');
     const raw = (name: string): any => ctx.db.collection(name as never);
     const seats = createSeatStore(ctx);
@@ -189,12 +194,23 @@ export function applyPresence(ctx: Context) {
             this.response.body = {
                 tdoc: this.tdoc, codeBase,
                 runtimeJson: toScriptJson({
-                    dataUrl: `${base}/presence/data`, contestUrl: base, title: this.tdoc.title,
+                    dataUrl: `${base}/presence/data`, settingsUrl: `${base}/presence`, collect: await collection.summary(this.tdoc), timeZone: timeZone(), contestUrl: base, title: this.tdoc.title,
                     // 座位与 IP (system administrators): where seats and IP login are fixed.
                     seatsUrl: this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) ? '/manage/xcpcio-users#seats' : null,
                     beginAt: this.tdoc.beginAt, endAt: this.tdoc.endAt, refreshMs: 5000,
                 }),
             };
+        }
+
+        @param('enabled', (value: unknown) => Types.Boolean[0](value))
+        @param('networks', Types.String, true)
+        async post(_domainId: string, enabled: boolean, networks = '') {
+            try { this.response.body = await collection.save(this.tdoc, enabled, networks); }
+            catch (error) {
+                if (!(error instanceof ManageError)) throw error;
+                this.response.status = error.status;
+                this.response.body = { error: error.message };
+            }
         }
     }
 

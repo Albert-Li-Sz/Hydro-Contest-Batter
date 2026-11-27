@@ -33,6 +33,7 @@ import { applyClarificationDesk } from './lib/clarification-desk-routes';
 import { applyControl } from './lib/control-routes';
 import { displaySpecialAwards } from './lib/special-awards';
 import { applyBoardRules, labelsHidden } from './lib/ccpc-board';
+import { setTimeZone } from './lib/time-zone';
 
 export const name = 'scoreboard-xcpcio-plus';
 export const inject = ['storage'];
@@ -48,6 +49,7 @@ export const Config = Schema.object({
         key: Schema.string().required().description('Hydro 公开个人资料字段名'),
         label: Schema.string().required().description('筛选项名称'),
     })).default(defaultProfileFields).description('成员批量筛选使用的额外公开资料字段'),
+    timeZone: Schema.string().default('Asia/Shanghai').description('赛场时区（IANA 名称，如 Asia/Shanghai），用于封榜提醒、气球小票、打印与成绩快照的时间'),
 });
 
 interface SettingsDoc {
@@ -166,6 +168,7 @@ export async function loadRoster(tdoc: Tdoc, fields: FilterField[] = defaultProf
 }
 
 export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
+    if (!setTimeZone(config.timeZone)) ctx.logger('xcpcio').warn('timeZone %s is not a known IANA time zone; using Asia/Shanghai', config.timeZone);
     const collection = ctx.db.collection('xcpcio.enhanced.settings');
     const settingsKey = (domainId: string, contestId: string) => `${domainId}/${contestId}`;
     const loadSettings = async (tdoc: Tdoc) => {
@@ -393,7 +396,7 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
     applyIntegrity(ctx, { loadData: (tdoc) => loadData(tdoc, true, true, true), snapshot: results.snapshot, jury: jury.load });
     applyCcs(ctx, { loadSettings, loadData: loadContestData, loadJury: jury.load });
     applyManage(ctx, { machines: monitor.machines, links, beforeRejudge: results.beforeRejudge, holdForRejudge: juryRoutes.holdForRejudge });
-    applyPresence(ctx);
+    applyPresence(ctx, links);
     applyPrintServers(ctx, { receipts: balloons.receipts });
     const live = config.live !== false
         ? applyLive(ctx, { loadSettings, loadData: (tdoc, identity) => loadData(tdoc, false, identity, 'live'), capture: config.liveCapture !== false, publicVideos: reactions?.publicVideos, staffReplay: reactions?.staffReplay, captureStunPort: config.liveCaptureStunPort ?? 3478, links })

@@ -20,7 +20,7 @@ export interface SeatBackupDoc extends SeatBackupData {
     _id: ObjectId;
     createdAt: Date;
     createdBy: number;
-    reason: 'manual' | 'clear' | 'restore';
+    reason: 'manual' | 'clear' | 'restore' | 'import';
     label: string;
 }
 
@@ -57,17 +57,17 @@ export function createSeatStore(ctx: Context) {
         const virtual = uids.filter((uid) => uid < 0);
         const [udocs, vdocs, names] = await Promise.all([
             people.length ? UserModel.coll.find({ _id: { $in: people } })
-                .project<{ _id: number; uname: string; seat?: unknown; loginat?: Date; loginip?: string; priv: number }>({ _id: 1, uname: 1, seat: 1, loginat: 1, loginip: 1, priv: 1 }).toArray() : [],
-            virtual.length ? raw('vuser').find({ _id: { $in: virtual } }).project({ _id: 1, uname: 1, displayName: 1, seat: 1 }).toArray() : [],
+                .project<{ _id: number; uname: string; school?: string; seat?: unknown; loginat?: Date; loginip?: string; priv: number }>({ _id: 1, uname: 1, school: 1, seat: 1, loginat: 1, loginip: 1, priv: 1 }).toArray() : [],
+            virtual.length ? raw('vuser').find({ _id: { $in: virtual } }).project({ _id: 1, uname: 1, displayName: 1, school: 1, seat: 1 }).toArray() : [],
             people.length ? raw('domain.user').find({ domainId, uid: { $in: people } }).project({ uid: 1, displayName: 1 }).toArray() : [],
         ]);
         const displayName = new Map<number, string>(names.map((doc: { uid: number; displayName?: string }) => [doc.uid, doc.displayName || '']));
         return [
-            ...vdocs.map((doc: { _id: number; uname: string; displayName?: string; seat?: unknown }): SeatAccount => ({
-                uid: doc._id, kind: 'team', uname: doc.uname, name: doc.displayName || teams.get(doc._id)?.name || '', seat: seatText(doc.seat),
+            ...vdocs.map((doc: { _id: number; uname: string; displayName?: string; school?: string; seat?: unknown }): SeatAccount => ({
+                uid: doc._id, kind: 'team', uname: doc.uname, school: doc.school, name: doc.displayName || teams.get(doc._id)?.name || '', seat: seatText(doc.seat),
             })),
             ...udocs.map((doc): SeatAccount => ({
-                uid: doc._id, kind: 'user', uname: doc.uname, name: displayName.get(doc._id) || '', seat: seatText(doc.seat),
+                uid: doc._id, kind: 'user', uname: doc.uname, school: doc.school, name: displayName.get(doc._id) || '', seat: seatText(doc.seat),
                 loginat: doc.loginat || null, loginip: doc.loginip || '', team: teams.get(doc._id)?.name, group: teams.get(doc._id)?.group,
                 keepSessions: doc._id <= 1 || doc.priv === -1,
             })),
@@ -79,7 +79,7 @@ export function createSeatStore(ctx: Context) {
         const teams = new Map<number, { name: string; group: number }>();
         if (scope) {
             const entries: { uid: number; members?: number[]; displayName?: string }[] = await raw('document.status')
-                .find({ domainId: scope.domainId, docType: TYPE_CONTEST, docId: scope.docId }).project({ uid: 1, members: 1, displayName: 1 }).limit(SEAT_LIMIT).toArray();
+                .find({ domainId: scope.domainId, docType: TYPE_CONTEST, docId: scope.docId, attend: { $gte: 1 } }).project({ uid: 1, members: 1, displayName: 1 }).toArray();
             const uids = new Set<number>();
             for (const entry of entries) {
                 uids.add(entry.uid);
@@ -113,9 +113,10 @@ export function createSeatStore(ctx: Context) {
     }
 
     async function listBackups() {
+        const countKeys = (value: string, empty: string) => ({ $add: [{ $size: value }, { $size: { $ifNull: [empty, []] } }] });
         const docs = await backups.aggregate([
             { $sort: { _id: -1 } },
-            { $project: { createdAt: 1, createdBy: 1, reason: 1, label: 1, seats: { $size: '$seats' }, ips: { $size: '$ips' } } },
+            { $project: { createdAt: 1, createdBy: 1, reason: 1, label: 1, seats: countKeys('$seats', '$emptySeats'), ips: countKeys('$ips', '$freeIps') } },
         ]).toArray();
         const operators = await UserModel.coll.find({ _id: { $in: [...new Set<number>(docs.map((doc: { createdBy: number }) => doc.createdBy))] } })
             .project<{ _id: number; uname: string }>({ _id: 1, uname: 1 }).toArray();
@@ -145,32 +146,52 @@ export function createSeatStore(ctx: Context) {
         return { backup: String(saved._id), seats: plan.userSeats.length + plan.teamSeats.length, ips, sessions: plan.sessions.length };
     }
 
-    /** Puts a backup's seats and IP login back for the accounts that still exist. */
-    async function restore(data: SeatBackupData, options: { seats: boolean; ips: boolean }, source: string, operator: number) {
-        const userIds = [...new Set([...data.seats.filter((item) => item.kind === 'user').map((item) => item.uid), ...data.ips.map((item) => item.uid)])];
-        const teamIds = [...new Set(data.seats.filter((item) => item.kind === 'team').map((item) => item.uid))];
-        const [udocs, vdocs] = await Promise.all([
-            userIds.length ? UserModel.coll.find({ _id: { $in: userIds } }).project<{ _id: number }>({ _id: 1 }).toArray() : [],
-            teamIds.length ? raw('vuser').find({ _id: { $in: teamIds } }).project({ _id: 1 }).toArray() : [],
-        ]);
-        const present = new Set<number>([...udocs.map((doc) => doc._id), ...vdocs.map((doc: { _id: number }) => doc._id)]);
-        const seats = options.seats ? data.seats.filter((item) => present.has(item.uid)) : [];
-        const ips = options.ips ? data.ips.filter((item) => present.has(item.uid)) : [];
-        // What the restore overwrites is kept too.
-        const touched = [...new Set([...seats.map((item) => item.uid), ...ips.map((item) => item.uid)])];
-        if (touched.length) {
-            const ipDocs: IpLoginDoc[] = await ipLogins.find({ $or: [{ uid: { $in: touched } }, { _id: { $in: ips.map((item) => item.ip) } }] }).toArray();
-            const holders = [...new Set([...touched, ...ipDocs.map((doc) => doc.uid)])];
-            const before = backupOf(buildSeatRows(await accounts(holders, 'system', new Map()), ipDocs, true));
-            if (before.seats.length || before.ips.length) await saveBackup(before, `恢复“${source}”之前`, 'restore', operator);
+    /** Apply a restore/import after recording every targeted key, including formerly empty keys. */
+    async function restore(data: SeatBackupData, options: { seats: boolean; ips: boolean }, source: string, operator: number, reason: 'restore' | 'import' = 'restore') {
+        const requestedSeats = options.seats ? data.seats : [];
+        const emptySeats = options.seats ? data.emptySeats || [] : [];
+        const requestedIps = options.ips ? data.ips : [];
+        const freeIps = options.ips ? data.freeIps || [] : [];
+        const ids = [...new Set([...requestedSeats.map(item => item.uid), ...emptySeats, ...requestedIps.map(item => item.uid)])];
+        const users = await accounts(ids, 'system', new Map());
+        const present = new Map(users.map(user => [user.uid, user]));
+        const seats = requestedSeats.filter(item => present.has(item.uid));
+        const clearSeats = emptySeats.filter(uid => present.has(uid));
+        const ips = requestedIps.filter(item => present.has(item.uid));
+        const seatIds = [...new Set([...seats.map(item => item.uid), ...clearSeats])];
+        const addresses = [...new Set([...ips.map(item => item.ip), ...freeIps])];
+        const wanted = requestedSeats.length + emptySeats.length + requestedIps.length + freeIps.length;
+        const changedSeats = seats.length + clearSeats.length;
+        const changedIps = ips.length + freeIps.length;
+        const skipped = wanted - changedSeats - changedIps;
+        if (reason === 'import' && skipped) throw new ManageError('导入名单中的账号已变更，请刷新后重试');
+        let saved: SeatBackupDoc | undefined;
+        if (seatIds.length || addresses.length) {
+            const previous: IpLoginDoc[] = addresses.length ? await ipLogins.find({ _id: { $in: addresses } }).toArray() : [];
+            const occupied = new Set(previous.map(doc => doc._id));
+            const targets = seatIds.map(uid => present.get(uid)!);
+            const before = {
+                seats: targets.filter(user => user.seat).map(({ uid, kind, seat }) => ({ uid, kind, seat })),
+                ips: previous.map(doc => ({ ip: doc._id, uid: doc.uid })),
+                emptySeats: targets.filter(user => !user.seat).map(user => user.uid),
+                freeIps: addresses.filter(ip => !occupied.has(ip)),
+            };
+            saved = await saveBackup(before, `${reason === 'import' ? '导入' : '恢复'}“${source}”之前`, reason, operator);
         }
-        for (const item of seats) {
-            await (item.kind === 'team' ? raw('vuser') : UserModel.coll).updateOne({ _id: item.uid }, { $set: { seat: item.seat } } as never);
+        try {
+            for (const item of seats) await (item.uid < 0 ? raw('vuser') : UserModel.coll).updateOne({ _id: item.uid }, { $set: { seat: item.seat } } as never);
+            for (const uid of clearSeats) await (uid < 0 ? raw('vuser') : UserModel.coll).updateOne({ _id: uid }, { $unset: { seat: '' } } as never);
+            if (freeIps.length) await ipLogins.deleteMany({ _id: { $in: freeIps } });
+            for (const item of ips) await ipLogins.updateOne({ _id: item.ip }, { $set: { uid: item.uid }, $unset: { xcpcioCollect: '' } }, { upsert: true });
+        } finally {
+            if (changedSeats || changedIps) forgetAccounts();
         }
-        for (const item of ips) await ipLogins.updateOne({ _id: item.ip }, { $set: { uid: item.uid } }, { upsert: true });
-        if (seats.length) forgetAccounts();
-        const wanted = (options.seats ? data.seats.length : 0) + (options.ips ? data.ips.length : 0);
-        return { seats: seats.length, ips: ips.length, skipped: wanted - seats.length - ips.length };
+        return { seats: changedSeats, ips: changedIps, skipped, backup: saved ? String(saved._id) : undefined };
+    }
+
+    async function unmatchedIps(participants: SeatRow[]) {
+        const docs: IpLoginDoc[] = await ipLogins.find({ uid: { $nin: participants.map(row => row.uid) } }).project({ _id: 1, uid: 1 }).toArray();
+        return docs.map(doc => ({ ip: doc._id, uid: doc.uid }));
     }
 
     /** One account's seat and addresses; an address held by another account moves to this one. */
@@ -183,7 +204,7 @@ export function createSeatStore(ctx: Context) {
         if (!ips) return { moved: [] as { ip: string; uid: number }[] };
         const others: IpLoginDoc[] = ips.length ? await ipLogins.find({ _id: { $in: ips }, uid: { $ne: edit.uid } }).toArray() : [];
         await ipLogins.deleteMany({ uid: edit.uid, _id: { $nin: ips } });
-        for (const ip of ips) await ipLogins.updateOne({ _id: ip }, { $set: { uid: edit.uid } }, { upsert: true });
+        for (const ip of ips) await ipLogins.updateOne({ _id: ip }, { $set: { uid: edit.uid }, $unset: { xcpcioCollect: '' } }, { upsert: true });
         return { moved: others.map((doc) => ({ ip: doc._id, uid: doc.uid })) };
     }
 
@@ -195,7 +216,7 @@ export function createSeatStore(ctx: Context) {
         return owners;
     }
 
-    return { contest, contests, rows, saveBackup, listBackups, backup, clear, restore, update, ipOwners };
+    return { contest, contests, rows, saveBackup, listBackups, backup, clear, restore, update, ipOwners, unmatchedIps };
 }
 
 export type SeatStore = ReturnType<typeof createSeatStore>;

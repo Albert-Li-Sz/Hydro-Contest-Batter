@@ -59,3 +59,9 @@
   #hydro-presence .presence-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
   #hydro-presence .resolver-heading { flex-wrap: wrap; }
 }
+.presence-collect { margin: 0 0 16px; }
+.presence-collect summary { cursor: pointer; font-weight: 600; }
+#collect-config { display: flex; align-items: end; flex-wrap: wrap; gap: .7rem; padding-block: .75rem; }
+#collect-config label { margin: 0; }
+#collect-config input.textbox { display: block; min-width: 15em; }
+#collect-config [hidden] { display: none; }

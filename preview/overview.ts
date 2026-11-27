@@ -1,3 +1,4 @@
+import { timeZone } from '../lib/time-zone';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Environment } from 'nunjucks';
 import type { BoardData } from '../lib/board';
@@ -68,7 +69,7 @@ export function createOverviewPreview(env: Environment, version: string) {
         if (url.pathname === `${base}/overview`) {
             response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(env.render('xcpcio_overview.html', {
                 codeBase, title: '2026 年校程序设计竞赛 · 赛况总览',
-                runtimeJson: toScriptJson({ dataUrl: `${base}/overview/data`, contestUrl: base, refreshMs: 3000 }),
+                runtimeJson: toScriptJson({ timeZone: timeZone(), dataUrl: `${base}/overview/data`, contestUrl: base, refreshMs: 3000 }),
             }));
             return true;
         }

@@ -1,3 +1,4 @@
+import { timeZone } from './time-zone';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -9,7 +10,7 @@ import type { MonitorMachine } from './monitor';
 import { applyIpLoginGuard } from './ip-login-guard';
 import { createSeatStore, contestKeyOf } from './seat-store';
 import {
-    backupFile, backupOf, normalizeBackup, normalizeClearOptions, normalizeSeatEdit, normalizeSeatQuery, scopeLabel, selectSeatRows,
+    backupFile, backupOf, normalizeBackup, normalizeClearOptions, normalizeSeatEdit, normalizeSeatQuery, parseSeatImport, scopeLabel, seatCoverage, seatImportData, selectSeatRows,
 } from './manage/seats';
 import { resolverCodeBase } from './resolver-data';
 import { toScriptJson } from './settings';
@@ -137,17 +138,26 @@ export function applyManage(ctx: Context, dependencies: {
     }
 
     /** Accounts named by uid or login name, as typed into the team form. */
-    async function resolveAccounts(names: unknown, label: string) {
+    async function resolveAccounts(names: unknown, label: string, forImport = false) {
         if (!Array.isArray(names)) return undefined;
-        const uids: number[] = [];
-        for (const name of names.map((value) => String(value).trim()).filter(Boolean)) {
-            const udoc = /^\d+$/.test(name)
-                ? await UserModel.coll.findOne({ _id: Number(name) })
-                : await UserModel.coll.findOne({ unameLower: name.toLowerCase() });
-            if (!udoc || udoc._id <= 1) throw new ManageError(`${label} ${name} 不存在`);
-            uids.push(udoc._id);
-        }
-        return uids;
+        const list = names.map(value => String(value).trim()).filter(Boolean);
+        const selector = { $or: [
+            { unameLower: { $in: list.map(name => name.toLowerCase()) } },
+            { _id: { $in: list.filter(name => /^-?\d+$/.test(name)).map(Number) } },
+        ] };
+        const fields = { _id: 1, unameLower: 1 };
+        const users = await UserModel.coll.find(selector).project<{ _id: number; unameLower: string }>(fields).toArray();
+        const virtual: typeof users = forImport ? await raw('vuser').find(selector).project(fields).toArray() : [];
+        const docs = [...users, ...virtual];
+        const byId = new Map(docs.map(doc => [doc._id, doc]));
+        const byName = new Map(docs.map(doc => [doc.unameLower, doc]));
+        return list.map(name => {
+            const named = byName.get(name.toLowerCase());
+            const numbered = /^-?\d+$/.test(name) ? byId.get(Number(name)) : undefined;
+            const doc = forImport ? named || numbered : /^\d+$/.test(name) ? numbered : named;
+            if (!doc || doc._id === 0 || doc._id === 1) throw new ManageError(`${label} ${name} 不存在`);
+            return doc._id;
+        });
     }
 
     /** The 座位与 IP tab's selection: one contest or the whole site, narrowed by room, filter and search. */
@@ -168,7 +178,7 @@ export function applyManage(ctx: Context, dependencies: {
             this.response.template = 'xcpcio_manage_users.html';
             this.response.body = {
                 codeBase,
-                runtimeJson: toScriptJson({ base: this.request.path, dataUrl: `${this.request.path}/data`, domainId: this.domain._id }),
+                runtimeJson: toScriptJson({ timeZone: timeZone(), base: this.request.path, dataUrl: `${this.request.path}/data`, domainId: this.domain._id }),
             };
         }
 
@@ -274,6 +284,16 @@ export function applyManage(ctx: Context, dependencies: {
         }
 
         @param('payload', Types.String)
+        async postImportSeats(domainId: string, rawPayload: string) {
+            const { mode, text, contest } = this.payload(rawPayload, 1_600_000);
+            const entries = parseSeatImport(mode, text);
+            const uids = (await resolveAccounts(entries.map(row => row.account), '账号', true))!;
+            const chosen = contest ? await seatSelection(domainId, { contest }) : null;
+            const data = seatImportData(mode, entries, uids, chosen ? new Set(chosen.all.map(row => row.uid)) : undefined);
+            this.response.body = await seats.restore(data, { seats: mode === 'seat', ips: mode === 'ip' }, chosen?.scope?.title || '全站', this.user._id, 'import');
+        }
+
+        @param('payload', Types.String)
         async postBackupSeats(domainId: string, rawPayload: string) {
             const selection = await seatSelection(domainId, this.payload(rawPayload));
             const data = backupOf(selection.rows);
@@ -344,7 +364,11 @@ export function applyManage(ctx: Context, dependencies: {
         @param('id', Types.String, true)
         async get(domainId: string, tab = 'users', q = '', page = 1, contest = '', zone = '', filter = '', id = '') {
             if (tab === 'seats') this.response.body = await this.seats(domainId, { contest, zone, filter, q }, page);
-            else if (tab === 'seat-backups') this.response.body = { backups: await seats.listBackups() };
+            else if (tab === 'seat-roster') {
+                const selection = await seatSelection(domainId, { contest });
+                if (!selection.scope) throw new ManageError('请选择比赛');
+                this.response.body = seatCoverage(selection.all, await seats.unmatchedIps(selection.all));
+            } else if (tab === 'seat-backups') this.response.body = { backups: await seats.listBackups() };
             else if (tab === 'seat-backup') {
                 const doc = await seats.backup(id);
                 this.response.body = backupFile(doc, doc);
@@ -507,7 +531,7 @@ export function applyManage(ctx: Context, dependencies: {
             this.response.template = 'xcpcio_manage_judges.html';
             this.response.body = {
                 codeBase,
-                runtimeJson: toScriptJson({
+                runtimeJson: toScriptJson({ timeZone: timeZone(),
                     base: this.request.path, dataUrl: `${this.request.path}/data`, scopes: judgeScopes,
                     langs: Object.entries(SettingModel.langs || {}).filter(([, lang]) => !(lang as { remote?: unknown }).remote && !(lang as { hidden?: boolean }).hidden)
                         .map(([key, lang]) => [key, (lang as { display?: string }).display || key]),
@@ -705,7 +729,7 @@ export function applyManage(ctx: Context, dependencies: {
             this.response.template = 'xcpcio_manage_rejudge.html';
             this.response.body = {
                 codeBase,
-                runtimeJson: toScriptJson({
+                runtimeJson: toScriptJson({ timeZone: timeZone(),
                     base: this.request.path, dataUrl: `${this.request.path}/data`, historyUrl: `${this.request.path}/history`,
                     domainId: this.domain._id, statuses: rejudgeStatuses, max: MAX_REJUDGE,
                 }),

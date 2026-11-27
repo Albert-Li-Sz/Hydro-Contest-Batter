@@ -40,7 +40,7 @@ const clock = (at) => {
     const seconds = Math.max(0, Math.floor((new Date(at) - new Date(data.contest.beginAt)) / 1000));
     return `${Math.floor(seconds / 3600)}:${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 };
-const wall = (at) => new Date(at).toLocaleTimeString('zh-CN', { hour12: false });
+const wall = (at) => new Date(at).toLocaleTimeString('zh-CN', { hour12: false, timeZone: runtime.timeZone, timeZoneName: 'shortOffset' });
 const naturally = new Intl.Collator('zh-CN', { numeric: true });
 const zoneKey = (team) => (team?.seat ? team.zone || '（无前缀）' : '（未导入座位）');
 const stateOf = (balloon) => (balloon.state === 'revoked' ? 'revoked' : balloon.delivered ? 'delivered' : balloon.held ? 'held' : 'pending');
@@ -102,11 +102,52 @@ function renderStats() {
         counts[stateOf(balloon)]++;
         if (balloon.state === 'active' && !balloon.delivered && tickets[balloon.ticket.status] !== undefined) tickets[balloon.ticket.status]++;
     }
-    const items = [[counts.pending, '待配送'], [counts.delivered, '已送达']];
-    if (counts.held) items.push([counts.held, '封榜暂缓']);
-    if (counts.revoked) items.push([counts.revoked, '重测撤销']);
+    const items = [[counts.pending, '待配送', 'pending'], [counts.delivered, '已送达', 'delivered']];
+    if (counts.held) items.push([counts.held, '封榜暂缓', 'held']);
+    if (counts.revoked) items.push([counts.revoked, '重测撤销', 'revoked']);
     if (data.tickets) items.push([tickets.pending + tickets.printing, '小票待打印'], [tickets.failed, '小票打印失败']);
-    return el('div', { class: 'resolver-stats balloon-stats' }, ...items.map(([value, label]) => el('div', {}, el('strong', { text: value }), el('span', { text: label }))));
+    return el('div', { class: 'resolver-stats balloon-stats' }, ...items.map(([value, label, state]) => {
+        const count = [el('strong', { text: value }), el('span', { text: label })];
+        if (!state) return el('div', {}, ...count);
+        return el('div', {}, el('button', { type: 'button', disabled: !value, title: `定位第一个${label}的格子`, onclick: () => {
+            teamMatrix.open = true;
+            fillTeamMatrix();
+            const cell = teamMatrix.querySelector(`[data-state="${state}"]`);
+            if (cell) { cell.focus({ preventScroll: true }); cell.scrollIntoView({ block: 'center', inline: 'nearest' }); }
+        } }, ...count));
+    }));
+}
+
+let teamMatrix, matrixOpen = false;
+const symbols = { pending: '●', delivered: '✓', held: 'Ⅱ', revoked: '×' };
+
+function fillTeamMatrix() {
+    if (!teamMatrix.open || teamMatrix.querySelector('table')) return;
+    const cells = new Map(data.balloons.map(balloon => [`${balloon.uid}/${balloon.pid}`, balloon]));
+    const teams = new Map(data.teams.map(team => [team.uid, team]));
+    for (const { uid } of data.balloons) if (!teams.has(uid)) teams.set(uid, { uid, name: `UID ${uid}`, seat: '' });
+    const table = el('table', { class: 'data-table', 'aria-label': '队伍 × 题目' },
+        el('thead', {}, el('tr', {}, el('th', { scope: 'col', text: '队伍 / 座位' }), ...data.problems.map(p => el('th', { scope: 'col', text: p.label, title: p.title })))),
+        el('tbody', {}, ...[...teams.values()].sort((a, b) => naturally.compare(a.seat, b.seat) || naturally.compare(a.name, b.name)).map(team =>
+            el('tr', {}, el('th', { scope: 'row', text: [team.seat, team.name].filter(Boolean).join(' · ') }), ...data.problems.map(problem => {
+                const b = cells.get(`${team.uid}/${problem.pid}`);
+                if (!b) return el('td', { class: 'manage-dim', text: '·' });
+                const state = stateOf(b);
+                const label = `${team.name} ${problem.label} ${statusLabels[state]}`;
+                return el('td', { 'data-state': state, tabindex: '-1', 'aria-label': label, title: label, text: symbols[state] });
+            })))));
+    teamMatrix.append(el('div', { class: 'manage-scroll' }, table));
+}
+
+function renderTeamMatrix() {
+    teamMatrix = el('details', { class: 'manage-group balloon-matrix balloon-team-matrix', open: matrixOpen,
+        ontoggle: event => {
+            if (event.target !== teamMatrix) return;
+            matrixOpen = teamMatrix.open;
+            fillTeamMatrix();
+        } }, el('summary', { text: '队伍 × 题目气球总览' }));
+    fillTeamMatrix();
+    return teamMatrix;
 }
 
 /** Waiting balloons per room and problem: how many of which colour each room needs. */
@@ -266,7 +307,7 @@ function renderDeliver() {
     if (data.afterFreeze === 'hold' && data.contest.locked) notes.push('已封榜：封榜后的通过暂缓配送，解除封榜后自动转为待配送。');
     if (data.afterFreeze === 'encourage' && data.contest.locked) notes.push(`已封榜：气球不足 ${data.encourageCount} 个的队伍继续配送，其余暂缓到解除封榜。`);
     if (!data.teams.some((team) => team.seat)) notes.push('还没有导入座位号：气球无法按考场分组。可用 onsite-toolkit 导入座位后刷新。');
-    root.replaceChildren(status, ...notes.map((text) => el('p', { class: 'manage-alert', text })), renderStats(), renderMatrix(), renderFilters(), listBox);
+    root.replaceChildren(status, ...notes.map((text) => el('p', { class: 'manage-alert', text })), renderStats(), renderMatrix(), renderTeamMatrix(), renderFilters(), listBox);
     renderList();
 }
 

@@ -1,3 +1,4 @@
+import { timeZone } from '../lib/time-zone';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Environment } from 'nunjucks';
 import type { BoardData } from '../lib/board';
@@ -129,7 +130,7 @@ export function createControlPreview(env: Environment, version: string, demo: ()
             if (url.pathname === `${base}/${page}` && request.method === 'GET') {
                 response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(env.render(template, {
                     codeBase, tdoc: { title: demo().contest.contest_name },
-                    runtimeJson: toScriptJson({ base: `${base}/${page}${query}`, dataUrl: `${base}/${page}/data${query}`, domainId: 'system', contestUrl: base, canRestore: true }),
+                    runtimeJson: toScriptJson({ timeZone: timeZone(), base: `${base}/${page}${query}`, dataUrl: `${base}/${page}/data${query}`, domainId: 'system', contestUrl: base, canRestore: true }),
                 }));
                 return true;
             }

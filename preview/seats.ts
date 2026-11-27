@@ -1,11 +1,12 @@
 import {
     backupFile, backupOf, BACKUPS_KEPT, buildSeatRows, clearPlan, normalizeBackup, normalizeClearOptions, normalizeSeatEdit, normalizeSeatQuery,
-    type SeatAccount, type SeatBackupData, scopeLabel, selectSeatRows,
+    type SeatAccount, type SeatBackupData, parseSeatImport, seatImportData, seatCoverage, scopeLabel, selectSeatRows,
 } from '../lib/manage/seats';
+import { bindCollectedIp, type CollectBindings, type CollectedIp } from '../lib/ip-collect';
 import { ManageError } from '../lib/manage/users';
 import type { ContestLinks, LinkStatus } from '../lib/links';
 
-interface PreviewAccount { _id: number; uname: string; displayName: string; priv: number; loginat: Date }
+interface PreviewAccount { _id: number; uname: string; displayName: string; school?: string; priv: number; loginat: Date }
 interface PreviewTeam { _id: number; uname: string; displayName: string; members: number[] }
 interface PreviewContest { id: string; title: string; beginAt: Date; endAt: Date }
 
@@ -17,6 +18,9 @@ export function createSeatsPreview(users: PreviewAccount[], teams: PreviewTeam[]
     const now = Date.now();
     const seats = new Map<number, string>();
     const ips = new Map<string, number>();
+    const collected = new Map<string, CollectedIp['xcpcioCollect']>();
+    function setManual(ip: string, uid: number) { ips.set(ip, uid); collected.delete(ip); }
+    function forgetIp(ip: string) { collected.delete(ip); return ips.delete(ip); }
     const loginip = new Map<number, string>();
     const players = users.filter((user) => /^player\d+$/.test(user.uname));
     players.slice(0, 48).forEach((user, index) => {
@@ -55,7 +59,7 @@ export function createSeatsPreview(users: PreviewAccount[], teams: PreviewTeam[]
             }
             const user = users.find((item) => item._id === uid);
             return user ? [{
-                uid, kind: 'user', uname: user.uname, name: user.displayName, seat: seats.get(uid) || '', loginat: user.loginat, loginip: loginip.get(uid) || '',
+                uid, kind: 'user', uname: user.uname, school: user.school, name: user.displayName, seat: seats.get(uid) || '', loginat: user.loginat, loginip: loginip.get(uid) || '',
                 team: team.get(uid)?.name, group: team.get(uid)?.group, keepSessions: user.priv === -1,
             }] : [];
         });
@@ -95,7 +99,7 @@ export function createSeatsPreview(users: PreviewAccount[], teams: PreviewTeam[]
     async function data(query: URLSearchParams) {
         const tab = query.get('tab');
         if (tab === 'seat-backups') {
-            return { backups: backups.map(({ seats: list, ips: addresses, ...doc }) => ({ ...doc, seats: list.length, ips: addresses.length, operator: 'admin' })) };
+            return { backups: backups.map(({ seats: list, ips: addresses, ...doc }) => ({ ...doc, seats: list.length + (doc.emptySeats?.length || 0), ips: addresses.length + (doc.freeIps?.length || 0), operator: 'admin' })) };
         }
         if (tab === 'seat-backup') {
             const doc = backups.find((item) => item._id === query.get('id'));
@@ -103,6 +107,11 @@ export function createSeatsPreview(users: PreviewAccount[], teams: PreviewTeam[]
             return backupFile(doc, doc);
         }
         const chosen = selection(Object.fromEntries(query));
+        if (tab === 'seat-roster') {
+            if (!chosen.scope) throw new ManageError('请选择比赛');
+            const roster = rows(chosen.scope), uids = new Set(roster.map(row => row.uid));
+            return seatCoverage(roster, [...ips].filter(([, uid]) => !uids.has(uid)).map(([ip, uid]) => ({ ip, uid })));
+        }
         const number = Math.max(1, Number(query.get('page')) || 1);
         const active = chosen.scope === contests[0] && demoLinks ? await demoLinks.status({ domainId: 'system', docId: 'demo' }) : [];
         return {
@@ -120,8 +129,8 @@ export function createSeatsPreview(users: PreviewAccount[], teams: PreviewTeam[]
             if (edit.seat) seats.set(edit.uid, edit.seat); else seats.delete(edit.uid);
             if (edit.kind === 'team') return { moved: [] };
             const moved = edit.ips.filter((ip) => ips.has(ip) && ips.get(ip) !== edit.uid).map((ip) => ({ ip, uid: ips.get(ip)! }));
-            for (const [ip, uid] of ips) if (uid === edit.uid && !edit.ips.includes(ip)) ips.delete(ip);
-            for (const ip of edit.ips) ips.set(ip, edit.uid);
+            for (const [ip, uid] of ips) if (uid === edit.uid && !edit.ips.includes(ip)) forgetIp(ip);
+            for (const ip of edit.ips) setManual(ip, edit.uid);
             return { moved };
         }
         case 'backup_seats': {
@@ -140,24 +149,49 @@ export function createSeatsPreview(users: PreviewAccount[], teams: PreviewTeam[]
             const doc = save(backupOf(chosen.rows), scopeLabel(chosen.meta), 'clear');
             for (const uid of [...plan.userSeats, ...plan.teamSeats]) seats.delete(uid);
             let removed = 0;
-            for (const ip of plan.ips) if (ips.delete(ip)) removed++;
+            for (const ip of plan.ips) if (forgetIp(ip)) removed++;
             return { backup: doc._id, seats: plan.userSeats.length + plan.teamSeats.length, ips: removed, sessions: plan.sessions.length };
         }
+        case 'import_seats':
         case 'restore_seats': {
-            verify(payload.password);
-            const source = payload.id ? backups.find((item) => item._id === payload.id) : null;
-            if (payload.id && !source) throw new ManageError('备份不存在', 404);
-            const backup = source || normalizeBackup(payload.data);
+            let backup: SeatBackupData, reason: string, label: string;
+            if (name === 'import_seats') {
+                const entries = parseSeatImport(payload.mode, payload.text);
+                const docs = [...users, ...teams];
+                const uids = entries.map(({ account }) => {
+                    const doc = docs.find(item => item.uname.toLowerCase() === account.toLowerCase()) || docs.find(item => String(item._id) === account);
+                    if (!doc) throw new ManageError(`账号 ${account} 不存在`);
+                    return doc._id;
+                });
+                const scope = selection(payload).scope;
+                backup = seatImportData(payload.mode, entries, uids, scope ? new Set(rows(scope).map(row => row.uid)) : undefined);
+                reason = 'import'; label = `导入“${scope?.title || '全站'}”之前`;
+            } else {
+                verify(payload.password);
+                const source = payload.id ? backups.find(item => item._id === payload.id) : null;
+                if (payload.id && !source) throw new ManageError('备份不存在', 404);
+                backup = source || normalizeBackup(payload.data);
+                reason = 'restore'; label = `恢复“${source?.label || '备份文件'}”之前`;
+            }
             const exists = (uid: number) => accounts([uid], new Map()).length > 0;
-            const restoredSeats = payload.seats === false ? [] : backup.seats.filter((item) => exists(item.uid));
-            const restoredIps = payload.ips === false ? [] : backup.ips.filter((item) => exists(item.uid));
-            const touched = [...new Set([...restoredSeats.map((item) => item.uid), ...restoredIps.map((item) => item.uid)])];
-            const before = backupOf(rows(null).filter((row) => touched.includes(row.uid)));
-            if (before.seats.length || before.ips.length) save(before, `恢复“${source?.label || '备份文件'}”之前`, 'restore');
-            for (const item of restoredSeats) seats.set(item.uid, item.seat);
-            for (const item of restoredIps) ips.set(item.ip, item.uid);
-            const wanted = (payload.seats === false ? 0 : backup.seats.length) + (payload.ips === false ? 0 : backup.ips.length);
-            return { seats: restoredSeats.length, ips: restoredIps.length, skipped: wanted - restoredSeats.length - restoredIps.length };
+            const writeSeats = payload.seats === false ? [] : backup.seats.filter(item => exists(item.uid));
+            const writeIps = payload.ips === false ? [] : backup.ips.filter(item => exists(item.uid));
+            const empty = payload.seats === false ? [] : (backup.emptySeats || []).filter(exists);
+            const free = payload.ips === false ? [] : backup.freeIps || [];
+            const seatIds = new Set([...writeSeats.map(item => item.uid), ...empty]);
+            const addresses = new Set([...writeIps.map(item => item.ip), ...free]);
+            const before = {
+                seats: [...seatIds].filter(uid => seats.has(uid)).map(uid => ({ uid, kind: uid < 0 ? 'team' as const : 'user' as const, seat: seats.get(uid)! })),
+                ips: [...addresses].filter(ip => ips.has(ip)).map(ip => ({ ip, uid: ips.get(ip)! })),
+                emptySeats: [...seatIds].filter(uid => !seats.has(uid)), freeIps: [...addresses].filter(ip => !ips.has(ip)),
+            };
+            const saved = (seatIds.size || addresses.size) ? save(before, label, reason) : null;
+            for (const item of writeSeats) seats.set(item.uid, item.seat);
+            for (const uid of empty) seats.delete(uid);
+            for (const item of writeIps) setManual(item.ip, item.uid);
+            for (const ip of free) forgetIp(ip);
+            const wanted = (payload.seats === false ? 0 : backup.seats.length + (backup.emptySeats?.length || 0)) + (payload.ips === false ? 0 : backup.ips.length + (backup.freeIps?.length || 0));
+            return { seats: seatIds.size, ips: addresses.size, skipped: wanted - seatIds.size - addresses.size, backup: saved?._id };
         }
         case 'revoke_links': {
             const scope = findContest(payload.contest);
@@ -173,5 +207,24 @@ export function createSeatsPreview(users: PreviewAccount[], teams: PreviewTeam[]
         }
     }
 
-    return { data, operate };
+    const bindings: CollectBindings = {
+        async findOne({ _id }) { return ips.has(_id) ? { _id, uid: ips.get(_id)!, xcpcioCollect: collected.get(_id) } : null; },
+        async insertOne(item) {
+            if (ips.has(item._id)) throw Object.assign(new Error('Duplicate'), { code: 11000 });
+            ips.set(item._id, item.uid); collected.set(item._id, item.xcpcioCollect);
+        },
+        async updateOne(filter, change) {
+            const old = collected.get(filter._id);
+            if (ips.get(filter._id) !== filter.uid || !old || old.uid !== filter.uid || old.contest !== filter['xcpcioCollect.contest']) return { matchedCount: 0 };
+            ips.set(filter._id, change.$set.uid); collected.set(filter._id, change.$set.xcpcioCollect);
+            return { matchedCount: 1 };
+        },
+    };
+    async function collect(ip: string, name: string) {
+        const user = users.find(item => item.uname.toLowerCase() === name.toLowerCase());
+        if (!user || !participants[contests[0].id].includes(user._id)) throw new ManageError('该账号不是本场可登记的参赛账号');
+        await bindCollectedIp(bindings, contestKey(contests[0]), ip, user._id);
+        return { name: user.displayName, account: user.uname, ip };
+    }
+    return { data, operate, collect };
 }

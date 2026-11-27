@@ -1,3 +1,4 @@
+import { timeZone } from './time-zone';
 /**
  * 气球配送 in Hydro: the contest's balloons (lib/balloons.ts) kept in MongoDB and in step with the
  * contest's journals, the management page for contest managers, a no-login page for volunteers,
@@ -623,7 +624,7 @@ export function applyBalloons(ctx: Context, dependencies: {
             this.response.template = 'xcpcio_balloons.html';
             this.response.body = {
                 tdoc: this.tdoc, codeBase, desk: false,
-                runtimeJson: toScriptJson({ mode: 'manager', base, dataUrl: `${base}/data`, contestUrl: contestBase(this.tdoc), printersUrl: '/manage/xcpcio-printers', title: this.tdoc.title }),
+                runtimeJson: toScriptJson({ timeZone: timeZone(), mode: 'manager', base, dataUrl: `${base}/data`, contestUrl: contestBase(this.tdoc), printersUrl: '/manage/xcpcio-printers', title: this.tdoc.title }),
             };
         }
 
@@ -696,7 +697,7 @@ export function applyBalloons(ctx: Context, dependencies: {
             this.response.template = 'xcpcio_balloons.html';
             this.response.body = {
                 tdoc: { title: this.tdoc.title, docId: this.tdoc.docId, domainId: this.tdoc.domainId }, codeBase, desk: true,
-                runtimeJson: toScriptJson({ mode: 'desk', base, dataUrl: `${base}/data`, title: this.tdoc.title }),
+                runtimeJson: toScriptJson({ timeZone: timeZone(), mode: 'desk', base, dataUrl: `${base}/data`, title: this.tdoc.title }),
             };
         }
 

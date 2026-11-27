@@ -12,7 +12,7 @@ export interface LinkSource<T extends LinkTdoc = LinkTdoc> {
     id: string;
     label: string;
     /** Links currently valid (0: never issued), and when the newest was issued if known. */
-    status: (tdoc: T) => Promise<{ count: number; issuedAt: Date | null }>;
+    status: (tdoc: T) => Promise<{ count: number; issuedAt: Date | null; url?: string }>;
     /** Issues new secrets in place of the current ones; pages open with the old ones stop. */
     revoke: (tdoc: T) => Promise<number>;
 }
@@ -22,6 +22,7 @@ export interface LinkStatus {
     label: string;
     count: number;
     issuedAt: Date | null;
+    url?: string;
 }
 
 export class ContestLinks<T extends LinkTdoc = LinkTdoc> {
@@ -35,8 +36,8 @@ export class ContestLinks<T extends LinkTdoc = LinkTdoc> {
 
     async status(tdoc: T): Promise<LinkStatus[]> {
         return Promise.all(this.sources.map(async (source) => {
-            const { count, issuedAt } = await source.status(tdoc).catch(() => ({ count: 0, issuedAt: null }));
-            return { id: source.id, label: source.label, count, issuedAt };
+            const state = await source.status(tdoc).catch(() => ({ count: 0, issuedAt: null }));
+            return { id: source.id, label: source.label, ...state };
         }));
     }
 

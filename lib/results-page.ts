@@ -1,14 +1,13 @@
 import { boardOptions, compareResults, resultBoard, settled, type ResultsData } from './results';
 import type { SnapshotMeta } from './results-store';
+import { formatShortDateTime } from './time-zone';
 
 export interface ResultOption {
     id: string;
     name: string;
 }
 const reasons = { manual: '手动快照', end: '比赛结束', unlock: '解除封榜', rejudge: '批量重测前' };
-export const optionDate = (at: Date) => new Intl.DateTimeFormat('zh-CN', {
-    timeZone: 'Asia/Shanghai', dateStyle: 'short', timeStyle: 'medium',
-}).format(at);
+export const optionDate = (at: Date) => formatShortDateTime(at);
 
 export const snapshotOption = (snapshot: SnapshotMeta): ResultOption => ({
     id: snapshot._id, name: [

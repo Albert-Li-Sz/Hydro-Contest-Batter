@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ContestLinks } from '../lib/links';
 import {
     backupFile, backupOf, BACKUP_FORMAT, buildSeatRows, clearPlan, duplicateSeats, normalizeBackup, normalizeClearOptions, normalizeIpList,
-    normalizeSeatEdit, normalizeSeatQuery, type SeatAccount, scopeLabel, selectSeatRows,
+    normalizeSeatEdit, normalizeSeatQuery, parseSeatImport, seatCoverage, seatImportData, type SeatAccount, scopeLabel, selectSeatRows,
 } from '../lib/manage/seats';
 import { normalizeIp, seatText } from '../lib/onsite';
 
@@ -117,5 +117,27 @@ describe('contest links', () => {
             { id: 'capture', label: '画面采集设备', count: 0, error: 'down' },
         ]);
         expect(await links.revoke(tdoc, ['capture'])).toHaveLength(1);
+    });
+});
+
+describe('venue spreadsheet and team coverage', () => {
+    it('validates an entire tab-separated batch, rejects ambiguous assignments and enforces the selected roster', () => {
+        const items = parseSeatImport('ip', '\uFEFFteam01\t::ffff:10.0.0.1\r\nteam02\t10.0.0.2');
+        expect(seatImportData('ip', items, [10, 11], new Set([10, 11])).ips).toEqual([{ ip: '10.0.0.1', uid: 10 }, { ip: '10.0.0.2', uid: 11 }]);
+        expect(() => parseSeatImport('ip', 'x\t10.0.0.1\ny\tbad')).toThrow('第 2 行');
+        expect(() => seatImportData('ip', [items[0], items[0]], [10, 11])).toThrow('多个账号');
+        expect(() => seatImportData('ip', items, [-10, 11])).toThrow('虚拟队伍');
+        expect(() => seatImportData('ip', items, [10, 11], new Set([10]))).toThrow('范围');
+        expect(seatImportData('seat', parseSeatImport('seat', '1001\tA-01'), [-10])).toEqual({ seats: [{ uid: -10, kind: 'team', seat: 'A-01' }], ips: [] });
+        const empty = { seats: [], ips: [], emptySeats: [10], freeIps: ['10.0.0.1'] };
+        expect(normalizeBackup(backupFile(empty, { createdAt: new Date(), label: '导入前' }))).toEqual(empty);
+    });
+    it('counts each official entry once and keeps unassigned IP records distinct', () => {
+        const rows = buildSeatRows([user(-10, 'A-1', { kind: 'team', name: '星火' }), user(11, 'A-1', { group: -10, school: '大学' }), user(12, '', { group: -10 }), user(20, '')],
+            [{ _id: '10.0.0.2', uid: 12 }], false);
+        const result = seatCoverage(rows, [{ ip: '10.0.0.3', uid: 500 }]);
+        expect(result.bound).toBe(1); expect(result.teams).toHaveLength(2);
+        expect(result.teams[0]).toMatchObject({ name: '星火', school: '大学', seat: 'A-1', ips: ['10.0.0.2'], accounts: ['u11', 'u12'] });
+        expect(result.unmatched).toHaveLength(1);
     });
 });

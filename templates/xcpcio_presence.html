@@ -10,6 +10,16 @@
       <div class="presence-actions"><button class="button" type="button" id="sound" aria-pressed="false">声音</button><div class="xc-actions"><a class="button" href="control#work">比赛配置</a><a class="button" id="back-link">返回比赛</a></div></div>
     </div>
     <div class="section__body">
+      <details class="presence-collect">
+        <summary>收集机位 IP</summary>
+        <form id="collect-config">
+          <label><input type="checkbox" id="collect-enabled"> 开启 IP 收集</label>
+          <label>允许网段<input class="textbox" id="collect-networks" placeholder="192.168.1.0/24" maxlength="4096"></label>
+          <button class="button" type="submit">保存收集设置</button>
+          <a id="collect-link" target="_blank" rel="noreferrer" hidden>打开登记页</a>
+          <span id="collect-status" class="resolver-muted" role="status"></span>
+        </form>
+      </details>
       <div class="presence-counts" id="counts"></div>
       <div class="presence-layout">
         <div class="presence-map" id="map"></div>

@@ -1,3 +1,4 @@
+import { timeZone } from './time-zone';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -60,7 +61,7 @@ export function applyOverview(ctx: Context, dependencies: {
             this.response.template = 'xcpcio_overview.html';
             this.response.body = {
                 codeBase, title: `${this.tdoc.title} · 赛况总览`,
-                runtimeJson: toScriptJson({ dataUrl: `${base}/overview/data`, contestUrl: base, refreshMs: 3000 }),
+                runtimeJson: toScriptJson({ timeZone: timeZone(), dataUrl: `${base}/overview/data`, contestUrl: base, refreshMs: 3000 }),
             };
         }
     }

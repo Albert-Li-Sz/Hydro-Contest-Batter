@@ -47,7 +47,7 @@ export async function get(params = {}, path = runtime.dataUrl) {
 export const formatTime = (value) => {
     if (!value) return '—';
     const date = new Date(value);
-    return Number.isNaN(date.getTime()) || date.getTime() <= 0 ? '—' : date.toLocaleString('zh-CN', { hour12: false });
+    return Number.isNaN(date.getTime()) || date.getTime() <= 0 ? '—' : date.toLocaleString('zh-CN', { hour12: false, ...(runtime.timeZone ? { timeZone: runtime.timeZone, timeZoneName: 'shortOffset' } : {}) });
 };
 
 export function randomPassword(length = 12) {

@@ -90,7 +90,7 @@ function setup(saved = new Map<string, any>(), config: Record<string, unknown> =
     };
     return {
         saved,
-        init: () => apply(ctx as Context, { asDefault: true, publicByDefault: true, refreshInterval: 15000, resolverSessionDays: 0, live: true, liveCapture: true, liveCaptureStunPort: 0, profileFields: defaultProfileFields, ...config }),
+        init: () => apply(ctx as Context, { asDefault: true, publicByDefault: true, refreshInterval: 15000, resolverSessionDays: 0, live: true, liveCapture: true, liveCaptureStunPort: 0, timeZone: 'Asia/Shanghai', profileFields: defaultProfileFields, ...config }),
         settings: () => new (routes.get('contest_xcpcio_plus_settings'))(),
         publicBoard: () => new (routes.get('contest_xcpcio_plus_public'))(),
         middleware: () => middleware,

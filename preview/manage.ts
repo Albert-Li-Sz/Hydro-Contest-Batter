@@ -1,3 +1,4 @@
+import { timeZone } from '../lib/time-zone';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Environment } from 'nunjucks';
 import { resolverCodeBase } from '../lib/resolver-data';
@@ -221,7 +222,7 @@ export function createManagePreview(env: Environment, version: string, demoLinks
         if (pathname === '/manage/xcpcio-users/data') {
             const pattern = searchPattern(query.get('q'));
             const number = Math.max(1, Number(query.get('page')) || 1);
-            if (['seats', 'seat-backups', 'seat-backup'].includes(query.get('tab') || '')) return seatsPreview.data(query);
+            if (['seats', 'seat-roster', 'seat-backups', 'seat-backup'].includes(query.get('tab') || '')) return seatsPreview.data(query);
             if (query.get('tab') === 'teams') {
                 const rows = teams.filter((team) => !pattern || pattern.test(team.displayName) || pattern.test(team.uname));
                 return { total: rows.length, page: number, pageSize: 50, teams: page(rows, number).map((team) => ({ ...team, members: team.members.map(person), invite: team.invite.map(person) })) };
@@ -306,7 +307,7 @@ export function createManagePreview(env: Environment, version: string, demoLinks
         '/manage/xcpcio-rejudge': { template: 'xcpcio_manage_rejudge.html', runtime: () => ({ domainId: 'system', statuses: rejudgeStatuses, max: MAX_REJUDGE, historyUrl: '/manage/xcpcio-rejudge/history' }) },
     };
 
-    return async (request: IncomingMessage, response: ServerResponse, url: URL) => {
+    const handle = async (request: IncomingMessage, response: ServerResponse, url: URL) => {
         if (!url.pathname.startsWith('/manage/')) return false;
         const json = (value: unknown, status = 200) => response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(value));
         try {
@@ -322,7 +323,7 @@ export function createManagePreview(env: Environment, version: string, demoLinks
                 response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(env.render(pageInfo.template, {
                     codeBase, tdoc: { title: '控制面板' },
                     manageMenu: menu.map(([, label, href]) => ({ label, href, active: href === url.pathname })),
-                    runtimeJson: toScriptJson({ base: url.pathname, dataUrl: `${url.pathname}/data`, ...pageInfo.runtime() }),
+                    runtimeJson: toScriptJson({ timeZone: timeZone(), base: url.pathname, dataUrl: `${url.pathname}/data`, ...pageInfo.runtime() }),
                 }));
                 return true;
             }
@@ -334,4 +335,5 @@ export function createManagePreview(env: Environment, version: string, demoLinks
         }
         return true;
     };
+    return Object.assign(handle, { collect: seatsPreview.collect });
 }
