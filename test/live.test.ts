@@ -3,7 +3,7 @@ import type { BoardData } from '../lib/board';
 import { defaultSettings, normalizeSettings, type BoardSettings } from '../lib/settings';
 import { resolverBoards } from '../lib/resolver-data';
 import { buildContestInfo, buildRuns, contestStatus, type LiveSource } from '../lib/live/model';
-import { computeScoreboard, ranking, runsByTeam, scoreboardDiff, statistics, timeline } from '../lib/live/scoreboard';
+import { computeScoreboard, ranking, runsByTeam, scoreboardDiff, statistics, teamTrend, timeline } from '../lib/live/scoreboard';
 import { LiveHub, substituteTemplate } from '../lib/live/hub';
 import { adminApi, defaultVisualConfig, overlayApi, overlayChannel, publicVisualConfig, storeName, type LiveStore } from '../lib/live/api';
 import { stateEntries, stateFromEntries, type LiveStateEntries } from '../lib/live/state';
@@ -876,5 +876,166 @@ describe('live team medias from 画面采集', () => {
         expect(info.teams.find((team) => team.id === '1')!.medias).toEqual({ camera: [camera] });
         expect(info.teams.find((team) => team.id === '2')!.medias).toEqual({});
         expect(buildContestInfo(source({ hidden: true, medias: { 1: { camera: [camera] } } })).teams).toEqual([]);
+    });
+});
+
+describe('live single-team bottom bar (school card and trend timeline)', () => {
+    it('carries seat, coaches and school emblem metadata while respecting identity privacy', () => {
+        const data = demoData();
+        data.teams[0].members = ['王旭帆', '唐震宇', '陈志飞'];
+        const live = source({
+            logoNames: { '南京晓庄学院': '20e7f5017521' },
+            seats: { '1': 'L09', '8': 'B02' },
+            coaches: { '1': ['杨丽英'] },
+        }, data);
+        const shown = buildContestInfo(live);
+        expect(shown.teams.find((t) => t.id === '1')!.customFields).toMatchObject({
+            members: '王旭帆 · 唐震宇 · 陈志飞',
+            coaches: '杨丽英',
+            seat: 'L09',
+        });
+        expect(shown.organizations.find((o) => o.displayName === '南京晓庄学院')!.customFields).toEqual({ hydroLogo: '1' });
+        expect(shown.organizations.find((o) => o.displayName === '南京邮电大学')!.customFields).toEqual({});
+        expect(shown.organizations.find((o) => o.displayName === '未填写学校')!.customFields).toEqual({ hydroMissing: '1' });
+
+        // With identity disabled, schools, coaches and seats (they place the team in the venue) are withheld.
+        const hiddenId = buildContestInfo({ ...live, identity: false });
+        expect(hiddenId.organizations).toEqual([]);
+        expect(hiddenId.teams.find((t) => t.id === '1')!.customFields.seat).toBeUndefined();
+        expect(hiddenId.teams.find((t) => t.id === '1')!.customFields.coaches).toBeUndefined();
+    });
+
+    it('computes team solved and official rank trends from public judged runs without leaking frozen runs', () => {
+        const data = withSubmissions([
+            { submission_id: 'a', team_id: '2', problem_id: 0, timestamp: 10 * minute, status: 'CORRECT' },
+            { submission_id: 'b', team_id: '1', problem_id: 0, timestamp: 20 * minute, status: 'WRONG_ANSWER' },
+            { submission_id: 'c', team_id: '1', problem_id: 0, timestamp: 30 * minute, status: 'CORRECT' },
+            { submission_id: 'd', team_id: '1', problem_id: 1, timestamp: 60 * minute, status: 'CORRECT' },
+            { submission_id: 'e', team_id: '4', problem_id: 0, timestamp: 40 * minute, status: 'CORRECT' }, // unofficial
+            { submission_id: 'f', team_id: '1', problem_id: 2, timestamp: 250 * minute, status: 'FROZEN' },
+        ]);
+        const running = source({ now: begin.getTime() + 260 * minute }, data);
+        const info = buildContestInfo(running);
+        const runs = buildRuns(running, info);
+        const t1 = teamTrend(info, runs, '1');
+        expect(t1).toMatchObject({ ranked: true, problemsCount: 3, teamsCount: 6, bestRank: 1, currentRank: 1, frozenAtMs: 240 * minute });
+        // Only the changes: unranked until the first AC at 30 min (no fake #1 at 00:00), #2 behind team 2,
+        // then #1 at 60 min. The frozen run at 250 min changes nothing.
+        expect(t1.points).toEqual([
+            { time: 0, solved: 0, rank: 0 },
+            { time: 30 * minute, solved: 1, rank: 2 },
+            { time: 60 * minute, solved: 2, rank: 1 },
+        ]);
+        // The trend does not move with the clock, so an unchanged contest is not republished.
+        const later = source({ now: running.now + 5 * minute }, data);
+        expect(teamTrend(buildContestInfo(later), buildRuns(later, buildContestInfo(later)), '1')).toEqual(t1);
+
+        // Unofficial team tracks solved count only (unranked).
+        const t4 = teamTrend(info, runs, '4');
+        expect(t4).toMatchObject({ ranked: false, bestRank: null, currentRank: null });
+        expect(t4.points.every((p) => p.rank === 0)).toBe(true);
+        expect(t4.points.at(-1)?.solved).toBe(1);
+
+        // Before contest start: no points.
+        const before = source({ now: begin.getTime() - minute }, data);
+        const beforeInfo = buildContestInfo(before);
+        expect(teamTrend(beforeInfo, buildRuns(before, beforeInfo), '1')).toMatchObject({ currentRank: null, points: [] });
+    });
+
+    it('moves the rank at the exact moment another team passes, without waiting for a sample', () => {
+        const data = withSubmissions([
+            { submission_id: 'a', team_id: '1', problem_id: 0, timestamp: 10 * minute, status: 'CORRECT' },
+            { submission_id: 'b', team_id: '3', problem_id: 0, timestamp: 41 * minute + 7_000, status: 'CORRECT' },
+            { submission_id: 'c', team_id: '3', problem_id: 1, timestamp: 41 * minute + 30_000, status: 'CORRECT' },
+            { submission_id: 'd', team_id: '5', problem_id: 0, timestamp: 42 * minute, status: 'WRONG_ANSWER' },
+            { submission_id: 'e', team_id: '1', problem_id: 1, timestamp: 50 * minute, status: 'CORRECT' },
+            { submission_id: 'f', team_id: '1', problem_id: 2, timestamp: 55 * minute, status: 'CORRECT' },
+        ]);
+        const live = source({ now: begin.getTime() + 60 * minute }, data);
+        const info = buildContestInfo(live);
+        const trend = teamTrend(info, buildRuns(live, info), '1');
+        // Team 3's second solve at 41:30 passes team 1 there and then; a wrong answer changes nothing.
+        // Team 1's second solve at 50:00 takes it back with less penalty.
+        expect(trend.points).toEqual([
+            { time: 0, solved: 0, rank: 0 },
+            { time: 10 * minute, solved: 1, rank: 1 },
+            { time: 41 * minute + 30_000, solved: 1, rank: 2 },
+            { time: 50 * minute, solved: 2, rank: 1 },
+            { time: 55 * minute, solved: 3, rank: 1 },
+        ]);
+        expect(trend).toMatchObject({ bestRank: 1, currentRank: 1 });
+        // The last rank is the scoreboard's.
+        const board = computeScoreboard(info, runsByTeam(buildRuns(live, info)), 'normal');
+        expect(board.ranking.ranks[board.ranking.order.indexOf('1')]).toBe(trend.currentRank);
+    });
+
+    it('shows card or trend timeline only when watching a single team, and hides both when 2+ teams are on air', async () => {
+        const { hub, set } = makeHub();
+        try {
+            await hub.ready;
+            await hub.refresh();
+            const store = memoryStore();
+            const snapshot = (): any[] => {
+                let widgets: any[] = [];
+                hub.widgets.subscribe((event: any) => { widgets = event.widgets?.map((entry: any) => entry.widget) || []; })();
+                return widgets;
+            };
+            const singleWidget = () => snapshot().find((w) => w.widgetId === 'teamViewSingle');
+
+            // Invalid bottomBar is rejected.
+            expect((await adminApi(hub, store, request('POST', 'teamView/SINGLE/show_with_settings', { teamId: '1', bottomBar: 'invalid' })))!.status).toBe(400);
+
+            // Single team with school card.
+            expect((await adminApi(hub, store, request('POST', 'teamView/SINGLE/show_with_settings', { teamId: '1', mediaTypes: [], bottomBar: 'card' })))!.status).toBe(200);
+            expect(singleWidget().settings).toMatchObject({ teamId: '1', bottomBar: 'card', showTimeLine: false });
+
+            // Switching single team to trend timeline, and legacy showTimeLine: true compatibility.
+            await adminApi(hub, store, request('POST', 'teamView/SINGLE/show_with_settings', { teamId: '1', mediaTypes: [], showTimeLine: true }));
+            expect(singleWidget().settings).toMatchObject({ bottomBar: 'timeline', showTimeLine: true });
+
+            // Back to card, then add a second team view -> SINGLE automatically hides its bottom bar.
+            await adminApi(hub, store, request('POST', 'teamView/SINGLE/show_with_settings', { teamId: '1', mediaTypes: [], bottomBar: 'card' }));
+            expect(singleWidget().settings.bottomBar).toBe('card');
+            await adminApi(hub, store, request('POST', 'splitScreen/TOP_LEFT/show_with_settings', { teamId: '2', mediaTypes: [], bottomBar: 'card', showTimeLine: true }));
+            expect(singleWidget().settings).toMatchObject({ bottomBar: 'none', showTimeLine: false });
+            expect(snapshot().find((w) => w.widgetId === 'teamViewTopLeft').settings).toMatchObject({ bottomBar: 'none', showTimeLine: false });
+
+            // Hide the second team view -> SINGLE restores its school card immediately.
+            await adminApi(hub, store, request('POST', 'splitScreen/TOP_LEFT/hide'));
+            expect(singleWidget().settings).toMatchObject({ bottomBar: 'card', showTimeLine: false });
+
+            // A view whose team is not in the contest shows nothing, so the single team is still alone.
+            await adminApi(hub, store, request('POST', 'splitScreen/TOP_RIGHT/show_with_settings', { teamId: '999', mediaTypes: [] }));
+            expect(snapshot().find((w) => w.widgetId === 'teamViewTopRight')).toBeUndefined();
+            expect(singleWidget().settings.bottomBar).toBe('card');
+            await adminApi(hub, store, request('POST', 'splitScreen/TOP_RIGHT/hide'));
+            await adminApi(hub, store, request('POST', 'teamView/SINGLE/hide'));
+
+            // PVP (2-team view) never emits bottomBar or showTimeLine even when requested.
+            await adminApi(hub, store, request('POST', 'teamPVP/PVP_TOP/show_with_settings', { teamId: '1', mediaTypes: [], bottomBar: 'timeline', showTimeLine: true }));
+            expect(snapshot().find((w) => w.widgetId === 'teamViewPvpTop').settings).toMatchObject({ bottomBar: 'none', showTimeLine: false });
+
+            // Overlay teamTrend HTTP & WS channel streams updates.
+            expect(overlayChannel('teamTrend/1')).toBe('teamTrend:1');
+            expect(overlayChannel('teamTrend/../x')).toBeNull();
+            const updates: any[] = [];
+            const off = hub.subscribe('teamTrend:1', (payload) => updates.push(payload));
+            expect(updates).toHaveLength(1);
+            expect(updates[0].currentRank).toBe(1);
+            const trendHttp = JSON.parse((await overlayApi(hub, 'teamTrend/8', '{}'))!.body);
+            expect(trendHttp.points.at(-1).solved).toBe(0);
+            // The clock moving on alone does not republish the trend.
+            set(source({ now: begin.getTime() + 125 * minute }));
+            await hub.refresh();
+            expect(updates).toHaveLength(1);
+            const next = demoData();
+            next.submissions.push({ submission_id: 'trend-new', team_id: '8', problem_id: 0, timestamp: 95 * minute, status: 'CORRECT' });
+            set(source({ now: begin.getTime() + 125 * minute }, next));
+            await hub.refresh();
+            expect(JSON.parse((await overlayApi(hub, 'teamTrend/8', '{}'))!.body).points.at(-1)).toMatchObject({ time: 95 * minute, solved: 1 });
+            off();
+        } finally {
+            await hub.dispose();
+        }
     });
 });

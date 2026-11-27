@@ -2195,13 +2195,14 @@ index a20babe..8985ade 100644
                                  onClick={() =>
                                      setIsGroupsExpand(!isGroupsExpand)
 diff --git a/src/frontend/admin-overlay/src/components/pages/Analytics.tsx b/src/frontend/admin-overlay/src/components/pages/Analytics.tsx
-index e423af0..06c20a0 100644
+index e423af0..18b3b9b 100644
 --- a/src/frontend/admin-overlay/src/components/pages/Analytics.tsx
 +++ b/src/frontend/admin-overlay/src/components/pages/Analytics.tsx
-@@ -34,6 +34,10 @@ import {
+@@ -34,6 +34,11 @@ import {
      CommonTeamViewInstancesState,
      useTeamViewWidgetService,
  } from "@admin/services/teamViewService";
++import { storedBottomBar } from "@admin/services/teamViewBottomBar";
 +import { language, t } from "shared-code/i18n";
 +import { zhCN } from "@mui/x-data-grid/locales";
 +
@@ -2209,7 +2210,7 @@ index e423af0..06c20a0 100644
  
  const featuredRunMediaTypes = [
      TeamMediaType.screen,
-@@ -78,7 +82,7 @@ const buildMessagesTableColumns = (
+@@ -78,7 +83,7 @@ const buildMessagesTableColumns = (
      },
      {
          field: "comments",
@@ -2218,7 +2219,7 @@ index e423af0..06c20a0 100644
          flex: 3,
          sortable: false,
          valueGetter: (v: AnalyticsMessageComment[]) =>
-@@ -125,7 +129,7 @@ const buildMessagesTableColumns = (
+@@ -125,7 +130,7 @@ const buildMessagesTableColumns = (
      },
      {
          field: "teamId",
@@ -2227,7 +2228,7 @@ index e423af0..06c20a0 100644
          flex: 2,
          valueGetter: (id: string) => {
              const team = teams[id];
-@@ -139,7 +143,7 @@ const buildMessagesTableColumns = (
+@@ -139,7 +144,7 @@ const buildMessagesTableColumns = (
      },
      {
          field: "problemId",
@@ -2236,7 +2237,7 @@ index e423af0..06c20a0 100644
          width: 70,
          valueGetter: (_, message) =>
              message.runInfo &&
-@@ -152,13 +156,13 @@ const buildMessagesTableColumns = (
+@@ -152,13 +157,13 @@ const buildMessagesTableColumns = (
      },
      {
          field: "runId",
@@ -2252,7 +2253,7 @@ index e423af0..06c20a0 100644
          width: 50,
          valueGetter: (_, message): string => {
              if (message.runInfo?.result?.type === RunResult.Type.ICPC) {
-@@ -171,7 +175,7 @@ const buildMessagesTableColumns = (
+@@ -171,7 +176,7 @@ const buildMessagesTableColumns = (
      },
      {
          field: "relativeTimeMs",
@@ -2261,7 +2262,7 @@ index e423af0..06c20a0 100644
          width: 70,
          renderCell: (
              params: GridRenderCellParams<AnalyticsMessage, number>,
-@@ -208,6 +212,7 @@ function MessagesTable({
+@@ -208,6 +213,7 @@ function MessagesTable({
  
      return (
          <DataGrid
@@ -2269,7 +2270,7 @@ index e423af0..06c20a0 100644
              ref={ref}
              rows={messages}
              columns={buildMessagesTableColumns(
-@@ -258,7 +263,8 @@ const FeaturedRunControl = ({
+@@ -258,7 +264,8 @@ const FeaturedRunControl = ({
  }: FeaturedRunControlProps) => {
      return (
          <>
@@ -2279,7 +2280,7 @@ index e423af0..06c20a0 100644
              <TeamMediaSwitcher
                  mediaTypes={featuredRunMediaTypes}
                  onSwitch={(mediaType) =>
-@@ -280,7 +286,7 @@ const FeaturedRunControl = ({
+@@ -280,7 +287,7 @@ const FeaturedRunControl = ({
                      }}
                  >
                      <div>
@@ -2288,16 +2289,37 @@ index e423af0..06c20a0 100644
                          {featuredRunStatus.teamInfo?.shortName})
                      </div>
                      &nbsp;
-@@ -331,7 +337,7 @@ const TeamViewControl = ({ selectedEvent }: TeamViewControlProps) => {
-                         )
-                     }
+@@ -315,7 +322,8 @@ const TeamViewControl = ({ selectedEvent }: TeamViewControlProps) => {
+                     variant={"outlined"}
+                     startIcon={<ArrowForwardIcon />}
+                     disabled={selectedEvent?.teamId === undefined}
+-                    onClick={() =>
++                    onClick={() => {
++                        const bottomBar = storedBottomBar();
+                         teamViewService.showWithSettings(
+                             TeamViewPosition.SINGLE,
+                             {
+@@ -325,13 +333,14 @@ const TeamViewControl = ({ selectedEvent }: TeamViewControlProps) => {
+                                     TeamMediaType.screen,
+                                 ],
+                                 showTaskStatus: true,
+-                                showAchievement: true,
+-                                showTimeLine: true,
++                                showAchievement: false,
++                                showTimeLine: bottomBar === "timeline",
++                                bottomBar,
+                             },
+-                        )
+-                    }
++                        );
++                    }}
                  >
 -                    TeamView
 +                    {t("TeamView")}
                  </Button>
                  <Button
                      color="error"
-@@ -340,7 +346,7 @@ const TeamViewControl = ({ selectedEvent }: TeamViewControlProps) => {
+@@ -340,7 +349,7 @@ const TeamViewControl = ({ selectedEvent }: TeamViewControlProps) => {
                          teamViewService.hide(TeamViewPosition.SINGLE)
                      }
                  >
@@ -2306,7 +2328,7 @@ index e423af0..06c20a0 100644
                  </Button>
              </ButtonGroup>
          </>
-@@ -436,7 +442,7 @@ function Analytics() {
+@@ -436,7 +445,7 @@ function Analytics() {
                                  )
                              }
                          >
@@ -2315,7 +2337,7 @@ index e423af0..06c20a0 100644
                          </Button>
                          <TextField
                              sx={{ width: "84px" }}
-@@ -447,7 +453,7 @@ function Analytics() {
+@@ -447,7 +456,7 @@ function Analytics() {
                              }
                              value={advertisementTtl}
                              size="small"
@@ -2324,7 +2346,7 @@ index e423af0..06c20a0 100644
                              variant="outlined"
                              InputProps={{ style: { height: "30px" } }}
                          />
-@@ -463,7 +469,7 @@ function Analytics() {
+@@ -463,7 +472,7 @@ function Analytics() {
                                  )
                              }
                          >
@@ -2333,7 +2355,7 @@ index e423af0..06c20a0 100644
                          </Button>
                      </ButtonGroup>
                      &nbsp;
-@@ -484,7 +490,7 @@ function Analytics() {
+@@ -484,7 +493,7 @@ function Analytics() {
                                  )
                              }
                          >
@@ -2342,7 +2364,7 @@ index e423af0..06c20a0 100644
                          </Button>
                          <TextField
                              sx={{ width: "84px" }}
-@@ -493,7 +499,7 @@ function Analytics() {
+@@ -493,7 +502,7 @@ function Analytics() {
                              }
                              value={tickerMsgTtl}
                              size="small"
@@ -2351,7 +2373,7 @@ index e423af0..06c20a0 100644
                              variant="outlined"
                              InputProps={{ style: { height: "30px" } }}
                          />
-@@ -509,7 +515,7 @@ function Analytics() {
+@@ -509,7 +518,7 @@ function Analytics() {
                                  )
                              }
                          >
@@ -2362,10 +2384,10 @@ index e423af0..06c20a0 100644
                      &nbsp;
 diff --git a/src/frontend/admin-overlay/src/components/pages/CapturePage.tsx b/src/frontend/admin-overlay/src/components/pages/CapturePage.tsx
 new file mode 100644
-index 0000000..37ce59d
+index 0000000..8e572f1
 --- /dev/null
 +++ b/src/frontend/admin-overlay/src/components/pages/CapturePage.tsx
-@@ -0,0 +1,229 @@
+@@ -0,0 +1,248 @@
 +// Hydro: 画面采集 in the director console. Every capture device (a contestant computer), a preview
 +// of its screen or webcam, and one click to put it on air: full screen or a quarter of the split
 +// screen, as the team view of the team it belongs to. The screen is the default.
@@ -2386,11 +2408,15 @@ index 0000000..37ce59d
 +    Stack,
 +    Switch,
 +    TextField,
++    ToggleButton,
++    ToggleButtonGroup,
 +    Typography,
 +} from "@mui/material";
 +import { useSnackbar } from "notistack";
++import { TeamViewBottomBar } from "@shared/api";
 +import { BASE_URL_BACKEND } from "@admin/config";
 +import { captureClient } from "@admin/services/hydroCapture";
++import { useBottomBar } from "@admin/services/teamViewBottomBar";
 +import { t } from "shared-code/i18n";
 +
 +type Stream = "screen" | "webcam";
@@ -2461,6 +2487,7 @@ index 0000000..37ce59d
 +    const { enqueueSnackbar } = useSnackbar();
 +    const [status, setStatus] = useState<CaptureStatus | null>(null);
 +    const [stream, setStream] = useState<Stream>("screen");
++    const [bottomBar, setBottomBar] = useBottomBar();
 +    const [onlineOnly, setOnlineOnly] = useState(true);
 +    const [search, setSearch] = useState("");
 +    // The zone a director watches, kept per browser like the capture management page's filter.
@@ -2489,18 +2516,20 @@ index 0000000..37ce59d
 +
 +    const onAir = useCallback(async (device: CaptureDevice, position: "SINGLE" | typeof SPLIT[number]) => {
 +        if (!device.teamId) return;
++        const single = position === "SINGLE";
 +        const settings = {
 +            teamId: device.teamId, mediaTypes: [stream === "screen" ? "screen" : "camera"],
-+            showTaskStatus: true, showAchievement: false, showTimeLine: position === "SINGLE",
++            showTaskStatus: true, showAchievement: false, showTimeLine: single && bottomBar === "timeline",
++            bottomBar: single ? bottomBar : "none",
 +        };
 +        try {
-+            if (position === "SINGLE") await api("/teamView/SINGLE/show_with_settings", settings);
++            if (single) await api("/teamView/SINGLE/show_with_settings", settings);
 +            else await api(`/splitScreen/${position}/show_with_settings`, settings);
 +            enqueueSnackbar(t("{name} is on air", { name: device.teamName || device.name }), { variant: "success" });
 +        } catch (error) {
 +            enqueueSnackbar(`${t("Failed to put on air")} · ${(error as Error).message}`, { variant: "error" });
 +        }
-+    }, [stream, enqueueSnackbar]);
++    }, [stream, bottomBar, enqueueSnackbar]);
 +
 +    const offAir = useCallback(async () => {
 +        try {
@@ -2529,6 +2558,18 @@ index 0000000..37ce59d
 +                    <MenuItem value="screen">{t("Screen")}</MenuItem>
 +                    {status?.webcam !== false && <MenuItem value="webcam">{t("Camera")}</MenuItem>}
 +                </Select>
++                <ToggleButtonGroup
++                    size="small"
++                    color="primary"
++                    exclusive
++                    value={bottomBar}
++                    aria-label={t("Single-team bottom bar")}
++                    onChange={(_, next: TeamViewBottomBar | null) => next && setBottomBar(next)}
++                >
++                    <ToggleButton value="card">{t("School card")}</ToggleButton>
++                    <ToggleButton value="timeline">{t("Trend timeline")}</ToggleButton>
++                    <ToggleButton value="none">{t("Off")}</ToggleButton>
++                </ToggleButtonGroup>
 +                <TextField size="small" label={t("Seat prefix")} value={seatPrefix} onChange={(event) => setSeatPrefix(event.target.value)}
 +                    inputProps={{ list: "capture-zones" }} sx={{ width: 140 }} />
 +                <datalist id="capture-zones">{zones.map((zone) => <option key={zone} value={zone} />)}</datalist>
@@ -2726,7 +2767,7 @@ index c07d134..7a56f68 100644
      );
  };
 diff --git a/src/frontend/admin-overlay/src/components/pages/TeamView.tsx b/src/frontend/admin-overlay/src/components/pages/TeamView.tsx
-index b228ed4..3cfc1dc 100644
+index b228ed4..5c71b2b 100644
 --- a/src/frontend/admin-overlay/src/components/pages/TeamView.tsx
 +++ b/src/frontend/admin-overlay/src/components/pages/TeamView.tsx
 @@ -37,6 +37,7 @@ import BottomRightIcon from "@mui/icons-material/SouthEast";
@@ -2737,15 +2778,33 @@ index b228ed4..3cfc1dc 100644
  import { TeamTable, TeamViewData } from "../TeamTable";
  import TeamMediaSwitcher, {
      DEFAULT_MEDIA_TYPES,
-@@ -58,6 +59,7 @@ import {
+@@ -45,6 +46,7 @@ import ShowPresetButton from "../controls/ShowPresetButton";
+ import {
+     TeamInfo,
+     TeamMediaType,
++    TeamViewBottomBar,
+     TeamViewPosition,
+     TeamId,
+     ExternalTeamViewSettings,
+@@ -58,6 +60,8 @@ import {
  } from "@admin/services/teamViewService";
  import { ObjectStatus } from "@admin/services/abstractSingleWidget";
  import { useLocalStorageState } from "@admin/utils";
++import { useBottomBar } from "@admin/services/teamViewBottomBar";
 +import { t } from "shared-code/i18n";
  
  interface TeamInfoWithStatus extends TeamInfo {
      shown?: boolean;
-@@ -100,8 +102,8 @@ interface UseTeamsListReturn {
+@@ -75,6 +79,8 @@ interface InstanceStatusProps {
+     status: CommonTeamViewInstancesState;
+     teams: TeamInfoWithStatus[];
+     selectedInstance?: TeamViewPosition;
++    bottomBar?: TeamViewBottomBar;
++    onBottomBarChange?: (value: TeamViewBottomBar) => void;
+     onShow: (instance: TeamViewPosition) => () => void;
+     onHide: (instance: TeamViewPosition) => () => void;
+ }
+@@ -100,8 +106,8 @@ interface UseTeamsListReturn {
  
  const AUTOMODE_TEAM: TeamInfoWithStatus = {
      id: null,
@@ -2756,7 +2815,7 @@ index b228ed4..3cfc1dc 100644
      hashTag: "",
      groups: [],
      organizationId: "",
-@@ -260,15 +262,15 @@ const VariantSelect: React.FC<VariantSelectProps> = ({
+@@ -260,26 +266,46 @@ const VariantSelect: React.FC<VariantSelectProps> = ({
          >
              <ToggleButton value="single">
                  <SingleTeamViewIcon />
@@ -2775,7 +2834,46 @@ index b228ed4..3cfc1dc 100644
              </ToggleButton>
          </ToggleButtonGroup>
      );
-@@ -314,22 +316,22 @@ const InstanceStatus: React.FC<InstanceStatusProps> = ({
+ };
+ 
++const BottomBarSelect: React.FC<{
++    value: TeamViewBottomBar;
++    onChange: (value: TeamViewBottomBar) => void;
++}> = ({ value, onChange }) => (
++    <ToggleButtonGroup
++        value={value}
++        color="primary"
++        size="small"
++        exclusive
++        aria-label={t("Single-team bottom bar")}
++        onChange={(_, next: TeamViewBottomBar | null) => next && onChange(next)}
++    >
++        <ToggleButton value="card">{t("School card")}</ToggleButton>
++        <ToggleButton value="timeline">{t("Trend timeline")}</ToggleButton>
++        <ToggleButton value="none">{t("Off")}</ToggleButton>
++    </ToggleButtonGroup>
++);
++
+ const InstanceStatus: React.FC<InstanceStatusProps> = ({
+     instanceId,
+     Icon,
+     status,
+     teams,
+     selectedInstance,
++    bottomBar,
++    onBottomBarChange,
+     onShow,
+     onHide,
+ }) => {
+@@ -291,6 +317,7 @@ const InstanceStatus: React.FC<InstanceStatusProps> = ({
+     const isShowButtonDisabled = !(
+         selectedInstance === instanceId || selectedInstance === undefined
+     );
++    const isSingle = instanceId === TeamViewPosition.SINGLE;
+ 
+     return (
+         <Paper>
+@@ -314,22 +341,33 @@ const InstanceStatus: React.FC<InstanceStatusProps> = ({
                          onClick={onShow(instanceId)}
                      >
                          {selectedInstance === instanceId
@@ -2796,6 +2894,17 @@ index b228ed4..3cfc1dc 100644
 +                        {t("Hide")}
                      </Button>
                  </ButtonGroup>
++                {isSingle && bottomBar && onBottomBarChange && (
++                    <Stack direction="row" spacing={1} alignItems="center" sx={{ ml: "auto" }}>
++                        <FormLabel component="legend" sx={{ m: 0 }}>
++                            {t("Bottom bar")}
++                        </FormLabel>
++                        <BottomBarSelect
++                            value={bottomBar}
++                            onChange={onBottomBarChange}
++                        />
++                    </Stack>
++                )}
              </Stack>
 -            <Box>Team: {shownTeam?.shortName ?? "Auto"}</Box>
 -            <Box>Media: {iStatus?.settings?.mediaTypes?.join(", ")}</Box>
@@ -2804,7 +2913,7 @@ index b228ed4..3cfc1dc 100644
          </Paper>
      );
  };
-@@ -408,10 +410,10 @@ const MultipleModeSwitch: React.FC<MultipleModeSwitchProps> = ({
+@@ -408,10 +446,10 @@ const MultipleModeSwitch: React.FC<MultipleModeSwitchProps> = ({
      return (
          <Tooltip
              sx={{ display: "flex", alignContent: "center" }}
@@ -2817,7 +2926,7 @@ index b228ed4..3cfc1dc 100644
                  <Switch onChange={(_, newV) => setIsMultipleMode(newV)} />
                  <ButtonGroup>
                      <Button
-@@ -419,7 +421,7 @@ const MultipleModeSwitch: React.FC<MultipleModeSwitchProps> = ({
+@@ -419,7 +457,7 @@ const MultipleModeSwitch: React.FC<MultipleModeSwitchProps> = ({
                          onClick={() => currentService?.showAll()}
                          startIcon={<VisibilityIcon />}
                      >
@@ -2826,7 +2935,7 @@ index b228ed4..3cfc1dc 100644
                      </Button>
                      <Button
                          variant="contained"
-@@ -427,7 +429,7 @@ const MultipleModeSwitch: React.FC<MultipleModeSwitchProps> = ({
+@@ -427,7 +465,7 @@ const MultipleModeSwitch: React.FC<MultipleModeSwitchProps> = ({
                          onClick={() => currentService?.hideAll()}
                          startIcon={<VisibilityOffIcon />}
                      >
@@ -2835,7 +2944,7 @@ index b228ed4..3cfc1dc 100644
                      </Button>
                  </ButtonGroup>
              </Box>
-@@ -466,7 +468,11 @@ const TeamViewManager: React.FC = () => {
+@@ -466,7 +504,11 @@ const TeamViewManager: React.FC = () => {
      } = useTeamsList(rawTeams, status);
  
      useEffect(() => {
@@ -2848,7 +2957,81 @@ index b228ed4..3cfc1dc 100644
      }, [singleService]);
  
      const [teamsAvailableMedias, teamsHasAchievement] = useMemo(() => {
-@@ -633,6 +639,7 @@ const TeamViewManager: React.FC = () => {
+@@ -507,10 +549,7 @@ const TeamViewManager: React.FC = () => {
+         boolean | undefined
+     >("teamView.achievementShown", undefined);
+     const achievementShown = storedAchievementShown ?? teamsHasAchievement;
+-    const [timeLineShown, setTimeLineShown] = useLocalStorageState<boolean>(
+-        "teamView.timeLineShown",
+-        true,
+-    );
++    const [bottomBar, setBottomBar] = useBottomBar();
+ 
+     const disableMediaTypes = useMemo(
+         () =>
+@@ -550,25 +589,43 @@ const TeamViewManager: React.FC = () => {
+         setMediaType1(settings.mediaTypes?.[0] ?? null);
+         setMediaType2(settings.mediaTypes?.[1] ?? null);
+         setStatusShown(settings.showTaskStatus ?? true);
+-        if (shownVariant !== "split") {
+-            // Split mode resets those to `false`, we ignore that
+-            setTimeLineShown(settings.showTimeLine ?? true);
++        if (shownVariant === "single") {
++            const restored: TeamViewBottomBar =
++                settings.bottomBar ??
++                (settings.showTimeLine ? "timeline" : "none");
++            setBottomBar(restored);
+             if (settings.showAchievement !== undefined) {
+                 setAchievementShown(settings.showAchievement);
+             }
+         }
+     }, [status, variant]);
+ 
++    const onBottomBarChange = useCallback(
++        (next: TeamViewBottomBar) => {
++            setBottomBar(next);
++            const singleStatus = status[TeamViewPosition.SINGLE];
++            if (singleStatus?.shown && !isMultipleMode) {
++                singleService.showWithSettings(TeamViewPosition.SINGLE, {
++                    ...singleStatus.settings,
++                    bottomBar: next,
++                    showTimeLine: next === "timeline",
++                });
++            }
++        },
++        [setBottomBar, status, isMultipleMode, singleService],
++    );
++
+     const onShow = useCallback(() => {
+-        const settings = {
++        const isSingle = (variant ?? "single") === "single";
++        const settings: ExternalTeamViewSettings = {
+             mediaTypes: [mediaType1, mediaType2].filter(
+                 (i): i is TeamMediaType => Boolean(i),
+             ),
+             teamId: selectedTeamId,
+             showTaskStatus: statusShown,
+-            showAchievement: achievementShown && variant !== "split",
+-            showTimeLine:
+-                timeLineShown && (variant === "single" || variant === "pvp"),
++            showAchievement: isSingle && achievementShown && teamsHasAchievement,
++            showTimeLine: isSingle && bottomBar === "timeline",
++            bottomBar: isSingle ? bottomBar : "none",
+         };
+         if (isMultipleMode) {
+             currentService.setSettings(selectedInstance, settings);
+@@ -586,8 +643,9 @@ const TeamViewManager: React.FC = () => {
+         selectedTeamId,
+         statusShown,
+         achievementShown,
++        teamsHasAchievement,
+         variant,
+-        timeLineShown,
++        bottomBar,
+     ]);
+ 
+     const onInstanceSelect = useCallback(
+@@ -633,11 +691,14 @@ const TeamViewManager: React.FC = () => {
                      setIsMultipleMode={setIsMultipleMode}
                  />
              </Box>
@@ -2856,7 +3039,14 @@ index b228ed4..3cfc1dc 100644
              <InstancesManager
                  variant={variant}
                  status={status}
-@@ -653,7 +660,7 @@ const TeamViewManager: React.FC = () => {
+                 teams={rawTeams}
+                 selectedInstance={selectedInstance}
++                bottomBar={bottomBar}
++                onBottomBarChange={onBottomBarChange}
+                 onShow={onInstanceSelect}
+                 onHide={onInstanceHide}
+             />
+@@ -653,7 +714,7 @@ const TeamViewManager: React.FC = () => {
                                  defaultValue={searchValue}
                                  size="small"
                                  margin="none"
@@ -2865,7 +3055,7 @@ index b228ed4..3cfc1dc 100644
                                  variant="outlined"
                                  fullWidth
                              />
-@@ -666,7 +673,7 @@ const TeamViewManager: React.FC = () => {
+@@ -666,7 +727,7 @@ const TeamViewManager: React.FC = () => {
                      )}
                      {selectedTeamId !== undefined && (
                          <FormControl fullWidth sx={{ mb: 1 }}>
@@ -2874,7 +3064,7 @@ index b228ed4..3cfc1dc 100644
                              <TextField
                                  defaultValue={selectedTeam?.name}
                                  variant="standard"
-@@ -688,7 +695,7 @@ const TeamViewManager: React.FC = () => {
+@@ -688,7 +749,7 @@ const TeamViewManager: React.FC = () => {
                              <Grid container>
                                  <Grid size={{ xs: 12, sm: 4 }}>
                                      <FormLabel component="legend">
@@ -2883,7 +3073,7 @@ index b228ed4..3cfc1dc 100644
                                      </FormLabel>
                                  </Grid>
                                  <Grid size={{ xs: 12, sm: 8 }}>
-@@ -700,7 +707,7 @@ const TeamViewManager: React.FC = () => {
+@@ -700,7 +761,7 @@ const TeamViewManager: React.FC = () => {
                                  </Grid>
                                  <Grid size={{ xs: 12, sm: 4 }}>
                                      <FormLabel component="legend">
@@ -2892,7 +3082,7 @@ index b228ed4..3cfc1dc 100644
                                      </FormLabel>
                                  </Grid>
                                  <Grid size={{ xs: 12, sm: 8 }}>
-@@ -715,7 +722,7 @@ const TeamViewManager: React.FC = () => {
+@@ -715,7 +776,7 @@ const TeamViewManager: React.FC = () => {
                                  </Grid>
                                  <Grid size={{ xs: 10, sm: 4 }}>
                                      <FormLabel component="legend">
@@ -2901,25 +3091,95 @@ index b228ed4..3cfc1dc 100644
                                      </FormLabel>
                                  </Grid>
                                  <Grid size={{ xs: 2, sm: 8 }}>
-@@ -729,7 +736,7 @@ const TeamViewManager: React.FC = () => {
-                                     <>
-                                         <Grid size={{ xs: 10, sm: 4 }}>
-                                             <FormLabel component="legend">
+@@ -725,51 +786,47 @@ const TeamViewManager: React.FC = () => {
+                                         sx={{ justifyContent: "flex-start" }}
+                                     />
+                                 </Grid>
+-                                {variant !== "split" && (
+-                                    <>
+-                                        <Grid size={{ xs: 10, sm: 4 }}>
+-                                            <FormLabel component="legend">
 -                                                Achievements
-+                                                {t("Achievements")}
-                                             </FormLabel>
-                                         </Grid>
-                                         <Grid size={{ xs: 2, sm: 8 }}>
-@@ -757,7 +764,7 @@ const TeamViewManager: React.FC = () => {
+-                                            </FormLabel>
+-                                        </Grid>
+-                                        <Grid size={{ xs: 2, sm: 8 }}>
+-                                            <ShowPresetButton
+-                                                checked={achievementShown}
+-                                                onClick={(v) =>
+-                                                    setAchievementShown(v)
+-                                                }
+-                                                disabled={
+-                                                    !(selectedTeam?.id
+-                                                        ? selectedTeam.medias
+-                                                              .achievement
+-                                                        : teamsHasAchievement)
+-                                                }
+-                                                sx={{
+-                                                    justifyContent:
+-                                                        "flex-start",
+-                                                }}
+-                                            />
+-                                        </Grid>
+-                                    </>
+-                                )}
+-                                {(variant === "single" ||
+-                                    variant === "pvp") && (
++                                {(variant ?? "single") === "single" &&
++                                    teamsHasAchievement && (
++                                        <>
++                                            <Grid size={{ xs: 10, sm: 4 }}>
++                                                <FormLabel component="legend">
++                                                    {t("Achievements")}
++                                                </FormLabel>
++                                            </Grid>
++                                            <Grid size={{ xs: 2, sm: 8 }}>
++                                                <ShowPresetButton
++                                                    checked={achievementShown}
++                                                    onClick={(v) =>
++                                                        setAchievementShown(v)
++                                                    }
++                                                    disabled={
++                                                        !(selectedTeam?.id
++                                                            ? selectedTeam.medias
++                                                                  .achievement
++                                                            : teamsHasAchievement)
++                                                    }
++                                                    sx={{
++                                                        justifyContent:
++                                                            "flex-start",
++                                                    }}
++                                                />
++                                            </Grid>
++                                        </>
++                                    )}
++                                {(variant ?? "single") === "single" && (
                                      <>
-                                         <Grid size={{ xs: 10, sm: 4 }}>
+-                                        <Grid size={{ xs: 10, sm: 4 }}>
++                                        <Grid size={{ xs: 12, sm: 4 }}>
                                              <FormLabel component="legend">
 -                                                TimeLine
-+                                                {t("TimeLine")}
++                                                {t("Bottom bar")}
                                              </FormLabel>
                                          </Grid>
-                                         <Grid size={{ xs: 2, sm: 8 }}>
-@@ -780,7 +787,7 @@ const TeamViewManager: React.FC = () => {
+-                                        <Grid size={{ xs: 2, sm: 8 }}>
+-                                            <ShowPresetButton
+-                                                checked={timeLineShown}
+-                                                onClick={(v) =>
+-                                                    setTimeLineShown(v)
++                                        <Grid size={{ xs: 12, sm: 8 }} sx={{ my: 0.5 }}>
++                                            <BottomBarSelect
++                                                value={bottomBar}
++                                                onChange={(next) =>
++                                                    setBottomBar(next)
+                                                 }
+-                                                sx={{
+-                                                    justifyContent:
+-                                                        "flex-start",
+-                                                }}
+                                             />
+                                         </Grid>
+                                     </>
+@@ -780,7 +837,7 @@ const TeamViewManager: React.FC = () => {
                                  variant="contained"
                                  onClick={onShow}
                              >
@@ -3146,7 +3406,7 @@ index 99cc341..a06ab21 100644
          } catch (error) {
 diff --git a/src/frontend/admin-overlay/src/services/hydroCapture.ts b/src/frontend/admin-overlay/src/services/hydroCapture.ts
 new file mode 100644
-index 0000000..3dd2762
+index 0000000..a421c8a
 --- /dev/null
 +++ b/src/frontend/admin-overlay/src/services/hydroCapture.ts
 @@ -0,0 +1,192 @@
@@ -3522,6 +3782,46 @@ index 051fd98..ab530f2 100644
              setError(errorMessage);
              throw error;
          } finally {
+diff --git a/src/frontend/admin-overlay/src/services/teamViewBottomBar.ts b/src/frontend/admin-overlay/src/services/teamViewBottomBar.ts
+new file mode 100644
+index 0000000..43ecb47
+--- /dev/null
++++ b/src/frontend/admin-overlay/src/services/teamViewBottomBar.ts
+@@ -0,0 +1,34 @@
++// Hydro: the single-team bottom bar (school card, trend timeline or nothing) a director last chose,
++// shared by the TeamView, Capture and Analytics pages of this browser.
++import { TeamViewBottomBar } from "@shared/api";
++import { useLocalStorageState } from "@admin/utils";
++
++const KEY = "teamView.bottomBar";
++/** Before the bottom bar, the TeamView page had a timeline switch. */
++const LEGACY_TIMELINE_KEY = "teamView.timeLineShown";
++
++const readJson = (key: string): unknown => {
++    try {
++        return JSON.parse(localStorage.getItem(key) ?? "null");
++    } catch {
++        return null;
++    }
++};
++
++export const isBottomBar = (value: unknown): value is TeamViewBottomBar =>
++    value === "card" || value === "timeline" || value === "none";
++
++/** The saved choice; a saved timeline switch carries over, otherwise the school card. */
++export function storedBottomBar(): TeamViewBottomBar {
++    const saved = readJson(KEY);
++    if (isBottomBar(saved)) return saved;
++    const legacy = readJson(LEGACY_TIMELINE_KEY);
++    if (legacy === true) return "timeline";
++    if (legacy === false) return "none";
++    return "card";
++}
++
++export function useBottomBar(): [TeamViewBottomBar, (value: TeamViewBottomBar) => void] {
++    const [value, setValue] = useLocalStorageState<TeamViewBottomBar>(KEY, storedBottomBar());
++    return [isBottomBar(value) ? value : storedBottomBar(), setValue];
++}
 diff --git a/src/frontend/admin-overlay/src/services/teamViewService.ts b/src/frontend/admin-overlay/src/services/teamViewService.ts
 index a5323d9..9c33588 100644
 --- a/src/frontend/admin-overlay/src/services/teamViewService.ts
@@ -3639,10 +3939,10 @@ index 799a87c..79851ad 100644
      };
 diff --git a/src/frontend/common/src/i18n.ts b/src/frontend/common/src/i18n.ts
 new file mode 100644
-index 0000000..770db8e
+index 0000000..407c90e
 --- /dev/null
 +++ b/src/frontend/common/src/i18n.ts
-@@ -0,0 +1,367 @@
+@@ -0,0 +1,376 @@
 +// Hydro: the director's console in Chinese (default) or English. Texts are written in English in
 +// the source and looked up here; text that arrives in Chinese (from Hydro) is looked up the other
 +// way for English. The choice is kept in this browser, and switching reloads the page.
@@ -3858,6 +4158,15 @@ index 0000000..770db8e
 +    "Team name": "队伍名称",
 +    "Team:": "队伍：",
 +    TimeLine: "时间线",
++    "Bottom bar": "单队底部栏",
++    "School card": "校名队伍卡",
++    "Trend timeline": "曲线时间线",
++    "Off": "不展示",
++    "Single-team bottom bar": "单队底部展示",
++    Coach: "教练",
++    Rank: "排名",
++    Best: "最高",
++    Solved: "过题",
 +    "When enabled any modifications to the team instances will be applied after you press Show all":
 +        "开启后，对各队伍画面的修改要点击“全部显示”后才生效",
 +
@@ -4024,7 +4333,7 @@ index e0c89a5..4fb8075 100644
                  return response;
              });
 diff --git a/src/frontend/generated/api.ts b/src/frontend/generated/api.ts
-index 0154daa..cfa3167 100644
+index 0154daa..245a688 100644
 --- a/src/frontend/generated/api.ts
 +++ b/src/frontend/generated/api.ts
 @@ -456,6 +456,7 @@ export namespace RunResult {
@@ -4035,7 +4344,40 @@ index 0154daa..cfa3167 100644
      type: RunResult.Type.IN_PROGRESS;
      testedPart: number;
      isAfterFirstOk: boolean;
-@@ -952,6 +953,7 @@ export namespace SolutionsStatistic {
+@@ -691,6 +692,24 @@ export interface TeamLocatorSettings {
+   scene?: string;
+ }
+ 
++export type TeamViewBottomBar = "none" | "card" | "timeline";
++
++export interface TeamTrendPoint {
++  time: number;
++  solved: number;
++  rank: number;
++}
++
++export interface TeamTrend {
++  teamsCount: number;
++  problemsCount: number;
++  ranked: boolean;
++  frozenAtMs: number | null;
++  bestRank: number | null;
++  currentRank: number | null;
++  points: TeamTrendPoint[];
++}
++
+ export interface OverlayTeamViewSettings {
+   teamId: TeamId;
+   primary: MediaType[];
+@@ -698,6 +717,7 @@ export interface OverlayTeamViewSettings {
+   showTaskStatus: boolean;
+   achievement: MediaType[];
+   showTimeLine: boolean;
++  bottomBar?: TeamViewBottomBar;
+   position: TeamViewPosition;
+ }
+ 
+@@ -952,6 +972,7 @@ export namespace SolutionsStatistic {
      type: SolutionsStatistic.Type.ICPC;
      teamsCount: number;
      stats: ICPCProblemSolutionsStatistic[];
@@ -4043,7 +4385,15 @@ index 0154daa..cfa3167 100644
    }
    
    export interface IOI {
-@@ -1041,6 +1043,7 @@ export namespace TimeLineRunInfo {
+@@ -983,6 +1004,7 @@ export interface ExternalTeamViewSettings {
+   showTaskStatus?: boolean;
+   showAchievement?: boolean;
+   showTimeLine?: boolean;
++  bottomBar?: TeamViewBottomBar;
+   position?: TeamViewPosition;
+ }
+ 
+@@ -1041,6 +1063,7 @@ export namespace TimeLineRunInfo {
    }
    
    export interface IN_PROGRESS {
@@ -4083,7 +4433,7 @@ index 4fa3a57..01ebcde 100644
                      percentage={runInfo.result.testedPart}
                      className={className}
 diff --git a/src/frontend/overlay/src/components/layouts/MainLayout.tsx b/src/frontend/overlay/src/components/layouts/MainLayout.tsx
-index 739bcfa..e293dee 100644
+index 739bcfa..db4414d 100644
 --- a/src/frontend/overlay/src/components/layouts/MainLayout.tsx
 +++ b/src/frontend/overlay/src/components/layouts/MainLayout.tsx
 @@ -1,4 +1,5 @@
@@ -4133,13 +4483,14 @@ index 739bcfa..e293dee 100644
  };
  
  const useWidgets = () => {
-@@ -120,14 +127,17 @@ const useWidgets = () => {
+@@ -120,14 +127,18 @@ const useWidgets = () => {
  const WidgetWithTransition: React.FC<{
      obj: Widget;
      params: URLSearchParams;
 -}> = ({ obj, params }) => {
 +    teamScale: number;
-+}> = ({ obj, params, teamScale }) => {
++    teamViewCount: number;
++}> = ({ obj, params, teamScale, teamViewCount }) => {
      const WidgetComponent = WIDGETS[obj.type];
      const location = c.WIDGET_POSITIONS[
          obj.widgetLocationId
@@ -4153,7 +4504,7 @@ index 739bcfa..e293dee 100644
          mountOnEnter: true,
          unmountOnExit: true,
          enter: true,
-@@ -166,8 +176,9 @@ const WidgetWithTransition: React.FC<{
+@@ -166,8 +177,9 @@ const WidgetWithTransition: React.FC<{
  
      return (
          <WidgetWrap
@@ -4165,11 +4516,27 @@ index 739bcfa..e293dee 100644
              width={location.sizeX}
              height={location.sizeY}
              shouldCrop={WidgetComponent.shouldCrop}
-@@ -186,6 +197,15 @@ const WidgetWithTransition: React.FC<{
+@@ -178,6 +190,7 @@ const WidgetWithTransition: React.FC<{
+             <WidgetComponent
+                 widgetData={obj}
+                 transitionState={transition.status}
++                teamViewCount={teamViewCount}
+             />
+         </WidgetWrap>
+     );
+@@ -186,6 +199,23 @@ const WidgetWithTransition: React.FC<{
  export const MainLayout = () => {
      const widgets = useWidgets();
      const params = useQueryParams();
 +    const only = params.get("onlyWidgets")?.split(",");
++    const scene = params.get("scene");
++    const teamViewCount = scene
++        ? 0
++        : Object.values(widgets).filter(
++              (w) =>
++                  w.type === "TeamViewWidget" &&
++                  (!only || only.includes(w.widgetId)),
++          ).length;
 +    const stage = c.WIDGET_POSITIONS.teamViewSingle;
 +    // Keep the native camera grid and its timeline together above the two lower thirds.
 +    const lowerThirds = Object.values(widgets)
@@ -4181,11 +4548,12 @@ index 739bcfa..e293dee 100644
      return (
          <MainLayoutWrap>
              <StatusLightBulbs compact={true} />
-@@ -194,6 +214,7 @@ export const MainLayout = () => {
+@@ -194,6 +224,8 @@ export const MainLayout = () => {
                      key={obj.widgetId}
                      obj={obj}
                      params={params}
 +                    teamScale={teamScale}
++                    teamViewCount={teamViewCount}
                  />
              ))}
          </MainLayoutWrap>
@@ -4222,6 +4590,267 @@ index 6b68bc1..f1da671 100644
          return (
              <SubmissionColumnWrap bg_color={teamData?.color} darkText={dark}>
                  <div style={{ order: isTop ? 1 : 3 }} />
+diff --git a/src/frontend/overlay/src/components/organisms/holder/TeamInfoBanner.tsx b/src/frontend/overlay/src/components/organisms/holder/TeamInfoBanner.tsx
+new file mode 100644
+index 0000000..a782b76
+--- /dev/null
++++ b/src/frontend/overlay/src/components/organisms/holder/TeamInfoBanner.tsx
+@@ -0,0 +1,255 @@
++import { useEffect, useState } from "react";
++import styled from "styled-components";
++import { t } from "@shared/src/i18n";
++import { MediaType, OrganizationInfo, TeamId, TeamInfo } from "@shared/api";
++import c from "@/config";
++import { useAppSelector } from "@/redux/hooks";
++import { hexToRgb, isShouldUseDarkColor } from "@/utils/colors";
++
++const BANNER_FONT = `"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", ${c.GLOBAL_DEFAULT_FONT_FAMILY}, sans-serif`;
++
++/** Deep broadcast ICPC blue when using the default theme color; honors custom colors directly. */
++export function bannerColors(baseColor?: string | null): {
++    bg: string;
++    edge: string;
++    darkText: boolean;
++} {
++    const raw = (baseColor || c.CONTEST_COLOR || "#4C83C3").trim();
++    if (raw.toLowerCase() === "#4c83c3") {
++        return {
++            bg: "linear-gradient(90deg, #0b418c 0%, #104ea3 100%)",
++            edge: "#104ea3",
++            darkText: false,
++        };
++    }
++    const darkText = isShouldUseDarkColor(raw);
++    const rgb = hexToRgb(raw);
++    if (!rgb || darkText) {
++        return { bg: raw, edge: raw, darkText };
++    }
++    const deepen = (v: number, factor: number) =>
++        Math.max(0, Math.min(255, Math.round(v * factor)));
++    const left = `rgb(${deepen(rgb.r, 0.78)}, ${deepen(rgb.g, 0.78)}, ${deepen(rgb.b, 0.78)})`;
++    return {
++        bg: `linear-gradient(90deg, ${left} 0%, ${raw} 100%)`,
++        edge: raw,
++        darkText: false,
++    };
++}
++
++const BannerWrap = styled.section<{
++    $bg: string;
++    $darkText: boolean;
++    $fullWidth: boolean;
++}>`
++    width: 100%;
++    height: ${c.TIMELINE_WRAP_HEIGHT}px;
++    box-sizing: border-box;
++    display: flex;
++    align-items: center;
++    gap: 22px;
++    padding: 14px 28px 14px 24px;
++    background: ${(p) => p.$bg};
++    color: ${(p) => (p.$darkText ? "#111827" : "#FFFFFF")};
++    font-family: ${BANNER_FONT};
++    border-radius: ${(p) =>
++        p.$fullWidth
++            ? `${c.TIMELINE_BORDER_RADIUS}`
++            : `${c.TIMELINE_BORDER_RADIUS} 0 0 ${c.TIMELINE_BORDER_RADIUS}`};
++    overflow: hidden;
++    position: relative;
++`;
++
++const LogoBadge = styled.div`
++    width: 112px;
++    height: 112px;
++    flex-shrink: 0;
++    border-radius: 50%;
++    background: #ffffff;
++    padding: 5px;
++    box-sizing: border-box;
++    display: flex;
++    align-items: center;
++    justify-content: center;
++    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.24);
++    overflow: hidden;
++
++    img {
++        width: 100%;
++        height: 100%;
++        object-fit: contain;
++        display: block;
++    }
++`;
++
++const TextColumn = styled.div<{ $compact: boolean }>`
++    flex: 1;
++    min-width: 0;
++    display: flex;
++    flex-direction: column;
++    justify-content: center;
++    gap: ${(p) => (p.$compact ? "3px" : "6px")};
++`;
++
++const SchoolLine = styled.div<{ $compact: boolean }>`
++    font-size: ${(p) => (p.$compact ? "31px" : "35px")};
++    font-weight: 700;
++    line-height: 1.18;
++    letter-spacing: 0.01em;
++    white-space: nowrap;
++    overflow: hidden;
++    text-overflow: ellipsis;
++`;
++
++const TeamLine = styled.div<{ $primary: boolean; $compact: boolean }>`
++    font-size: ${(p) => (p.$primary ? "38px" : p.$compact ? "31px" : "33px")};
++    font-weight: 700;
++    line-height: 1.18;
++    letter-spacing: 0.01em;
++    white-space: nowrap;
++    overflow: hidden;
++    text-overflow: ellipsis;
++`;
++
++const RosterLine = styled.div<{ $darkText: boolean }>`
++    font-size: 22px;
++    font-weight: 500;
++    line-height: 1.24;
++    color: ${(p) =>
++        p.$darkText ? "rgba(17, 24, 39, 0.85)" : "rgba(255, 255, 255, 0.93)"};
++    white-space: nowrap;
++    overflow: hidden;
++    text-overflow: ellipsis;
++`;
++
++const SeatBadge = styled.div`
++    flex-shrink: 0;
++    align-self: flex-start;
++    padding-top: 2px;
++    font-size: 30px;
++    font-weight: 700;
++    line-height: 1.15;
++    letter-spacing: 0.02em;
++    font-variant-numeric: tabular-nums;
++    opacity: 0.96;
++`;
++
++const BannerBackground = styled.div<{ $color: string }>`
++    background-color: ${(p) => p.$color};
++    grid-column: 2 / 2;
++    grid-row: 4 / 4;
++    border-bottom-right-radius: ${c.GLOBAL_BORDER_RADIUS};
++`;
++
++function splitField(value?: string): string[] {
++    if (!value) return [];
++    return value
++        .split(" · ")
++        .map((item) => item.trim())
++        .filter(Boolean);
++}
++
++function logoUrlOf(org?: OrganizationInfo): string | null {
++    if (!org || org.customFields?.hydroMissing === "1") return null;
++    // Only show registered school emblems on the banner (no generic placeholder).
++    if (org.customFields?.hydroLogo !== "1") return null;
++    const image = org.logo?.find(
++        (item): item is MediaType.Image =>
++            item.type === MediaType.Type.Image && Boolean(item.url),
++    );
++    return image?.url ?? null;
++}
++
++export function TeamInfoBannerBackground({ teamId }: { teamId: TeamId }) {
++    const team = useAppSelector(
++        (state) => state.contestInfo.info?.teamsId[teamId],
++    ) as TeamInfo | undefined;
++    const { edge } = bannerColors(team?.color);
++    return <BannerBackground $color={edge} />;
++}
++
++export function TeamInfoBanner({
++    teamId,
++    fullWidth = false,
++}: {
++    teamId: TeamId;
++    fullWidth?: boolean;
++}) {
++    const team = useAppSelector(
++        (state) => state.contestInfo.info?.teamsId[teamId],
++    ) as TeamInfo | undefined;
++    const org = useAppSelector((state) => {
++        const orgId = state.contestInfo.info?.teamsId[teamId]?.organizationId;
++        if (!orgId) return undefined;
++        return state.contestInfo.info?.organizationsId?.[orgId];
++    }) as OrganizationInfo | undefined;
++
++    const logoUrl = logoUrlOf(org);
++    const [logoFailed, setLogoFailed] = useState(false);
++    useEffect(() => {
++        setLogoFailed(false);
++    }, [logoUrl]);
++
++    if (!team) return null;
++
++    const schoolName =
++        org && org.customFields?.hydroMissing !== "1" ? org.displayName : "";
++    const members = splitField(team.customFields?.members);
++    const coaches = splitField(team.customFields?.coaches);
++    const coachSuffix = `(${t("Coach")})`;
++    const rosterParts = [
++        ...members,
++        ...coaches.map((name) => `${name}${coachSuffix}`),
++    ];
++    const roster = rosterParts.join(", ");
++    const rawSeat = (team.customFields?.seat || team.hashTag || "").trim();
++    const seat = rawSeat
++        ? rawSeat.startsWith("#")
++            ? rawSeat
++            : `#${rawSeat}`
++        : "";
++    const { bg, darkText } = bannerColors(team.color);
++    const compact = Boolean(schoolName && roster);
++
++    return (
++        <BannerWrap
++            className="TeamInfoBanner"
++            aria-label={t("School card")}
++            $bg={bg}
++            $darkText={darkText}
++            $fullWidth={fullWidth}
++        >
++            {logoUrl && !logoFailed && (
++                <LogoBadge>
++                    <img
++                        src={logoUrl}
++                        alt={schoolName || team.name}
++                        onError={() => setLogoFailed(true)}
++                    />
++                </LogoBadge>
++            )}
++            <TextColumn $compact={compact}>
++                {schoolName && (
++                    <SchoolLine $compact={compact} title={schoolName}>
++                        {schoolName}
++                    </SchoolLine>
++                )}
++                <TeamLine
++                    $primary={!schoolName}
++                    $compact={compact}
++                    title={team.name}
++                >
++                    {team.name}
++                </TeamLine>
++                {roster && (
++                    <RosterLine $darkText={darkText} title={roster}>
++                        {roster}
++                    </RosterLine>
++                )}
++            </TextColumn>
++            {seat && <SeatBadge>{seat}</SeatBadge>}
++        </BannerWrap>
++    );
++}
++
++export default TeamInfoBanner;
 diff --git a/src/frontend/overlay/src/components/organisms/holder/TeamMediaHolder.tsx b/src/frontend/overlay/src/components/organisms/holder/TeamMediaHolder.tsx
 index 9c41933..77c653b 100644
 --- a/src/frontend/overlay/src/components/organisms/holder/TeamMediaHolder.tsx
@@ -4282,11 +4911,416 @@ index 9c41933..77c653b 100644
      switch (media.type) {
          case MediaType.Type.Image:
              return (
+diff --git a/src/frontend/overlay/src/components/organisms/holder/TeamTrendGraph.tsx b/src/frontend/overlay/src/components/organisms/holder/TeamTrendGraph.tsx
+new file mode 100644
+index 0000000..46ca6c7
+--- /dev/null
++++ b/src/frontend/overlay/src/components/organisms/holder/TeamTrendGraph.tsx
+@@ -0,0 +1,319 @@
++import { useEffect, useMemo, useRef, useState } from "react";
++import styled from "styled-components";
++import { t } from "@shared/src/i18n";
++import { ContestInfo, TeamId, TeamTrend } from "@shared/api";
++import c from "@/config";
++import { calculateContestTime } from "@/components/molecules/Clock";
++import { isShouldUseDarkColor } from "@/utils/colors";
++import { followTeamChannel } from "@/utils/teamChannel";
++
++const TrendSvg = styled.svg`
++    position: absolute;
++    inset: 0;
++    width: 100%;
++    height: 100%;
++    pointer-events: none;
++    z-index: 0;
++`;
++
++const TrendHud = styled.div<{ $darkText: boolean }>`
++    position: absolute;
++    top: 7px;
++    right: 12px;
++    z-index: 2;
++    pointer-events: none;
++    padding: 2px 9px;
++    border-radius: 999px;
++    font-family: "PingFang SC", "Microsoft YaHei", ${c.GLOBAL_DEFAULT_FONT_FAMILY}, sans-serif;
++    font-size: 13px;
++    font-weight: 600;
++    line-height: 1.4;
++    font-variant-numeric: tabular-nums;
++    color: ${(p) => (p.$darkText ? "#0F172A" : "#FFFFFF")};
++    background: ${(p) =>
++        p.$darkText ? "rgba(255, 255, 255, 0.55)" : "rgba(7, 19, 39, 0.42)"};
++    backdrop-filter: blur(2px);
++    white-space: nowrap;
++`;
++
++type Props = {
++    teamId: TeamId;
++    contestInfo: ContestInfo;
++    isPvp: boolean;
++    teamColor?: string;
++};
++
++type Point = [number, number];
++
++/** The trend is a step function (it only changes at a run): hold each value until the next change. */
++function stepPath(points: Point[]): string {
++    if (!points.length) return "";
++    const [x0, y0] = points[0];
++    return points
++        .slice(1)
++        .reduce((acc, [x, y]) => `${acc} H ${x.toFixed(1)} V ${y.toFixed(1)}`, `M ${x0.toFixed(1)} ${y0.toFixed(1)}`);
++}
++
++function scaleRankY(rank: number, teamsCount: number, topPad: number, bottomY: number): number {
++    const maxScale = Math.max(2, teamsCount);
++    const clamped = Math.max(1, Math.min(maxScale, rank));
++    const norm = (clamped - 1) / (maxScale - 1);
++    const scaled = maxScale > 20 ? Math.pow(norm, 0.65) : norm;
++    return topPad + scaled * (bottomY - topPad);
++}
++
++export function TeamTrendGraph({ teamId, contestInfo, isPvp, teamColor }: Props) {
++    const svgRef = useRef<SVGSVGElement | null>(null);
++    const [size, setSize] = useState({ w: 0, h: 0 });
++    const [trend, setTrend] = useState<TeamTrend | null>(null);
++    const [liveElapsed, setLiveElapsed] = useState<number>(() =>
++        calculateContestTime(contestInfo),
++    );
++
++    useEffect(() => {
++        if (!svgRef.current) return;
++        const ro = new ResizeObserver(([entry]) => {
++            const { width, height } = entry.contentRect;
++            setSize({ w: width, h: height });
++        });
++        ro.observe(svgRef.current);
++        return () => ro.disconnect();
++    }, []);
++
++    useEffect(() => {
++        const update = () => {
++            setLiveElapsed(
++                Math.max(
++                    0,
++                    Math.min(
++                        contestInfo.contestLengthMs,
++                        calculateContestTime(contestInfo),
++                    ),
++                ),
++            );
++        };
++        update();
++        const timer = setInterval(update, 1000);
++        return () => clearInterval(timer);
++    }, [contestInfo]);
++
++    useEffect(() => {
++        setTrend(null);
++        return followTeamChannel<TeamTrend | null>(`teamTrend/${teamId}`, (payload) => {
++            if (payload) setTrend(payload);
++        });
++    }, [teamId]);
++
++    const geometry = useMemo(() => {
++        const { w, h } = size;
++        if (!w || !h || !trend || !trend.points.length || contestInfo.contestLengthMs <= 0) {
++            return null;
++        }
++        const leftPad = c.TIMELINE_LEFT_TIME_PADDING;
++        const usableW = w * (isPvp ? c.TIMELINE_REAL_WIDTH_PVP : c.TIMELINE_REAL_WIDTH);
++        const topPad = isPvp ? 8 : 16;
++        const bottomPad = isPvp ? 6 : 10;
++        const bottomY = h - bottomPad;
++        const plotH = Math.max(10, bottomY - topPad);
++        const xOf = (time: number) =>
++            leftPad + (Math.max(0, Math.min(contestInfo.contestLengthMs, time)) / contestInfo.contestLengthMs) * usableW;
++        const maxProblems = Math.max(1, trend.problemsCount);
++        const ySolved = (solved: number) =>
++            bottomY - (Math.min(maxProblems, solved) / maxProblems) * plotH * 0.82;
++
++        // Extend the latest sample horizontally to the current live contest clock.
++        const points = [...trend.points];
++        const last = points[points.length - 1];
++        const endTime = Math.max(last.time, liveElapsed);
++        if (endTime > last.time + 1000) {
++            points.push({ ...last, time: endTime });
++        }
++
++        const solvedPts: Point[] = points.map((p) => [xOf(p.time), ySolved(p.solved)]);
++        const solvedLine = stepPath(solvedPts);
++        const solvedFill =
++            solvedPts.length > 0
++                ? `${solvedLine} V ${bottomY.toFixed(1)} H ${solvedPts[0][0].toFixed(1)} Z`
++                : "";
++
++        const frozenAt = trend.frozenAtMs;
++        let rankSolid = "";
++        let rankFrozen = "";
++        let rankEnd: Point | null = null;
++        if (trend.ranked) {
++            const rankedPts = points.filter((p) => p.rank > 0);
++            if (rankedPts.length > 0) {
++                if (frozenAt !== null && endTime > frozenAt) {
++                    const before = rankedPts.filter((p) => p.time <= frozenAt);
++                    const after = rankedPts.filter((p) => p.time >= frozenAt);
++                    if (before.length > 0) {
++                        const pre: Point[] = before.map((p) => [
++                            xOf(p.time),
++                            scaleRankY(p.rank, trend.teamsCount, topPad, bottomY),
++                        ]);
++                        const lastPre = before[before.length - 1];
++                        if (lastPre.time < frozenAt) {
++                            pre.push([
++                                xOf(frozenAt),
++                                scaleRankY(lastPre.rank, trend.teamsCount, topPad, bottomY),
++                            ]);
++                        }
++                        rankSolid = stepPath(pre);
++                        const postStart: Point = pre[pre.length - 1];
++                        const post: Point[] = [
++                            postStart,
++                            ...after
++                                .filter((p) => p.time > frozenAt)
++                                .map((p): Point => [
++                                    xOf(p.time),
++                                    scaleRankY(p.rank, trend.teamsCount, topPad, bottomY),
++                                ]),
++                        ];
++                        if (post.length === 1) {
++                            post.push([xOf(endTime), postStart[1]]);
++                        }
++                        rankFrozen = stepPath(post);
++                        rankEnd = post[post.length - 1];
++                    }
++                } else {
++                    const all: Point[] = rankedPts.map((p) => [
++                        xOf(p.time),
++                        scaleRankY(p.rank, trend.teamsCount, topPad, bottomY),
++                    ]);
++                    rankSolid = stepPath(all);
++                    rankEnd = all[all.length - 1];
++                }
++            }
++        }
++
++        const guideYs = [topPad, topPad + plotH * 0.5, bottomY];
++        return {
++            leftPad,
++            rightEdge: leftPad + usableW,
++            guideYs,
++            solvedLine,
++            solvedFill,
++            rankSolid,
++            rankFrozen,
++            rankEnd,
++            solvedEnd: solvedPts[solvedPts.length - 1] ?? null,
++            lastSolved: last.solved,
++        };
++    }, [size, trend, contestInfo.contestLengthMs, isPvp, liveElapsed]);
++
++    const useDark = isShouldUseDarkColor(teamColor ?? c.CONTEST_COLOR);
++    const guideStroke = useDark ? "rgba(0, 0, 0, 0.10)" : "rgba(255, 255, 255, 0.13)";
++    const solvedFillColor = useDark ? "rgba(0, 0, 0, 0.11)" : "rgba(255, 255, 255, 0.16)";
++    const solvedStrokeColor = useDark ? "rgba(0, 0, 0, 0.35)" : "rgba(255, 255, 255, 0.42)";
++    const rankStrokeColor = useDark ? "#0D3B7A" : "#FFE066";
++    const rankDotStroke = useDark ? "#FFFFFF" : "#0B2958";
++
++    const hudParts: string[] = [];
++    if (trend && geometry) {
++        if (trend.ranked && trend.currentRank !== null) {
++            hudParts.push(`${t("Rank")} #${trend.currentRank}`);
++            if (trend.bestRank !== null && trend.bestRank !== trend.currentRank) {
++                hudParts.push(`${t("Best")} #${trend.bestRank}`);
++            }
++        }
++        hudParts.push(`${t("Solved")} ${geometry.lastSolved}`);
++        if (trend.frozenAtMs !== null) hudParts.push("❄");
++    }
++
++    return (
++        <>
++            <TrendSvg
++                ref={svgRef}
++                className="TeamTrendGraph"
++                preserveAspectRatio="none"
++                aria-hidden="true"
++            >
++                {geometry && (
++                    <>
++                        {geometry.guideYs.map((y, index) => (
++                            <line
++                                key={index}
++                                x1={geometry.leftPad}
++                                x2={geometry.rightEdge}
++                                y1={y}
++                                y2={y}
++                                stroke={guideStroke}
++                                strokeWidth={1}
++                                strokeDasharray={index === 1 ? "4 4" : undefined}
++                            />
++                        ))}
++                        {geometry.solvedFill && (
++                            <path d={geometry.solvedFill} fill={solvedFillColor} />
++                        )}
++                        {geometry.solvedLine && (
++                            <path
++                                data-trend-solved
++                                d={geometry.solvedLine}
++                                fill="none"
++                                stroke={
++                                    trend?.ranked ? solvedStrokeColor : rankStrokeColor
++                                }
++                                strokeWidth={trend?.ranked ? 1.5 : 2.5}
++                                strokeLinejoin="miter"
++                                vectorEffect="non-scaling-stroke"
++                            />
++                        )}
++                        {geometry.rankSolid && (
++                            <path
++                                data-trend-rank
++                                d={geometry.rankSolid}
++                                fill="none"
++                                stroke={rankStrokeColor}
++                                strokeWidth={2.75}
++                                strokeLinejoin="round"
++                                strokeLinecap="round"
++                                vectorEffect="non-scaling-stroke"
++                            />
++                        )}
++                        {geometry.rankFrozen && (
++                            <path
++                                data-trend-frozen
++                                d={geometry.rankFrozen}
++                                fill="none"
++                                stroke={rankStrokeColor}
++                                strokeWidth={2.25}
++                                strokeDasharray="6 4"
++                                strokeOpacity={0.72}
++                                strokeLinejoin="round"
++                                strokeLinecap="round"
++                                vectorEffect="non-scaling-stroke"
++                            />
++                        )}
++                        {geometry.rankEnd && (
++                            <circle
++                                cx={geometry.rankEnd[0]}
++                                cy={geometry.rankEnd[1]}
++                                r={4.5}
++                                fill={rankStrokeColor}
++                                stroke={rankDotStroke}
++                                strokeWidth={1.5}
++                            />
++                        )}
++                        {!trend?.ranked && geometry.solvedEnd && geometry.lastSolved > 0 && (
++                            <circle
++                                cx={geometry.solvedEnd[0]}
++                                cy={geometry.solvedEnd[1]}
++                                r={4}
++                                fill={rankStrokeColor}
++                                stroke={rankDotStroke}
++                                strokeWidth={1.5}
++                            />
++                        )}
++                    </>
++                )}
++            </TrendSvg>
++            {!isPvp && hudParts.length > 0 && (
++                <TrendHud className="TeamTrendHud" $darkText={useDark}>
++                    {hudParts.join(" · ")}
++                </TrendHud>
++            )}
++        </>
++    );
++}
++
++export default TeamTrendGraph;
 diff --git a/src/frontend/overlay/src/components/organisms/holder/TimeLine.tsx b/src/frontend/overlay/src/components/organisms/holder/TimeLine.tsx
-index 8df0e0d..4839fef 100644
+index 8df0e0d..0d668f6 100644
 --- a/src/frontend/overlay/src/components/organisms/holder/TimeLine.tsx
 +++ b/src/frontend/overlay/src/components/organisms/holder/TimeLine.tsx
-@@ -362,7 +362,7 @@ function Problem({
+@@ -7,10 +7,13 @@ import { ContestInfo, TeamId, TeamInfo, TimeLineRunInfo } from "@shared/api";
+ import { calculateContestTime } from "@/components/molecules/Clock";
+ import { isShouldUseDarkColor } from "@/utils/colors";
+ import { KeylogGraph } from "./KeylogGraph";
++import { TeamTrendGraph } from "./TeamTrendGraph";
++import { followTeamChannel } from "@/utils/teamChannel";
+ 
+ interface TimeLineContainerProps {
+     isPvp: boolean;
+     color?: string;
++    $fullWidth?: boolean;
+ }
+ 
+ interface LineProps {
+@@ -59,6 +62,7 @@ interface TimeLineProps {
+     teamId: TeamId;
+     className?: string | null;
+     isPvp?: boolean;
++    fullWidth?: boolean;
+ }
+ 
+ interface TimelineConfig {
+@@ -81,8 +85,11 @@ const TimeLineContainer = styled.div.attrs<TimeLineContainerProps>(
+     display: grid;
+     background-color: ${(props) => props.color};
+     position: relative;
+-    border-bottom-left-radius: ${c.TIMELINE_BORDER_RADIUS}px;
+-    border-top-left-radius: ${c.TIMELINE_BORDER_RADIUS}px;
++    overflow: hidden;
++    border-radius: ${(props) =>
++        props.$fullWidth
++            ? c.GLOBAL_BORDER_RADIUS
++            : `${c.GLOBAL_BORDER_RADIUS} 0 0 ${c.GLOBAL_BORDER_RADIUS}`};
+ `;
+ 
+ const Line = styled.div.attrs<LineProps>(({ lineWidth, left }) => ({
+@@ -99,6 +106,7 @@ const Line = styled.div.attrs<LineProps>(({ lineWidth, left }) => ({
+         #1a63d8 100%
+     );
+     position: absolute;
++    z-index: 1;
+ `;
+ 
+ const CircleAtEnd = styled.div.attrs<CircleAtEndProps>(
+@@ -114,6 +122,7 @@ const CircleAtEnd = styled.div.attrs<CircleAtEndProps>(
+     position: absolute;
+     top: 50%;
+     transform: translate(-50%, -50%);
++    z-index: 1;
+     background: linear-gradient(
+         270deg,
+         #d13d23 -28.28%,
+@@ -153,6 +162,7 @@ const ProblemWrap = styled.div<ProblemWrapProps>`
+     position: absolute;
+     left: ${(props) => props.left};
+     top: ${(props) => props.top};
++    z-index: 2;
+ `;
+ 
+ const AnimatedText = styled.div`
+@@ -174,16 +184,18 @@ const TimeBorder = styled.div<TimeBorderProps>`
+         props.isPvp ? c.TIMELINE_WRAP_HEIGHT_PVP : c.TIMELINE_WRAP_HEIGHT}px;
+     background-color: ${(props) =>
+         isShouldUseDarkColor(props.color) ? "#000" : "#fff"};
++    opacity: 0.35;
+     width: ${c.TIMELINE_TIME_BORDER_WIDTH}px;
+     position: absolute;
+     left: ${(props) => props.left};
++    z-index: 1;
+ `;
+ 
+ const TimelineBackground = styled.div<{ color: string }>`
+     background-color: ${(props) => props.color};
+     grid-column: 2 / 2;
+     grid-row: 4 / 4;
+-    border-bottom-right-radius: ${c.GLOBAL_BORDER_RADIUS}px;
++    border-bottom-right-radius: ${c.GLOBAL_BORDER_RADIUS};
+ `;
+ 
+ function getTimelineConfig(isPvp: boolean): TimelineConfig {
+@@ -362,7 +374,7 @@ function Problem({
                  </AnimatedText>
              );
          }
@@ -4295,6 +5329,85 @@ index 8df0e0d..4839fef 100644
      }
  
      function renderScoreOrVerdict() {
+@@ -422,6 +434,7 @@ export function TimeLine({
+     teamId,
+     className = null,
+     isPvp = false,
++    fullWidth = false,
+ }: TimeLineProps) {
+     const contestInfo = useAppSelector((state) => state.contestInfo.info) as
+         | ContestInfo
+@@ -439,45 +452,14 @@ export function TimeLine({
+ 
+     const config = getTimelineConfig(isPvp);
+ 
+-    useEffect(() => {
+-        const socketUrl = `${c.BASE_URL_WS}/teamRuns/${teamId}`;
+-        const socket = new WebSocket(socketUrl);
+-
+-        function handleOpen() {
+-            console.debug(`WebSocket /teamRuns/${teamId} is open`);
+-        }
+-
+-        function handleMessage(event: MessageEvent) {
+-            try {
+-                const data: TimeLineRunInfo[] = JSON.parse(event.data);
++    useEffect(
++        () =>
++            followTeamChannel<TimeLineRunInfo[]>(`teamRuns/${teamId}`, (data) => {
+                 setRunsResults(data);
+                 setSyncStartTime((prevTime) => prevTime || performance.now());
+-                console.debug(`WebSocket /teamRuns/${teamId}: `, data);
+-            } catch (error) {
+-                console.error(
+-                    `Error parsing WebSocket message for /teamRuns/${teamId}:`,
+-                    error,
+-                );
+-            }
+-        }
+-
+-        function handleClose() {
+-            console.debug(`WebSocket /teamRuns/${teamId} is closed`);
+-        }
+-
+-        function handleError(error: Event) {
+-            console.error(`WebSocket /teamRuns/${teamId} error:`, error);
+-        }
+-
+-        socket.addEventListener("open", handleOpen);
+-        socket.addEventListener("message", handleMessage);
+-        socket.addEventListener("close", handleClose);
+-        socket.addEventListener("error", handleError);
+-
+-        return () => {
+-            socket.close();
+-        };
+-    }, [teamId]);
++            }),
++        [teamId],
++    );
+ 
+     useEffect(() => {
+         if (!contestInfo) return;
+@@ -529,10 +511,17 @@ export function TimeLine({
+ 
+     return (
+         <TimeLineContainer
+-            className={className}
++            className={className ? `TeamTimeLine ${className}` : "TeamTimeLine"}
+             color={teamData?.color ? teamData?.color : c.CONTEST_COLOR}
+             isPvp={isPvp}
++            $fullWidth={fullWidth}
+         >
++            <TeamTrendGraph
++                teamId={teamId}
++                contestInfo={contestInfo}
++                isPvp={isPvp}
++                teamColor={teamColor}
++            />
+             {keylog.length > 0 && (
+                 <KeylogGraph
+                     keylog={keylog}
 diff --git a/src/frontend/overlay/src/components/organisms/widgets/BroadcastCards.tsx b/src/frontend/overlay/src/components/organisms/widgets/BroadcastCards.tsx
 new file mode 100644
 index 0000000..72922f9
@@ -5100,18 +6213,276 @@ index 959e6cf..9b15790 100644
                  />
              )}
 diff --git a/src/frontend/overlay/src/components/organisms/widgets/TeamView.tsx b/src/frontend/overlay/src/components/organisms/widgets/TeamView.tsx
-index 352cbda..9a3f997 100644
+index 352cbda..3205959 100644
 --- a/src/frontend/overlay/src/components/organisms/widgets/TeamView.tsx
 +++ b/src/frontend/overlay/src/components/organisms/widgets/TeamView.tsx
-@@ -462,7 +462,7 @@ export const TeamView: OverlayWidgetC<Widget.TeamViewWidget> = ({
+@@ -8,7 +8,12 @@ import React, {
+ } from "react";
+ import styled, { Keyframes, keyframes } from "styled-components";
+ import c from "../../../config";
+-import { OverlayTeamViewSettings, TeamViewPosition, Widget } from "@shared/api";
++import {
++    OverlayTeamViewSettings,
++    TeamViewBottomBar,
++    TeamViewPosition,
++    Widget,
++} from "@shared/api";
+ import {
+     OverlayWidgetC,
+     OverlayWidgetProps,
+@@ -17,6 +22,9 @@ import { TeamMediaHolder } from "@/components/organisms/holder/TeamMediaHolder";
+ import TimeLine, {
+     TimeLineBackground,
+ } from "@/components/organisms/holder/TimeLine";
++import TeamInfoBanner, {
++    TeamInfoBannerBackground,
++} from "@/components/organisms/holder/TeamInfoBanner";
+ import { ContestantViewCorner } from "@/components/molecules/info/ContestantViewCorner";
+ import { ContestantViewLine } from "@/components/molecules/info/ContestantViewLine";
+ import { LocationRectangle } from "@/utils/location-rectangle";
+@@ -62,6 +70,7 @@ const TeamViewContainer = styled.div.attrs({
+ type CommonContentProps = {
+     location: LocationRectangle;
+     position?: TeamViewPosition;
++    teamViewCount?: number;
+     setPrimaryLoaded: Dispatch<SetStateAction<boolean>>;
+     setSecondaryLoaded: Dispatch<SetStateAction<boolean>>;
+     setAchievementLoaded: Dispatch<SetStateAction<boolean>>;
+@@ -121,8 +130,8 @@ const TaskStatusWrapper = styled.div<{
+     border-radius: ${c.GLOBAL_BORDER_RADIUS};
+ `;
+ 
+-const TimelineWrapper = styled.div`
+-    grid-column: 1 / 2;
++const TimelineWrapper = styled.div<{ $fullWidth?: boolean }>`
++    grid-column: ${(props) => (props.$fullWidth ? "1 / 3" : "1 / 2")};
+     grid-row: 4 / 4;
+     display: grid;
+     align-items: end;
+@@ -157,6 +166,8 @@ const SingleContent = ({
+     setAchievementLoaded,
+     showTaskStatus,
+     showTimeLine,
++    bottomBar,
++    teamViewCount,
+     location,
+ }: CommonContentProps) => {
+     const achievementY = location.sizeY - (location.sizeX / 16) * 9;
+@@ -166,7 +177,14 @@ const SingleContent = ({
+             : (location.sizeY * c.TEAMVIEW_FULLSCREEN_SECONDARY_FACTOR) / 2;
+     const hasPrimary = (primary?.length ?? 0) > 0;
+     const hasSecondary = (secondary?.length ?? 0) > 0;
+-    const hasAchievement = (achievement?.length ?? 0) > 0;
++    const singleOnly = (teamViewCount ?? 1) <= 1;
++    const effectiveBottomBar: TeamViewBottomBar = !singleOnly
++        ? "none"
++        : (bottomBar ?? (showTimeLine ? "timeline" : "none"));
++    const showCard = effectiveBottomBar === "card";
++    const showTimelineBar = effectiveBottomBar === "timeline";
++    const hasAchievement = singleOnly && (achievement?.length ?? 0) > 0;
++    const hasBottomBar = hasAchievement || showTimelineBar || showCard;
+     return (
+         <>
+             {hasPrimary && (
+@@ -183,7 +201,7 @@ const SingleContent = ({
+             >
+                 {hasAchievement && (
+                     <AchievementGridWrapper>
+-                        <AchievementWrapper showTimeline={showTimeLine}>
++                        <AchievementWrapper showTimeline={showTimelineBar}>
+                             <TeamMediaHolder
+                                 media={achievement[0]}
+                                 onLoadStatus={setAchievementLoaded}
+@@ -192,9 +210,7 @@ const SingleContent = ({
+                     </AchievementGridWrapper>
+                 )}
+                 {hasSecondary && (
+-                    <SecondaryMediaWrapper
+-                        withAchievement={hasAchievement || showTimeLine}
+-                    >
++                    <SecondaryMediaWrapper withAchievement={hasBottomBar}>
+                         <RoundedTeamMediaHolder
+                             media={secondary[0]}
+                             onLoadStatus={setSecondaryLoaded}
+@@ -203,20 +219,36 @@ const SingleContent = ({
+                 )}
+                 {showTaskStatus && (
+                     <TaskStatusWrapper
+-                        withAchievement={hasAchievement || showTimeLine}
++                        withAchievement={hasBottomBar}
+                         withSecondary={hasSecondary}
+                     >
+                         <ContestantViewCorner teamId={teamId} isSmall={false} />
+                     </TaskStatusWrapper>
+                 )}
+-                {showTimeLine && (
+-                    <TimelineWrapper>
++                {showTimelineBar && (
++                    <TimelineWrapper $fullWidth={!hasSecondary}>
+                         <div>
+-                            <TimeLine teamId={teamId} />
++                            <TimeLine
++                                teamId={teamId}
++                                fullWidth={!hasSecondary}
++                            />
+                         </div>
+                     </TimelineWrapper>
+                 )}
+-                {showTimeLine && <TimeLineBackground teamId={teamId} />}
++                {showTimelineBar && hasSecondary && (
++                    <TimeLineBackground teamId={teamId} />
++                )}
++                {showCard && (
++                    <TimelineWrapper $fullWidth={!hasSecondary}>
++                        <TeamInfoBanner
++                            teamId={teamId}
++                            fullWidth={!hasSecondary}
++                        />
++                    </TimelineWrapper>
++                )}
++                {showCard && hasSecondary && (
++                    <TeamInfoBannerBackground teamId={teamId} />
++                )}
+             </TeamViewGrid>
+         </>
+     );
+@@ -266,43 +298,19 @@ const PVPTaskStatusWrapper = styled.div<PVPWrapperProps>`
+     justify-items: end;
+ `;
+ 
+-const PVPAchievementWrapper = styled.div<PVPWrapperProps>`
+-    grid-column: 2;
+-    grid-row: ${(props) => (props.$isTop ? "2 / 3" : "3 / 4")};
+-    display: grid;
+-    position: relative;
+-    background: ${c.PVP_BACKGROUND};
+-    overflow: hidden;
+-`;
+-
+ const PVPTackStatusBackWrapper = styled.div<PVPWrapperProps>`
+     grid-column: 2;
+     grid-row: ${(props) => (props.$isTop ? "3 / 4" : "2 / 3")};
+     background: ${c.PVP_BACKGROUND};
+ `;
+ 
+-const PVPAchievementInnerWrapper = styled.div`
+-    position: absolute;
+-    width: ${c.PVP_ACHIEVEMENT_WIDTH};
+-    bottom: ${c.PVP_ACHIEVEMENT_BOTTOM_OFFSET};
+-    z-index: 4;
+-
+-    object {
+-        width: 100%;
+-        height: 100%;
+-    }
+-`;
+-
+ const PVPContent = ({
+     teamId,
+     primary,
+     setPrimaryLoaded,
+     secondary,
+     setSecondaryLoaded,
+-    achievement,
+-    setAchievementLoaded,
+     showTaskStatus,
+-    showTimeLine,
+     location,
+     position,
+ }: CommonContentProps) => {
+@@ -315,7 +323,6 @@ const PVPContent = ({
+         9;
+     const hasPrimary = (primary?.length ?? 0) > 0;
+     const hasSecondary = (secondary?.length ?? 0) > 0;
+-    const hasAchievement = (achievement?.length ?? 0) > 0;
+     return (
+         <>
+             <PVPGrid
+@@ -339,21 +346,6 @@ const PVPContent = ({
+                         />
+                     </PVPSecondaryMediaWrapper>
+                 )}
+-                {hasAchievement && (
+-                    <PVPAchievementWrapper $isTop={isTop}>
+-                        <PVPAchievementInnerWrapper>
+-                            <TeamMediaHolder
+-                                media={achievement[0]}
+-                                onLoadStatus={setAchievementLoaded}
+-                            />
+-                        </PVPAchievementInnerWrapper>
+-                    </PVPAchievementWrapper>
+-                )}
+-                {showTimeLine && (
+-                    <PVPAchievementWrapper $isTop={isTop}>
+-                        <TimeLine teamId={teamId} isPvp={true} />
+-                    </PVPAchievementWrapper>
+-                )}
+                 <PVPTackStatusBackWrapper $isTop={isTop} />
+             </PVPGrid>
+             {showTaskStatus && (
+@@ -431,6 +423,7 @@ const SplitContent = ({
+ export const TeamView: OverlayWidgetC<Widget.TeamViewWidget> = ({
+     widgetData,
+     transitionState,
++    teamViewCount,
+ }) => {
+     const [curSettings, setCurSettings] = useState<OverlayTeamViewSettings>(
+         widgetData.settings,
+@@ -462,8 +455,9 @@ export const TeamView: OverlayWidgetC<Widget.TeamViewWidget> = ({
              {/** Current */}
              <TeamViewSingleContent
                  key={curSettings?.teamId}
 -                widgetData={{ ...widgetData, settings: curSettings }}
 +                widgetData={{ ...widgetData, settings: widgetData.settings.teamId === curSettings.teamId ? widgetData.settings : curSettings }}
                  transitionState={transitionState}
++                teamViewCount={teamViewCount}
              />
              {/** Next */}
+             {nextSettings && (
+@@ -471,6 +465,7 @@ export const TeamView: OverlayWidgetC<Widget.TeamViewWidget> = ({
+                     key={nextSettings?.teamId}
+                     widgetData={{ ...widgetData, settings: nextSettings }}
+                     transitionState={transitionState}
++                    teamViewCount={teamViewCount}
+                     onLoaded={onNextLoaded}
+                 />
+             )}
+@@ -485,22 +480,22 @@ type TeamViewSingleContentProps = OverlayWidgetProps<Widget.TeamViewWidget> & {
+ export const TeamViewSingleContent: React.FC<TeamViewSingleContentProps> = ({
+     widgetData: { settings, widgetLocationId },
+     transitionState,
++    teamViewCount,
+     onLoaded,
+ }) => {
+-    const { primary, secondary, achievement, position } = settings;
++    const { primary, secondary, position } = settings;
+     const location = c.WIDGET_POSITIONS[widgetLocationId] as LocationRectangle;
+     const variant = teamViewVariant(position);
+ 
+     const [primaryLoaded, setPrimaryLoaded] = useState(false);
+     const [secondaryLoaded, setSecondaryLoaded] = useState(false);
+-    const [achievementLoaded, setAchievementLoaded] = useState(false);
++    // Hydro: only the single view shows an achievement, and it never holds the view back.
++    const [, setAchievementLoaded] = useState(false);
+     const isPrimaryEmpty = (primary?.length ?? 0) === 0;
+     const isSecondaryEmpty = (secondary?.length ?? 0) === 0;
+-    const isAchievementEmpty = (achievement?.length ?? 0) === 0;
+     const isLoaded =
+         (isPrimaryEmpty || primaryLoaded) &&
+-        (isSecondaryEmpty || secondaryLoaded || true) &&
+-        (variant === "single" || isAchievementEmpty || achievementLoaded);
++        (isSecondaryEmpty || secondaryLoaded || true);
+ 
+     useLayoutEffect(() => {
+         if (isLoaded && onLoaded) {
+@@ -510,6 +505,7 @@ export const TeamViewSingleContent: React.FC<TeamViewSingleContentProps> = ({
+ 
+     const props = {
+         ...settings,
++        teamViewCount,
+         setPrimaryLoaded,
+         setSecondaryLoaded,
+         setAchievementLoaded,
 diff --git a/src/frontend/overlay/src/components/organisms/widgets/queue/QueueContainer.tsx b/src/frontend/overlay/src/components/organisms/widgets/queue/QueueContainer.tsx
 index 25c9e33..4895764 100644
 --- a/src/frontend/overlay/src/components/organisms/widgets/queue/QueueContainer.tsx
@@ -5244,6 +6615,18 @@ index fe2dd81..d891418 100644
      fontSize: c.SCOREBOARD_ROW_FONT_SIZE,
  })`
      display: flex;
+diff --git a/src/frontend/overlay/src/components/organisms/widgets/types.ts b/src/frontend/overlay/src/components/organisms/widgets/types.ts
+index 36fb442..2008186 100644
+--- a/src/frontend/overlay/src/components/organisms/widgets/types.ts
++++ b/src/frontend/overlay/src/components/organisms/widgets/types.ts
+@@ -4,6 +4,7 @@ import { FC } from "react";
+ export type OverlayWidgetProps<W extends Widget> = {
+     widgetData: W;
+     transitionState: string;
++    teamViewCount?: number;
+ };
+ 
+ export type OverlayWidgetC<W extends Widget> = FC<OverlayWidgetProps<W>> & {
 diff --git a/src/frontend/overlay/src/config.interface.ts b/src/frontend/overlay/src/config.interface.ts
 index b8f7a07..faeb3fa 100644
 --- a/src/frontend/overlay/src/config.interface.ts
@@ -5318,6 +6701,38 @@ index ce030a2..5e1ecbd 100644
              teamLocator: Location(0, 0, 1920, 1080),
              teamViewSingle: Location(16, 16, 1488, 984),
              teamViewPvpTop: Location(16, 16, 1488, 984 / 2 + 16),
+diff --git a/src/frontend/overlay/src/redux/contest/contestInfo.ts b/src/frontend/overlay/src/redux/contest/contestInfo.ts
+index 2c33193..da0db91 100644
+--- a/src/frontend/overlay/src/redux/contest/contestInfo.ts
++++ b/src/frontend/overlay/src/redux/contest/contestInfo.ts
+@@ -1,7 +1,7 @@
+ import _ from "lodash";
+ import c from "../../config";
+ import { getTextWidth } from "../../components/atoms/ShrinkingBox";
+-import { ContestInfo, ProblemInfo, TeamInfo } from "@shared/api";
++import { ContestInfo, OrganizationInfo, ProblemInfo, TeamInfo } from "@shared/api";
+ 
+ const ActionTypes = {
+     CONTEST_INFO_SET: "CONTEST_INFO_SET",
+@@ -12,6 +12,7 @@ type ContestState = {
+         | (ContestInfo & {
+               teamsId: Record<TeamInfo["id"], TeamInfo>;
+               problemsId: Record<ProblemInfo["id"], ProblemInfo>;
++              organizationsId: Record<OrganizationInfo["id"], OrganizationInfo>;
+           })
+         | undefined;
+ };
+@@ -47,6 +48,10 @@ export function contestInfoReducer(state = initialState, action): ContestState {
+                     problems: sortedProblems,
+                     teamsId: _.keyBy(action.payload.info.teams, "id"),
+                     problemsId: _.keyBy(action.payload.info.problems, "id"),
++                    organizationsId: _.keyBy(
++                        action.payload.info.organizations ?? [],
++                        "id",
++                    ),
+                 },
+             };
+         default:
 diff --git a/src/frontend/overlay/src/redux/contest/scoreboard.ts b/src/frontend/overlay/src/redux/contest/scoreboard.ts
 index d8fd89d..46a0040 100644
 --- a/src/frontend/overlay/src/redux/contest/scoreboard.ts
@@ -5383,7 +6798,7 @@ index d8fd89d..46a0040 100644
              });
 diff --git a/src/frontend/overlay/src/utils/hydroCapture.ts b/src/frontend/overlay/src/utils/hydroCapture.ts
 new file mode 100644
-index 0000000..ae53817
+index 0000000..681640d
 --- /dev/null
 +++ b/src/frontend/overlay/src/utils/hydroCapture.ts
 @@ -0,0 +1,194 @@
@@ -5580,4 +6995,45 @@ index 0000000..ae53817
 +            return () => { client.deviceListeners.delete(listener); };
 +        },
 +    });
++}
+diff --git a/src/frontend/overlay/src/utils/teamChannel.ts b/src/frontend/overlay/src/utils/teamChannel.ts
+new file mode 100644
+index 0000000..0892952
+--- /dev/null
++++ b/src/frontend/overlay/src/utils/teamChannel.ts
+@@ -0,0 +1,35 @@
++// Hydro: one per-team overlay channel (teamRuns/<id>, teamTrend/<id>). The plugin sends the current
++// value on every connect, so after a dropped connection the holder reconnects and is up to date again.
++import c from "@/config";
++
++/** Calls `onValue` with each message of the channel until the returned function is called. */
++export function followTeamChannel<T>(path: string, onValue: (value: T) => void): () => void {
++    let socket: WebSocket | null = null;
++    let retry: ReturnType<typeof setTimeout> | null = null;
++    let closed = false;
++    const connect = () => {
++        const current = new WebSocket(`${c.BASE_URL_WS}/${path}`);
++        socket = current;
++        current.onmessage = (event) => {
++            if (closed) return;
++            try {
++                onValue(JSON.parse(event.data) as T);
++            } catch (error) {
++                console.error(`Error parsing WebSocket message for /${path}:`, error);
++            }
++        };
++        current.onclose = () => {
++            if (!closed) retry = setTimeout(connect, c.WEBSOCKET_RECONNECT_TIME);
++        };
++    };
++    connect();
++    return () => {
++        closed = true;
++        if (retry) clearTimeout(retry);
++        const current = socket;
++        if (!current) return;
++        // Closing a socket that is still connecting logs a browser warning: close it once it opens.
++        if (current.readyState === WebSocket.CONNECTING) current.onopen = () => current.close();
++        else current.close();
++    };
 +}

@@ -3,57 +3,103 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Hydro Contest Better v2.1.0 办赛手册。了解如何安装升级、核对观众视角与选手视角、配对并遥控场馆大屏、主持带队伍照片的滚榜、制作离线颁奖幻灯片，以及配置答疑、气球、打印、直播和证书。">
-  <meta name="theme-color" content="#811c39">
+  <meta name="description" content="Hydro Contest Better v2.2.0 办赛手册。了解如何安装升级、核对观众视角与选手视角、配对并遥控场馆大屏、主持带队伍照片的滚榜、制作离线颁奖幻灯片，以及配置答疑、气球、打印、直播和证书。">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1b1b1f" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <script>try{const t=localStorage.getItem("hcb-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
   <title>Hydro Contest Better 操作手册</title>
   <link rel="stylesheet" href="./manual.css">
+  <script src="./manual.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#manual">跳到手册正文</a>
-  <header class="topbar">
-    <div class="topbar-inner">
-      <a class="brand" href="./">Hydro Contest Better</a>
-      <nav aria-label="项目链接">
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better">源码</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.1.0">下载 v2.1.0</a>
+  <header class="navbar">
+    <div class="navbar-inner">
+      <button class="icon-btn menu-toggle" type="button" aria-label="打开目录" aria-expanded="false" aria-controls="sidebar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
+      <a class="brand" href="./"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><defs><linearGradient id="hcb-mark" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3451b2"/><stop offset="1" stop-color="#8d5cf6"/></linearGradient></defs><rect width="32" height="32" rx="8" fill="url(#hcb-mark)"/><path fill="#fff" d="M7 19h5v6H7zM13.5 12h5v13h-5zM20 16h5v9h-5z"/><circle cx="16" cy="7.5" r="2.2" fill="#ffd54a"/></svg><span>Hydro Contest Better</span></a>
+      <nav class="nav-links" aria-label="站点导航">
+        <a href="./" aria-current="page">操作手册</a>
+        <a href="./media-worker.html">媒体机</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases">更新日志</a>
+        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/usage.md">完整文档</a>
       </nav>
+      <div class="nav-tools">
+        <a class="version-pill" href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.2.0" title="下载 v2.2.0">v2.2.0</a>
+        <button class="icon-btn theme-toggle" type="button" aria-label="切换深色模式"><svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 1.5v2M12 20.5v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1.5 12h2M20.5 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg></button>
+        <a class="icon-btn" href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better" aria-label="GitHub 仓库" title="GitHub 仓库"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.07 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3"/></svg></a>
+      </div>
     </div>
   </header>
   <div class="layout">
-    <aside class="sidebar">
-      <nav class="toc" aria-label="手册目录">
-        <p>手册目录</p>
-        <a href="#start">入口与角色</a>
-        <a href="#install">安装与升级</a>
-        <a href="#configuration">比赛配置与工作台</a>
-        <a href="#prepare">赛前配置</a>
-        <a href="#audience">检查观众视角与选手视角</a>
-        <a href="#presence">机位签到与监控</a>
-        <a href="#clarifications">答疑与公告</a>
-        <a href="#screens">现场大屏</a>
-        <a href="#balloons">气球配送</a>
-        <a href="#broadcast">直播与 OBS</a>
-        <a href="./media-worker.html">媒体机与反应视频教程</a>
-        <a href="#print">比赛打印</a>
-        <a href="#judging">评测监控与重测</a>
-        <a href="#jury-integrity">裁判操作与诚信复核</a>
-        <a href="#resolver">赛后滚榜</a>
-        <a href="#results">成绩快照与导出</a>
-        <a href="#ceremony">颁奖幻灯片与离线播放</a>
-        <a href="#certificates">证书制作与领取</a>
-        <a href="#cleanup">赛后清理</a>
-        <a href="#integration">CCS API 对接</a>
-        <a href="#troubleshoot">故障排查</a>
+    <aside class="sidebar" id="sidebar">
+      <nav class="sidebar-mobile-links" aria-label="站点导航">
+        <a href="./">操作手册</a>
+        <a href="./media-worker.html">媒体机教程</a>
+        <a class="external" href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases">更新日志</a>
+        <a class="external" href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/usage.md">完整使用文档</a>
+      </nav>
+      <nav aria-label="手册目录">
+        <div class="sidebar-group">
+          <p>开始</p>
+          <a href="#start">入口与角色</a>
+          <a href="#install">安装与升级</a>
+          <a href="#configuration">比赛配置与工作台</a>
+        </div>
+        <div class="sidebar-group">
+          <p>赛前准备</p>
+          <a href="#prepare">赛前配置</a>
+          <a href="#audience">观众视角与选手视角</a>
+          <a href="#presence">机位签到与监控</a>
+        </div>
+        <div class="sidebar-group">
+          <p>比赛进行</p>
+          <a href="#clarifications">答疑与公告</a>
+          <a href="#screens">现场大屏</a>
+          <a href="#balloons">气球配送</a>
+          <a href="#broadcast">直播与 OBS</a>
+          <a href="#print">比赛打印</a>
+          <a href="#judging">评测监控与重测</a>
+        </div>
+        <div class="sidebar-group">
+          <p>赛后</p>
+          <a href="#jury-integrity">裁判操作与诚信复核</a>
+          <a href="#resolver">赛后滚榜</a>
+          <a href="#results">成绩快照与导出</a>
+          <a href="#ceremony">颁奖幻灯片与离线播放</a>
+          <a href="#certificates">证书制作与领取</a>
+          <a href="#cleanup">赛后清理</a>
+        </div>
+        <div class="sidebar-group">
+          <p>参考</p>
+          <a href="#integration">CCS API 对接</a>
+          <a href="#troubleshoot">故障排查</a>
+          <a href="./media-worker.html">媒体机与反应视频教程</a>
+        </div>
       </nav>
     </aside>
+    <div class="backdrop" aria-hidden="true"></div>
+    <div class="content">
     <main id="manual">
-      <header class="intro">
-        <p class="version">适用于插件 v2.1.0 · Hydro 5.x</p>
-        <h1>Hydro 比赛操作手册</h1>
-        <p class="lead">从安装插件、配置 ACM 比赛，到现场投屏、气球配送、打印、直播、赛后滚榜和闭幕式颁奖。</p>
-        <p>界面截图使用演示比赛数据。点击配图可查看原图。</p>
-        <a class="primary-link" href="#configuration">开始配置比赛</a>
+      <header class="hero">
+        <a class="hero-badge" href="#single-team-bottom-bar"><span>v2.2.0</span>直播单队画面新增校名队伍卡与排名走势</a>
+        <h1><span class="name">Hydro Contest Better</span><br>比赛操作手册</h1>
+        <p class="tagline">Hydro OJ 的 ACM 办赛插件。从安装插件、配置比赛，到现场投屏、气球配送、打印、直播、赛后滚榜和闭幕式颁奖。</p>
+        <p class="meta">适用于插件 v2.2.0 · Hydro 5.x · Node.js 22+ · 截图使用演示比赛数据，点击配图可查看原图</p>
+        <div class="actions">
+          <a class="btn btn-brand" href="#configuration">开始配置比赛</a>
+          <a class="btn btn-alt" href="#install">安装与升级</a>
+          <a class="btn btn-alt" href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.07 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3"/></svg>GitHub</a>
+        </div>
       </header>
+      <nav class="features" aria-label="主要功能">
+        <a class="feature" href="#configuration"><span class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg></span><strong>赛制与奖项</strong><span>Hydro、ICPC 区域赛或 CCPC 规则，同分规则、奖牌名额与分榜一处配置。</span></a>
+        <a class="feature" href="#screens"><span class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span><strong>现场大屏</strong><span>二十余种画面轮播，配对场馆屏幕后远程翻页、暂停并查看缩略图。</span></a>
+        <a class="feature" href="#balloons"><span class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15c3.3 0 6-3 6-6.5S15.3 2 12 2 6 4.9 6 8.5 8.7 15 12 15z"/><path d="M12 15l-1 2h2l-1-2zM12 17c0 2-2 2.5-2 5"/></svg></span><strong>气球与打印</strong><span>志愿者手机领取配送任务，新气球自动打小票；选手代码按座位打印。</span></a>
+        <a class="feature" href="#broadcast"><span class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3z"/></svg></span><strong>直播与 OBS</strong><span>ICPC Live 导播台与透明背景画面，录制屏幕和摄像头，制作反应视频。</span></a>
+        <a class="feature" href="#resolver"><span class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M6 17V10M11 17V5M16 17v-4M21 17V8"/></svg></span><strong>滚榜与颁奖</strong><span>带队伍照片的 Resolver 滚榜，奖区跳转，离线颁奖幻灯片。</span></a>
+        <a class="feature" href="#jury-integrity"><span class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5l8-3z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg></span><strong>诚信与证书</strong><span>改判留痕、相似代码比对、录像核验，以及双语获奖证书签发。</span></a>
+      </nav>
 
       <section id="start" aria-labelledby="start-heading">
         <h2 id="start-heading">入口与角色</h2>
@@ -73,19 +119,19 @@
       <section id="install" aria-labelledby="install-heading">
         <h2 id="install-heading">安装与升级</h2>
         <p>使用运行 Hydro 的系统账号执行命令。需要 Hydro 5.x、Node.js 22 或以上。用 PM2 管理 Hydro 时，默认进程名为 <code>hydrooj</code>。</p>
-        <p>从发布页下载 <code>hydro-scoreboard-xcpcio-plus-2.1.0.tgz</code> 和同名 <code>.sha256</code> 文件，放在同一个目录。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.1.0">v2.1.0 下载</a></p>
+        <p>从发布页下载 <code>hydro-scoreboard-xcpcio-plus-2.2.0.tgz</code> 和同名 <code>.sha256</code> 文件，放在同一个目录。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.2.0">v2.2.0 下载</a></p>
 
         <h3>校验并解压</h3>
-        <pre><code>sha256sum -c hydro-scoreboard-xcpcio-plus-2.1.0.tgz.sha256
-mkdir xcpcio-v2.1.0
-tar -xzf hydro-scoreboard-xcpcio-plus-2.1.0.tgz -C xcpcio-v2.1.0</code></pre>
+        <pre><code>sha256sum -c hydro-scoreboard-xcpcio-plus-2.2.0.tgz.sha256
+mkdir xcpcio-v2.2.0
+tar -xzf hydro-scoreboard-xcpcio-plus-2.2.0.tgz -C xcpcio-v2.2.0</code></pre>
 
         <figure class="guide-shot">
           <a href="./images/manual/install-archive.svg"><img src="./images/manual/install-archive.svg" width="840" height="262" loading="lazy" alt="终端示例中的 SHA-256 校验显示 OK，解压后可找到 package/install.sh"></a>
           <figcaption>校验结果显示 OK 后再解压。进入新目录，确认 package 下有 install.sh。</figcaption>
         </figure>
         <h3>首次安装</h3>
-        <pre><code>bash xcpcio-v2.1.0/package/install.sh install</code></pre>
+        <pre><code>bash xcpcio-v2.2.0/package/install.sh install</code></pre>
         <p>脚本将插件复制到 <code>$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus</code>，执行 <code>hydrooj addon add</code>，然后重启 Hydro。</p>
         <figure class="guide-shot">
           <a href="./images/manual/install-choice.svg"><img src="./images/manual/install-choice.svg" width="840" height="298" loading="lazy" alt="首次安装选 install，已有安装从新包执行 upgrade，两种方式都要验证比赛入口"></a>
@@ -95,7 +141,7 @@ tar -xzf hydro-scoreboard-xcpcio-plus-2.1.0.tgz -C xcpcio-v2.1.0</code></pre>
           <summary>手动安装到新目录</summary>
           <pre><code>addon_dir="$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 mkdir -p "$addon_dir"
-tar -xzf hydro-scoreboard-xcpcio-plus-2.1.0.tgz -C "$addon_dir" --strip-components=1
+tar -xzf hydro-scoreboard-xcpcio-plus-2.2.0.tgz -C "$addon_dir" --strip-components=1
 hydrooj addon add "$addon_dir"
 pm2 restart hydrooj</code></pre>
           <figure class="guide-shot">
@@ -105,7 +151,7 @@ pm2 restart hydrooj</code></pre>
         </details>
 
         <h3>已有安装时升级</h3>
-        <pre><code>bash xcpcio-v2.1.0/package/install.sh upgrade
+        <pre><code>bash xcpcio-v2.2.0/package/install.sh upgrade
 pm2 status hydrooj</code></pre>
         <p>在浏览器打开 Hydro 首页和一场 ACM 比赛，确认榜单、滚榜和大屏入口可用。自定义目录用 <code>--dir</code> 指向原安装位置，非默认 PM2 进程用 <code>--service</code>。容器部署用 <code>--no-restart</code>，然后通过容器管理方式重启 Hydro。</p>
         <figure class="guide-shot">
@@ -264,7 +310,7 @@ pm2 status hydrooj</code></pre>
       <section id="broadcast" aria-labelledby="broadcast-heading">
         <h2 id="broadcast-heading">直播与 OBS</h2>
         <ol>
-          <li>进入比赛侧边栏的「直播导播与 OBS」，登录后打开「导播台」。导播台默认中文，右上角可切换为 English。用 <strong>控制台</strong> 切换画面（含给观众看的<strong>赛况总览</strong>），用 <strong>字幕</strong> 添加公告和字幕，用 <strong>榜单</strong> 切换分榜。需要队伍画面时，在侧边栏的「采集设备与录像」启用本场的画面采集（默认不启用，可设置只采集屏幕）。导播台的「画面采集」页可预览各队画面并一键上屏，默认使用屏幕。选手登录并打开比赛后会弹窗提示开启，点一下打开采集窗口并选择整个屏幕即可，无需启动参数；关闭窗口时会提醒，中断后比赛页面立即要求重新开启。取消「比赛中直播可用屏幕」后，屏幕在比赛结束后才进入直播；比赛设了封榜时，要等到解除封榜。</li>
+          <li>进入比赛侧边栏的「直播导播与 OBS」，登录后打开「导播台」。导播台默认中文，右上角可切换为 English。用 <strong>控制台</strong> 切换画面（含给观众看的<strong>赛况总览</strong>），用 <strong>字幕</strong> 添加公告和字幕，用 <strong>榜单</strong> 切换分榜。在 <strong>队伍画面</strong> 或 <strong>画面采集</strong> 中单独上屏一支队伍时，可以选择底部栏。<a href="#single-team-bottom-bar">单队底部栏</a>需要队伍画面时，在侧边栏的「采集设备与录像」启用本场的画面采集（默认不启用，可设置只采集屏幕）。导播台的「画面采集」页可预览各队画面并一键上屏，默认使用屏幕。选手登录并打开比赛后会弹窗提示开启，点一下打开采集窗口并选择整个屏幕即可，无需启动参数；关闭窗口时会提醒，中断后比赛页面立即要求重新开启。取消「比赛中直播可用屏幕」后，屏幕在比赛结束后才进入直播；比赛设了封榜时，要等到解除封榜。</li>
           <li>复制设置页的「直播画面」链接。在 OBS 添加「浏览器」来源，填写链接，宽高设为 <strong>1920 × 1080</strong>。需要隐藏状态条时，在链接末尾加 <code>?noStatus</code>。</li>
           <li>控制台可单独开启首解快报、奖牌线追踪或单题战况，默认全部关闭。开启 CCPC 封榜前隐藏题号模式时，直播画面自动隐藏未公开槽位的字母题号、气球色、首解快报与单题战况，并在达到公开门槛或封榜后自动恢复。OBS 浏览器来源支持透明背景，可与比赛视频叠加。</li>
         </ol>
@@ -279,6 +325,22 @@ pm2 status hydrooj</code></pre>
           <figcaption>在 OBS 中添加浏览器来源后，把宽高填为 1920 × 1080，再按需复制自定义 CSS。</figcaption>
         </figure>
         <p>字幕页的 <strong>Title</strong> 点「+」先新建一条空字幕，再点编辑选择 SVG 模板（内置 ICPC 下三分之一条模板，也可在「媒体文件」上传）并填写数据，保存后即可显示；未选模板时点显示会提示原因。<strong>Picture</strong> 和滚动条中的图片可填写完整网址、以 <code>/</code> 开头的站内路径，或直接填写「媒体文件」里的文件名，保存后自动换成文件地址。</p>
+        <h3 id="single-team-bottom-bar">单队底部栏</h3>
+        <p>导播台「队伍画面」的单队区块和「画面采集」页都有底部栏开关，共三档，选择保存在本浏览器；「赛事分析」把队伍送上屏时沿用同一选择。在「队伍画面」切换时，正在播出的单队画面立即更新。</p>
+        <dl class="entries">
+          <div><dt>校名队伍卡</dt><dd>校徽、校名、队名、队员与教练，右上角为座位号。教练和座位号来自 onsite-toolkit 导入的数据。未开启「向所有观众显示学校」时，卡片只显示队名，不显示学校、教练和座位。没有登记校徽的学校不显示占位图标。</dd></div>
+          <div><dt>曲线时间线</dt><dd>在原有的提交时间线上叠加两条阶梯曲线：浅色面积是过题数，亮色折线是该队在正式队伍中的排名，右上角显示当前排名、最高排名和过题数。曲线只使用已公开的判题结果，封榜后的走势改为虚线并显示 ❄，不会泄露封榜后的提交。首次过题前不画排名；打星队伍只画过题数。</dd></div>
+          <div><dt>不展示</dt><dd>只保留队伍画面和做题状态。</dd></div>
+        </dl>
+        <figure class="guide-shot">
+          <a href="./images/manual/live-bottom-card.jpg"><img src="./images/manual/live-bottom-card.jpg" width="1520" height="320" loading="lazy" alt="直播画面底部的校名队伍卡：南京晓庄学院校徽、校名、队名、教练和座位号 #A-01，右侧是该队的做题状态"></a>
+          <figcaption>校名队伍卡。右侧的做题状态由「题目状态」开关单独控制。</figcaption>
+        </figure>
+        <figure class="guide-shot">
+          <a href="./images/manual/live-bottom-trend.jpg"><img src="./images/manual/live-bottom-trend.jpg" width="1520" height="320" loading="lazy" alt="直播画面底部的曲线时间线：题目通过点、阶梯状的过题面积和排名折线，右上角显示排名 #1 与过题 3"></a>
+          <figcaption>曲线时间线。排名在其他队伍过题超越的那一刻就会变化，最后一个点与实时榜单的排名一致。</figcaption>
+        </figure>
+        <div class="callout"><strong>多队同时上屏</strong><p>双队对比、四分屏，或单队画面与分屏同时播出时，底部栏和成就图都会自动隐藏，避免多块画面互相遮挡。撤下其他队伍后，单队画面恢复原来的底部栏。</p></div>
         <h3>录制与反应视频</h3>
         <p>在「采集设备与录像 → 录制设置」勾选本场需要的提交片段或全程留档。新配置同时采集屏幕和摄像头，采集目标均为 1080p、30 fps。每路「高清留档」分别以 720p、24 fps、1.2 Mbps 为目标。机位依次尝试 H.265、AV1、H.264，三种均不可用时会提示。选定编码后先保存最多 2 秒的首段，随后每 60 秒分段，停止录制时保存尾段。在「录像」分别点开屏幕和摄像头时间轴，可核对各路实际编码、分辨率并回放。赛前请向选手告知保存期限与公开范围。<a href="./media-worker.html#screen-archive">双路留档设置与验证</a></p>
         <p>在「反应视频与渲染 → 媒体机」为每台机器创建连接，把连接码写入该机的 <code>.env</code>，通过 Docker Compose 拉取镜像并启动。管理员可按版式合成视频，在导播台回放，或经审核后公开分享和大屏轮播。<a href="./media-worker.html">安装媒体机与制作反应视频（图文教程）</a></p>
@@ -421,7 +483,7 @@ pm2 status hydrooj</code></pre>
           <a href="./examples/certificate-styles.pdf"><img src="./images/manual/certificate-styles.jpg" width="1800" height="960" loading="lazy" alt="典雅雕花、ICPC、CCPC、天梯赛和蓝桥杯五种证书配色对照"></a>
           <figcaption>每套各有一张横版和一张竖版。CCPC 横版含一张透明枝叶装饰图。<a href="./examples/certificate-styles.pdf">查看十页 A4 样张（PDF）</a> · <a href="./examples/certificates.pdf">v1.24.1 校徽位置示例</a></figcaption>
         </figure>
-        <div class="callout"><strong>正式颁证前请替换默认样例素材</strong><p>赛事模板中随附的 2026 ICPC 沈阳区域赛抬头、徽标、个人手写签名样例及嵌入 Arial 字体子集仅作排版参考，归原权利人所有。主办方在对外签发证书前，务必在编辑器中替换或清除所有第三方徽标、默认个人签名与专有字体，详情见 <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v2.1.0/NOTICE">NOTICE</a>。</p></div>
+        <div class="callout"><strong>正式颁证前请替换默认样例素材</strong><p>赛事模板中随附的 2026 ICPC 沈阳区域赛抬头、徽标、个人手写签名样例及嵌入 Arial 字体子集仅作排版参考，归原权利人所有。主办方在对外签发证书前，务必在编辑器中替换或清除所有第三方徽标、默认个人签名与专有字体，详情见 <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v2.2.0/NOTICE">NOTICE</a>。</p></div>
       </section>
 
       <section id="cleanup" aria-labelledby="cleanup-heading">
@@ -594,12 +656,20 @@ pm2 status hydrooj</code></pre>
         </dl>
       </section>
       <footer class="manual-footer">
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/usage.md">完整使用文档</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v2.1.0/docs/verification.md">验证记录</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v2.1.0/NOTICE">来源与许可</a>
-        <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/issues">报告问题</a>
+        <nav aria-label="更多资料">
+          <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/usage.md">完整使用文档</a>
+          <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v2.2.0/docs/verification.md">验证记录</a>
+          <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v2.2.0/NOTICE">来源与许可</a>
+          <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/issues">报告问题</a>
+        </nav>
+        <p>自研代码以 MIT 许可发布，第三方组件、字体与标识保留各自许可。</p>
       </footer>
     </main>
+      <aside class="outline" aria-label="本页内容" hidden>
+        <p>本页内容</p>
+        <nav></nav>
+      </aside>
+    </div>
   </div>
 </body>
 </html>

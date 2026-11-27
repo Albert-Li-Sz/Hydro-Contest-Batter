@@ -47,6 +47,8 @@ function int(input: Json, key: string, fallback?: number, min = -1e9, max = 1e9)
 
 export const teamViewPositions = ['SINGLE', 'PVP_TOP', 'PVP_BOTTOM', 'TOP_LEFT', 'TOP_RIGHT', 'BOTTOM_LEFT', 'BOTTOM_RIGHT'] as const;
 export type TeamViewPosition = typeof teamViewPositions[number];
+export const teamViewBottomBars = ['none', 'card', 'timeline'] as const;
+export type TeamViewBottomBar = typeof teamViewBottomBars[number];
 const mediaTypes = ['camera', 'screen', 'record', 'photo', 'reactionVideo', 'achievement', 'audio', 'backup', 'keylog', 'toolData'];
 const clockTypes = ['standard', 'countdown', 'global'] as const;
 
@@ -98,12 +100,17 @@ export const teamViewSettings = (position: TeamViewPosition) => (value: unknown)
     const input = object(value);
     const types = input.mediaTypes ?? [];
     if (!Array.isArray(types) || types.some((type) => !mediaTypes.includes(type))) throw new ApiActionError('Failed to deserialize data: mediaTypes');
+    const showTimeLine = bool(input, 'showTimeLine', false);
+    const bottomBar: TeamViewBottomBar = input.bottomBar === undefined || input.bottomBar === null
+        ? (showTimeLine ? 'timeline' : 'none')
+        : choice(input, 'bottomBar', teamViewBottomBars, 'none');
     return {
         teamId: optionalText(input, 'teamId', 64),
         mediaTypes: types as string[],
         showTaskStatus: bool(input, 'showTaskStatus', true),
         showAchievement: bool(input, 'showAchievement', false),
-        showTimeLine: bool(input, 'showTimeLine', false),
+        showTimeLine: bottomBar === 'timeline',
+        bottomBar,
         position: choice(input, 'position', teamViewPositions, position),
     };
 };

@@ -6,8 +6,10 @@ import {
 } from 'hydrooj';
 import type { BoardData } from '../board';
 import type { ContestLinks } from '../links';
+import { seatOf } from '../print';
 import type { BoardSettings } from '../settings';
 import { toScriptJson } from '../settings';
+import { isTeamEntry, loadCoaches, loadSeats, memberIds, type TeamEntry } from '../teams';
 import { resolverBoards, resolverCodeBase } from '../resolver-data';
 import {
     adminApi, adminChannel, adminRuntime, type ApiResponse, builtinMediaNames, defaultVisualConfig, liveUrls, type LiveStore, overlayApi, overlayChannel,
@@ -162,12 +164,55 @@ export function applyLive(ctx: Context, dependencies: {
         };
     }
 
+    type TeamExtras = { seats: Record<string, string>; coaches: Record<string, string[]> };
+    const noExtras = (): TeamExtras => ({ seats: Object.create(null), coaches: Object.create(null) });
+
+    /** Seats and coaches (onsite-toolkit) for the single-team banner; private without the venue identity rule. */
+    async function loadTeamExtras(tdoc: Tdoc, identity: boolean): Promise<TeamExtras> {
+        if (!identity) return noExtras();
+        const cursor = ContestModel.getMultiStatus(tdoc.domainId, { docId: tdoc.docId }) as unknown as {
+            project?: (spec: object) => { toArray: () => Promise<TeamEntry[]> };
+            toArray: () => Promise<TeamEntry[]>;
+        };
+        const entries = await (typeof cursor.project === 'function' ? cursor.project({ uid: 1, members: 1 }) : cursor).toArray();
+        const [seatMap, coaches] = await Promise.all([
+            loadSeats(ctx.db, [...entries.map((entry) => entry.uid), ...memberIds(tdoc, entries)]),
+            loadCoaches(ctx.db, entries.map((entry) => entry.uid)),
+        ]);
+        const seats: Record<string, string> = Object.create(null);
+        for (const entry of entries) {
+            const seat = seatOf(seatMap, entry.uid, isTeamEntry(entry) ? entry.members : []);
+            if (seat) seats[String(entry.uid)] = seat;
+        }
+        return { seats, coaches };
+    }
+
+    /**
+     * Seats and coaches are set before a contest, not during it: one contest reads them at most every
+     * 30 seconds instead of on every refresh, and keeps the last ones through a failed read.
+     */
+    function teamExtrasCache() {
+        let cached: { at: number; identity: boolean; value: Promise<TeamExtras> } | null = null;
+        let last = noExtras();
+        return (tdoc: Tdoc, identity: boolean) => {
+            if (cached && cached.identity === identity && Date.now() - cached.at < 30_000) return cached.value;
+            const entry: { at: number; identity: boolean; value: Promise<TeamExtras> } = { at: Date.now(), identity, value: Promise.resolve(last) };
+            entry.value = loadTeamExtras(tdoc, identity).then((value) => (last = value), () => {
+                if (cached === entry) cached = null; // read again on the next refresh
+                return last;
+            });
+            cached = entry;
+            return entry.value;
+        };
+    }
+
     function hubFor(tdoc: Tdoc): Promise<LiveHub> {
         const name = key(tdoc);
         let hub = hubs.get(name);
         if (!hub) {
             const { domainId, docId } = tdoc;
             hub = loadDoc(tdoc).then(async (doc) => {
+                const teamExtras = teamExtrasCache();
                 const created = new LiveHub({
                     intervalMs: dependencies.intervalMs,
                     load: async () => {
@@ -175,8 +220,8 @@ export function applyLive(ctx: Context, dependencies: {
                         if (!current) return null;
                         const settings = await dependencies.loadSettings(current);
                         // Live shows specific public verdicts while respecting the freeze and venue identity rule.
-                        const [data, publicVideos] = await Promise.all([dependencies.loadData(current, settings.showIdentity),
-                            dependencies.publicVideos?.(current).catch(() => []) ?? []]);
+                        const [data, publicVideos, extras] = await Promise.all([dependencies.loadData(current, settings.showIdentity),
+                            dependencies.publicVideos?.(current).catch(() => []) ?? [], teamExtras(current, settings.showIdentity)]);
                         const reactionVideos: Record<string, { type: string; url: string }[]> = Object.create(null);
                         for (const { rid, url } of publicVideos) (reactionVideos[rid] ??= []).push({ type: 'Video', url });
                         return {
@@ -185,6 +230,7 @@ export function applyLive(ctx: Context, dependencies: {
                             hidden: !ContestModel.canShowScoreboard.call(nobody as never, current, false),
                             // 画面采集: a broken capture setup must not take the rest of the broadcast down.
                             medias: capture ? await capture.mediasFor(current, data).catch(() => ({})) : {},
+                            ...extras,
                         };
                     },
                     announce: (kind, payload) => announce(name, kind, payload),

@@ -11,8 +11,8 @@ import { ResultsStore, resultKey, type SnapshotReason } from './results-store';
 import { awardsCsv, boardOptions, resultBoard, restoreRejudge, settled, standingsCsv, type ResultsData } from './results';
 import { filterChanges, impactOf, lastChange, reviewChanges, staleSessions, verdictName, type ReviewChange, type ReviewFilter, type ReviewItem } from './rejudge-review';
 import { toScriptJson } from './settings';
+import { loadCoaches } from './teams';
 import { VERDICT_CHANGED, verdictChange } from './verdict-event';
-import { profileValues } from './roster';
 import type { BoardSettings } from './settings';
 import pkg from '../package.json';
 
@@ -57,24 +57,13 @@ export function applyResults(ctx: Context, dependencies: {
     const items = ctx.db.collection('xcpcio.manage.rejudge.items');
     const contests = ctx.db.collection('document');
 
-    async function readCoaches(data: BoardData) {
-        type AccountCoach = { _id: number; coach?: unknown; coaches?: unknown };
-        const teamIds = data.teams.map((team) => Number(team.team_id));
-        const read = (name: 'user' | 'vuser', ids: number[]) => ids.length
-            ? ctx.db.collection(name).find({ _id: { $in: ids }, $or: [{ coaches: { $exists: true } }, { coach: { $exists: true } }] } as never)
-                .project<AccountCoach>({ _id: 1, coach: 1, coaches: 1 }).toArray()
-            : [];
-        const [accounts, virtual] = await Promise.all([read('user', teamIds.filter((id) => id > 0)), read('vuser', teamIds.filter((id) => id < 0))]);
-        return Object.fromEntries([...accounts, ...virtual].map((account) => [account._id, [...new Set([...profileValues(account.coach), ...profileValues(account.coaches)])]]));
-    }
-
     async function load(tdoc: Tdoc): Promise<ResultsData> {
         const [data, settings] = await Promise.all([dependencies.loadData(tdoc, true, true, true), dependencies.loadSettings(tdoc)]);
         if (data.contest.problem_quantity !== tdoc.pids.length) throw new Error('比赛题目数据不完整，无法读取成绩');
         const at = Date.now();
         return {
             data, settings, at, problemIds: [...tdoc.pids], beginAt: tdoc.beginAt.getTime(), endAt: tdoc.endAt.getTime(),
-            lockAt: tdoc.lockAt?.getTime() ?? null, unlocked: !!tdoc.unlocked, coaches: await readCoaches(data),
+            lockAt: tdoc.lockAt?.getTime() ?? null, unlocked: !!tdoc.unlocked, coaches: await loadCoaches(ctx.db, data.teams.map((team) => Number(team.team_id))),
         };
     }
 

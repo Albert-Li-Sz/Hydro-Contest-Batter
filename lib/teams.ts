@@ -1,4 +1,5 @@
 import type { Context } from 'hydrooj';
+import { profileValues } from './roster';
 
 /**
  * Hydro team contests (Hydro 5.1, `tdoc.allowTeam`): a team is a virtual user whose contest status
@@ -40,6 +41,23 @@ export async function loadSeats(db: Context['db'], uids: number[]) {
     const [users, teams] = await Promise.all([read('user', distinct.filter((uid) => uid > 0)), read('vuser', distinct.filter((uid) => uid < 0))]);
     return new Map([...users, ...teams].flatMap(({ _id, seat }) => (typeof seat === 'string' || typeof seat === 'number'
         ? [[_id, String(seat)] as const] : [])));
+}
+
+/** onsite-toolkit imports coaches as `coach` or `coaches` on the user or virtual user; teams with any, by id. */
+export async function loadCoaches(db: Context['db'], uids: number[]) {
+    const distinct = [...new Set(uids.filter((uid) => Number.isFinite(uid)))];
+    type AccountCoach = { _id: number; coach?: unknown; coaches?: unknown };
+    const read = (name: 'user' | 'vuser', ids: number[]) => ids.length
+        ? db.collection(name).find({ _id: { $in: ids }, $or: [{ coaches: { $exists: true } }, { coach: { $exists: true } }] } as never)
+            .project<AccountCoach>({ _id: 1, coach: 1, coaches: 1 }).toArray()
+        : [];
+    const [users, teams] = await Promise.all([read('user', distinct.filter((uid) => uid > 0)), read('vuser', distinct.filter((uid) => uid < 0))]);
+    const coaches: Record<string, string[]> = Object.create(null);
+    for (const account of [...users, ...teams]) {
+        const names = [...new Set([...profileValues(account.coach), ...profileValues(account.coaches)])];
+        if (names.length) coaches[String(account._id)] = names;
+    }
+    return coaches;
 }
 
 /**

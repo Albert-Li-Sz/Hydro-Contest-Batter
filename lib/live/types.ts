@@ -188,6 +188,26 @@ export type TimeLineRunInfo =
     | { type: 'ICPC'; time: number; problemId: string; isAccepted: boolean; shortName: string }
     | { type: 'IN_PROGRESS'; frozen?: true; time: number; problemId: string };
 
+export interface TeamTrendPoint {
+    /** Contest time in milliseconds. */
+    time: number;
+    /** Number of problems solved by this team at `time`. */
+    solved: number;
+    /** Rank among official teams at `time` (1-based), or 0 when unranked or before first solve. */
+    rank: number;
+}
+
+export interface TeamTrend {
+    teamsCount: number;
+    problemsCount: number;
+    ranked: boolean;
+    /** Contest time of the freeze while the scoreboard is frozen, else null. */
+    frozenAtMs: number | null;
+    bestRank: number | null;
+    currentRank: number | null;
+    points: TeamTrendPoint[];
+}
+
 export interface SolutionsStatistic {
     type: 'ICPC';
     teamsCount: number;

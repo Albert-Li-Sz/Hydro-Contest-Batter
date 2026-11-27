@@ -4,7 +4,7 @@
  * the ICPC rule (whole minutes, then the last accepted run), 20 minutes per wrong attempt.
  */
 import type {
-    Award, ContestInfo, ICPCProblemResult, OptimismLevel, RunInfo, ScoreboardDiff, ScoreboardRow, SolutionsStatistic, TimeLineRunInfo,
+    Award, ContestInfo, ICPCProblemResult, OptimismLevel, RunInfo, ScoreboardDiff, ScoreboardRow, SolutionsStatistic, TeamTrend, TeamTrendPoint, TimeLineRunInfo,
 } from './types';
 import { hiddenFromOf, publicRunVerdict } from './model';
 import { schoolRanks, trophyWinners } from '../../resolver/public/js/trophies.js';
@@ -196,6 +196,68 @@ export function rankOf(info: ContestInfo, rows: Map<string, ScoreboardRow>, team
     return better + 1;
 }
 
+type TeamTrack = {
+    totalScore: number;
+    penalty: number;
+    lastAcceptedMs: number;
+    solvedCount: number;
+    official: boolean;
+    problems: Map<string, { solved: boolean; wrong: number }>;
+};
+
+/**
+ * Replays runs one at a time on the normal scoreboard (scoreboardRow's rule, kept incrementally):
+ * every team's score after the runs applied so far, ranked by scoreOrder like the board. The
+ * commentary's standings and the single-team trend both use it, so neither can drift from the board.
+ */
+function standingsReplay(info: ContestInfo) {
+    const problemWeights = new Map(info.problems.filter((problem) => !problem.isHidden).map((problem) => [problem.id, problem.weight]));
+    const roundMinutes = info.penaltyRoundingMode === 'each_submission_down_to_minute';
+    const newTrack = (official: boolean): TeamTrack => ({ totalScore: 0, penalty: 0, lastAcceptedMs: 0, solvedCount: 0, official, problems: new Map() });
+    const tracks = new Map<string, TeamTrack>();
+    const official: TeamTrack[] = [];
+    for (const team of info.teams) {
+        const track = newTrack(!team.isOutOfContest && !team.isHidden);
+        tracks.set(team.id, track);
+        if (track.official) official.push(track);
+    }
+    /** True when `a` ranks strictly above `b`. */
+    const above = (a: TeamTrack, b: TeamTrack) => scoreOrder(info, a as unknown as ScoreboardRow, b as unknown as ScoreboardRow) < 0;
+    return {
+        above,
+        track: (teamId: string) => tracks.get(teamId),
+        /** Applies one run: its team's track and whether it newly solved a problem (null for a hidden run). */
+        apply(run: RunInfo) {
+            if (run.isHidden) return null;
+            let track = tracks.get(run.teamId);
+            if (!track) tracks.set(run.teamId, track = newTrack(false));
+            const weight = problemWeights.get(run.problemId);
+            if (weight === undefined) return { track, solved: false };
+            let state = track.problems.get(run.problemId);
+            if (!state) track.problems.set(run.problemId, state = { solved: false, wrong: 0 });
+            if (state.solved) return { track, solved: false };
+            if (!isAccepted(run)) {
+                if (isJudged(run) && isAddingPenalty(run)) state.wrong++;
+                return { track, solved: false };
+            }
+            state.solved = true;
+            track.solvedCount++;
+            track.totalScore += weight;
+            const accepted = roundMinutes ? Math.floor(run.time / 60_000) * 60 : Math.floor(run.time / 1000);
+            track.penalty += accepted + state.wrong * info.penaltyPerWrongAttemptSeconds;
+            track.lastAcceptedMs = Math.max(track.lastAcceptedMs, run.time);
+            return { track, solved: true };
+        },
+        /** The track's rank among official teams (teams equal on score share it), 0 when not official. */
+        rank(track: TeamTrack) {
+            if (!track.official) return 0;
+            let better = 0;
+            for (const other of official) if (other !== track && above(other, track)) better++;
+            return better + 1;
+        },
+    };
+}
+
 /**
  * Each target run's team rank and solved count right after that run, replaying `runs` (in
  * submission order) on the normal scoreboard. Commentary uses this, so history regenerated
@@ -206,64 +268,14 @@ export function standingsAtRuns(info: ContestInfo, runs: RunInfo[], targets: Set
     if (!targets.size) return result;
     const first = runs.findIndex((run) => targets.has(run.id));
     if (first < 0) return result;
-    const problemWeights = new Map(info.problems.filter((problem) => !problem.isHidden).map((problem) => [problem.id, problem.weight]));
-    const roundMinutes = info.penaltyRoundingMode === 'each_submission_down_to_minute';
-    const wrongPenalty = info.penaltyPerWrongAttemptSeconds;
-    type TeamTrack = {
-        totalScore: number;
-        penalty: number;
-        lastAcceptedMs: number;
-        solvedCount: number;
-        official: boolean;
-        problems: Map<string, { solved: boolean; wrong: number }>;
-    };
-    const tracks = new Map<string, TeamTrack>();
-    const officialTracks: TeamTrack[] = [];
-    for (const team of info.teams) {
-        const official = !team.isOutOfContest && !team.isHidden;
-        const track: TeamTrack = { totalScore: 0, penalty: 0, lastAcceptedMs: 0, solvedCount: 0, official, problems: new Map() };
-        tracks.set(team.id, track);
-        if (official) officialTracks.push(track);
-    }
-    const apply = (run: RunInfo) => {
-        if (run.isHidden) return null;
-        let track = tracks.get(run.teamId);
-        if (!track) {
-            track = { totalScore: 0, penalty: 0, lastAcceptedMs: 0, solvedCount: 0, official: false, problems: new Map() };
-            tracks.set(run.teamId, track);
-        }
-        const weight = problemWeights.get(run.problemId);
-        if (weight === undefined) return track;
-        let ps = track.problems.get(run.problemId);
-        if (!ps) { ps = { solved: false, wrong: 0 }; track.problems.set(run.problemId, ps); }
-        if (ps.solved) return track;
-        if (isAccepted(run)) {
-            ps.solved = true;
-            track.solvedCount++;
-            track.totalScore += weight;
-            const accepted = roundMinutes ? Math.floor(run.time / 60_000) * 60 : Math.floor(run.time / 1000);
-            track.penalty += accepted + ps.wrong * wrongPenalty;
-            track.lastAcceptedMs = Math.max(track.lastAcceptedMs, run.time);
-        } else if (isJudged(run) && isAddingPenalty(run)) {
-            ps.wrong++;
-        }
-        return track;
-    };
-    for (let i = 0; i < first; i++) apply(runs[i]);
+    const replay = standingsReplay(info);
+    for (let i = 0; i < first; i++) replay.apply(runs[i]);
     let remaining = targets.size;
     for (let i = first; i < runs.length; i++) {
         const run = runs[i];
-        const track = apply(run);
-        if (!track || !targets.has(run.id)) continue;
-        let rank = 0;
-        if (track.official) {
-            let better = 0;
-            for (const other of officialTracks) {
-                if (other !== track && scoreOrder(info, other as unknown as ScoreboardRow, track as unknown as ScoreboardRow) < 0) better++;
-            }
-            rank = better + 1;
-        }
-        result.set(run.id, { rank, solved: track.solvedCount });
+        const applied = replay.apply(run);
+        if (!applied || !targets.has(run.id)) continue;
+        result.set(run.id, { rank: replay.rank(applied.track), solved: applied.track.solvedCount });
         if (!--remaining) break;
     }
     return result;
@@ -346,4 +358,62 @@ export function timeline(runs: RunInfo[]): TimeLineRunInfo[] {
         result.push({ type: 'ICPC', time: run.time, problemId: run.problemId, isAccepted: run.result.verdict.isAccepted, shortName: run.result.verdict.shortName });
     }
     return result;
+}
+
+/**
+ * One team's solved-count and official-rank trajectory over contest time, computed strictly from
+ * public judged runs (frozen runs stay in-progress and never affect the curve) under the same
+ * ranking rule as the live scoreboard. `points` is a step function: the start, then every moment
+ * the team's solved count or rank changed, including when another team's solve passed it. Like the
+ * scoreboard it depends on the runs alone, never on the clock, so an unchanged contest yields the
+ * same trend on every refresh and its last rank is always the board's.
+ */
+export function teamTrend(info: ContestInfo, runs: RunInfo[], teamId: string): TeamTrend {
+    const visibleProblems = info.problems.filter((problem) => !problem.isHidden);
+    const officialTeams = info.teams.filter((team) => !team.isHidden && !team.isOutOfContest);
+    const target = info.teams.find((team) => !team.isHidden && team.id === teamId);
+    const ranked = !!target && !target.isOutOfContest;
+    const base = { teamsCount: officialTeams.length, problemsCount: visibleProblems.length, ranked };
+    if (!target || info.contestLengthMs <= 0 || info.status.type === 'before') {
+        return { ...base, frozenAtMs: null, bestRank: null, currentRank: null, points: [] };
+    }
+    const frozenAtMs = (info.status.type === 'running' || info.status.type === 'over') && info.status.frozenAtUnixMs != null
+        ? Math.max(0, Math.min(info.contestLengthMs, info.status.frozenAtUnixMs - info.status.startedAtUnixMs)) : null;
+    const judged = runs
+        .filter((run) => !run.isHidden && isJudged(run))
+        .sort((a, b) => a.time - b.time || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
+    const replay = standingsReplay(info);
+    const targetTrack = replay.track(teamId)!;
+    // Official teams ranked strictly above the target. Only a solve changes a team's score, so another
+    // team's solve moves this count by at most one; the target's own solve needs a full recount.
+    let better = 0;
+    // Before its first solve a team has no place to show (no fake #1 at 00:00).
+    const rank = () => (ranked && targetTrack.solvedCount > 0 ? better + 1 : 0);
+
+    const points: TeamTrendPoint[] = [{ time: 0, solved: 0, rank: 0 }];
+    let bestRank: number | null = null;
+    for (let index = 0; index < judged.length;) {
+        const time = judged[index].time;
+        // Runs at the same moment count together.
+        for (; index < judged.length && judged[index].time === time; index++) {
+            const run = judged[index];
+            const track = replay.track(run.teamId);
+            if (track === targetTrack) {
+                if (replay.apply(run)?.solved && ranked) better = replay.rank(targetTrack) - 1;
+            } else if (ranked && track?.official) {
+                const wasAbove = replay.above(track, targetTrack);
+                if (replay.apply(run)?.solved) better += Number(replay.above(track, targetTrack)) - Number(wasAbove);
+            }
+        }
+        const point = { time: Math.max(0, time), solved: targetTrack.solvedCount, rank: rank() };
+        const last = points[points.length - 1];
+        if (point.solved !== last.solved || point.rank !== last.rank) {
+            if (last.time === point.time) points[points.length - 1] = point;
+            else points.push(point);
+        }
+        if (point.rank > 0) bestRank = bestRank === null ? point.rank : Math.min(bestRank, point.rank);
+    }
+    const currentRank = rank();
+    return { ...base, frozenAtMs, bestRank, currentRank: currentRank > 0 ? currentRank : null, points };
 }

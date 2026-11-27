@@ -41,6 +41,10 @@ export interface LiveSource {
     reactionVideos?: Record<string, MediaType[]>;
     /** Each team's camera and screen from 画面采集 (lib/live/capture.ts), by team id. */
     medias?: Record<string, Record<string, MediaType[]>>;
+    /** Each team's venue seat (onsite-toolkit), by team id (public only when `identity` is true). */
+    seats?: Record<string, string>;
+    /** Each team's coach names (onsite-toolkit), by team id (public only when `identity` is true). */
+    coaches?: Record<string, string[]>;
 }
 
 /** ICPC Live's ContestInfo defaults (cds/core ContestInfo.kt QueueSettings). */
@@ -151,22 +155,36 @@ export function buildContestInfo(source: LiveSource, { fallbackOrganizationLogo 
             organizationId = schoolGroup(school);
             if (!organizations.has(organizationId)) {
                 const logoId = team.organization ? source.logoNames[logoKey(team.organization)] : undefined;
-                const url = logoId && /^[a-f\d]{12}$/.test(logoId)
+                const realLogo = !!(logoId && /^[a-f\d]{12}$/.test(logoId));
+                const url = realLogo
                     ? `${resolverAssetBase}/logos/${logoId}.webp`
                     : fallbackOrganizationLogo ? `${resolverAssetBase}/assets/img/icpc-logo.png` : null;
                 organizations.set(organizationId, {
                     id: organizationId, displayName: school, fullName: school,
-                    logo: url ? [{ type: 'Image', url }] : [], customFields: {},
+                    logo: url ? [{ type: 'Image', url }] : [],
+                    customFields: {
+                        ...(realLogo ? { hydroLogo: '1' } : {}),
+                        // No school (or one literally named as the placeholder): the banner shows the team alone.
+                        ...(school === schoolName() ? { hydroMissing: '1' } : {}),
+                    },
                 });
             }
         }
+        // A seat places the team in the venue, so it follows the identity rule as school and coaches do.
+        const seat = identity ? source.seats?.[team.team_id]?.trim() || '' : '';
+        const coaches = identity ? (source.coaches?.[team.team_id] || []).map((name) => name.trim()).filter(Boolean) : [];
         return {
             id: team.team_id, name: team.name, shortName: team.name,
             groups: [...new Set([unofficial ? 'unofficial' : 'official', ...(membership.get(team.team_id) || [])])],
             hashTag: null, medias: source.medias?.[team.team_id] ?? {}, isHidden: false, isOutOfContest: unofficial,
             organizationId, color: null, reactionVideoTemplate: null, sourceTemplate: null,
-            // Team contests: members for title templates ({team.customFields.members}) and the console.
-            customFields: { ...team.members?.length ? { members: team.members.join(' · ') } : {}, ...team.school_key ? { hydroSchool: team.school_key } : {} } as Record<string, string>,
+            // Team contests: members, coaches and seat for the single-team banner and title templates.
+            customFields: {
+                ...(team.members?.length ? { members: team.members.join(' · ') } : {}),
+                ...(coaches.length ? { coaches: coaches.join(' · ') } : {}),
+                ...(seat ? { seat } : {}),
+                ...(team.school_key ? { hydroSchool: team.school_key } : {}),
+            } as Record<string, string>,
         };
     });
     // As on the board (lib/board.ts): the board's official teams, counted on the data shown.

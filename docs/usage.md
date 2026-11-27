@@ -2,7 +2,7 @@
 
 基于 `@hydrooj/scoreboard-xcpcio` 的独立增强插件，使用 XCPCIO 0.98.0 前端，适用于 Hydro ACM 比赛。可与原插件同时安装，通过单独的 `xcpcio-plus` 视图使用。
 
-**v2.1.0 办赛入口**　[检查观众视角与选手视角](#管理员检查观众视角) · [连接并遥控场馆大屏](#连接并远程管理大屏) · [上传滚榜队伍照片与跳转奖区](#滚榜队伍照片与播放按键) · [制作离线颁奖幻灯片](#颁奖幻灯片)
+**v2.2.0 办赛入口**　[直播单队底部栏：校名队伍卡与排名走势](#单队底部栏) · [检查观众视角与选手视角](#管理员检查观众视角) · [连接并遥控场馆大屏](#连接并远程管理大屏) · [上传滚榜队伍照片与跳转奖区](#滚榜队伍照片与播放按键) · [制作离线颁奖幻灯片](#颁奖幻灯片)
 
 - 使用 Hydro 原生分区、表单、按钮和深色主题，适配桌面、平板和手机。
 - 榜单显示金、银、铜牌标记，开启一血奖后用深绿色高亮符合资格的最早通过。
@@ -110,12 +110,12 @@ Schema 测试固定使用官方 2026-01 分支文件；上游 schema 对 runs �
 
 需要 Node.js 22 或以上版本及 Hydro 5.x。使用运行 Hydro 的系统用户操作；命令中的 `$HOME` 对应这个用户。自 0.8.1 起，安装包包含供 Hydro 直接加载的源码和完整预构建资源。
 
-从 v2.1.0 发布页下载 `hydro-scoreboard-xcpcio-plus-2.1.0.tgz` 和同名 `.sha256` 文件，放入同一个目录。首次安装按以下步骤校验、解压、注册 addon 并重启服务。[v2.1.0 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.1.0)
+从 v2.2.0 发布页下载 `hydro-scoreboard-xcpcio-plus-2.2.0.tgz` 和同名 `.sha256` 文件，放入同一个目录。首次安装按以下步骤校验、解压、注册 addon 并重启服务。[v2.2.0 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.2.0)
 
 ```bash
-sha256sum -c hydro-scoreboard-xcpcio-plus-2.1.0.tgz.sha256
+sha256sum -c hydro-scoreboard-xcpcio-plus-2.2.0.tgz.sha256
 mkdir -p "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
-tar -xzf hydro-scoreboard-xcpcio-plus-2.1.0.tgz \
+tar -xzf hydro-scoreboard-xcpcio-plus-2.2.0.tgz \
   -C "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus" --strip-components=1
 hydrooj addon add "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 pm2 restart hydrooj
@@ -128,9 +128,9 @@ pm2 restart hydrooj
 在新的临时目录中校验并解压安装包。
 
 ```bash
-sha256sum -c hydro-scoreboard-xcpcio-plus-2.1.0.tgz.sha256
+sha256sum -c hydro-scoreboard-xcpcio-plus-2.2.0.tgz.sha256
 mkdir -p xcpcio-update
-tar -xzf hydro-scoreboard-xcpcio-plus-2.1.0.tgz -C xcpcio-update
+tar -xzf hydro-scoreboard-xcpcio-plus-2.2.0.tgz -C xcpcio-update
 ```
 
 首次安装运行 `bash xcpcio-update/package/install.sh install`。升级已有安装运行 `bash xcpcio-update/package/install.sh upgrade`。
@@ -863,7 +863,7 @@ Hydro 的系统管理员（`PRIV_EDIT_SYSTEM`）可在控制面板（`/manage`�
    HYDRO_MEDIA_CONNECTION=hydro-reactions:此处粘贴完整连接码
    ```
 
-3. 执行配置校验、拉取和启动。配置默认使用 CPU 与固定版本公共镜像 `ghcr.io/albert-li-sz/reactions-generator-hydro:2.1.0`。输出保存在本机 `./out`（常驻模式上传完成后会自动清理本地成片以防占满磁盘）。
+3. 执行配置校验、拉取和启动。配置默认使用 CPU 与固定版本公共镜像 `ghcr.io/albert-li-sz/reactions-generator-hydro:2.2.0`。输出保存在本机 `./out`（常驻模式上传完成后会自动清理本地成片以防占满磁盘）。
 
    ```sh
    docker compose config --quiet
@@ -898,7 +898,7 @@ Windows 可在 Docker Desktop 中运行同一 Compose 配置。赛场无法访�
 
 比赛所有者和有“编辑比赛”权限的管理员可在比赛侧边栏的“直播导播与 OBS”进入设置页（`/contest/<比赛ID>/live`），页面上有两个入口：
 
-- **导播台**（`/contest/<比赛ID>/live/admin`）：ICPC Live 的管理界面，需要 Hydro 登录。界面默认中文，右上角可切换为 English（只影响当前浏览器）。可在 Controls（控制台）中显示或隐藏榜单、评测队列、题目统计、滚动字幕、全屏时钟和赛况总览；Titles 中添加标题字幕（下三分之一条）、文字公告和图片；TeamView 中显示单队、两队对比或四分屏的队伍做题进度与时间轴；Scoreboard 中切换分榜和滚动方向；Ticker 中编排滚动字幕（文字、时钟、榜单片段、图片）；Analytics 中查看自动生成的中文解说，一键推送为字幕或公告；Spotlight 中查看系统推荐的关注队伍；Media 中上传图片与 SVG 字幕模板。多名导播可同时打开，任何一处的操作都会同步到其他导播台和画面。
+- **导播台**（`/contest/<比赛ID>/live/admin`）：ICPC Live 的管理界面，需要 Hydro 登录。界面默认中文，右上角可切换为 English（只影响当前浏览器）。可在 Controls（控制台）中显示或隐藏榜单、评测队列、题目统计、滚动字幕、全屏时钟和赛况总览；Titles 中添加标题字幕（下三分之一条）、文字公告和图片；TeamView 中显示单队、两队对比或四分屏的队伍画面，单队画面可选择底部栏（见[单队底部栏](#单队底部栏)）；Scoreboard 中切换分榜和滚动方向；Ticker 中编排滚动字幕（文字、时钟、榜单片段、图片）；Analytics 中查看自动生成的中文解说，一键推送为字幕或公告；Spotlight 中查看系统推荐的关注队伍；Media 中上传图片与 SVG 字幕模板。多名导播可同时打开，任何一处的操作都会同步到其他导播台和画面。
 - **直播画面**（`/contest/<比赛ID>/live-overlay/<令牌>`）：在 OBS 中添加“浏览器”来源，宽 1920、高 1080，链接后加 `?noStatus` 隐藏状态条，在“自定义 CSS”中填入 `body { background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden; }` 使背景透明。链接自带访问凭证，无需登录，可在设置页作废重建，作废后旧链接立即失效，已打开的 OBS 画面也会立即断开（多进程部署时同样如此），需要在 OBS 中换成新链接。导播台里的画面预览走 Hydro 登录，不受作废影响。
 
 ![在导播台控制台选择要上屏的组件，并调整榜单或评测队列的显示方式](images/manual/live-director.jpg)
@@ -927,6 +927,27 @@ Windows 可在 Docker Desktop 中运行同一 Compose 配置。赛场无法访�
 - ICPC Live 的 settings.json、advanced.json 和自定义字段由 Hydro 比赛数据取代，导播台的 Configuration 中只保留 Contest Info（只读）和 Visual config（画面颜色、标题文字等，保存后刷新 OBS 画面生效）。画面配置通过 JSON 对象提交，上限为 200 KB（200000 字节，按 UTF-8 计算），超限时显示明确提示。后端地址由 Hydro 决定，Visual config 中不能设置以 `BASE_URL` 开头的项。
 - 图片（Picture）的地址可填写完整网址、站内路径，或直接填写“媒体文件”中已上传（或内置）的文件名，保存后自动换成该文件的地址。新建的字幕（Title）和图片先保存为空，选好 SVG 模板或填写地址后才能显示，未选时导播台会提示。
 - 上传的媒体文件单个不超过 12 MB，支持图片、视频、SVG 和 JSON；文件名保留中文、字母和数字，其他字符替换为下划线，同名文件会覆盖；SVG 字幕模板中的 `{name}` 等占位符由标题设置中的数据替换，`teamId` 可引用队伍名与学校（`{team.name}`、`{org.displayName}`）。
+
+### 单队底部栏
+
+导播台 TeamView（队伍画面）的单队区块和 Capture（画面采集）页都有“单队底部栏”开关，共三档。选择保存在当前浏览器，Analytics（赛事分析）把队伍送上屏时沿用同一选择。在 TeamView 切换时，正在播出的单队画面立即更新。从旧版升级的浏览器：关过时间线的默认“不展示”，开过的默认“曲线时间线”，其余默认“校名队伍卡”。
+
+| 选项 | 显示内容 |
+| --- | --- |
+| 校名队伍卡 | 校徽、校名、队名、队员与教练，右上角为座位号。教练和座位号都来自 onsite-toolkit 导入的数据：教练取自账号或队伍的 `coach` / `coaches` 字段，座位号取自导入的座位（队伍账号没有座位时取队员的座位），与打印页眉一致。未登记校徽的学校不显示占位图标。 |
+| 曲线时间线 | 在原有的提交时间线上叠加两条阶梯曲线：浅色面积为过题数，亮色折线为该队在正式队伍中的排名；右上角显示当前排名、最高排名和过题数。 |
+| 不展示 | 只保留队伍画面和题目状态。 |
+
+![直播画面底部的校名队伍卡：校徽、校名、队名、教练和座位号](images/manual/live-bottom-card.jpg)
+
+![直播画面底部的曲线时间线：题目通过点、过题面积和排名折线，右上角显示排名与过题数](images/manual/live-bottom-trend.jpg)
+
+规则：
+
+- 学校、教练和座位都遵循“向所有观众显示学校”：关闭时卡片只显示队名。座位能定位队伍在赛场中的位置，因此与学校同样处理。
+- 走势只使用已公开的判题结果，排名规则与实时榜单、增强榜和滚榜一致（同分同名次），最后一个点就是榜单上的名次。其他队伍过题超过本队的那一刻名次就会变化，不等采样。封榜期间的提交保持待定，封榜后的走势画成虚线并显示 ❄。
+- 首次过题前不画排名，避免开赛时显示虚假的第 1 名；打星队伍只画过题数。
+- 双队对比、四分屏，或单队画面与分屏同时播出时，底部栏和成就图都自动隐藏；撤下其他队伍后单队画面恢复原来的底部栏。
 
 ### 画面采集（选手屏幕与摄像头）
 

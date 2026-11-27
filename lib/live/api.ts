@@ -431,7 +431,7 @@ export function overlayChannel(subpath: string) {
     catch { return null; }
     if (parts.length === 1 && ['mainScreen', 'contestInfo', 'runs', 'queue', 'statistics', 'ticker', 'overview'].includes(parts[0])) return parts[0];
     if (parts.length === 2 && parts[0] === 'scoreboard' && ['normal', 'optimistic', 'pessimistic'].includes(parts[1])) return `scoreboard:${parts[1]}`;
-    if (parts.length === 2 && parts[0] === 'teamRuns' && /^[\w-]{1,64}$/.test(parts[1])) return `teamRuns:${parts[1]}`;
+    if (parts.length === 2 && (parts[0] === 'teamRuns' || parts[0] === 'teamTrend') && /^[\w-]{1,64}$/.test(parts[1])) return `${parts[0]}:${parts[1]}`;
     return null;
 }
 

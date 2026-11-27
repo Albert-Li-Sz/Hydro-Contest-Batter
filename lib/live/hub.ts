@@ -7,7 +7,7 @@ import { awardsFor } from '../settings';
 import { buildContestInfo, buildRuns, firstSolveRuns, hiddenFromOf, type LiveSource } from './model';
 import { liveOverview, overviewKey, type LiveOverview } from './overview';
 import {
-    computeScoreboard, runsByTeam, scoreboardDiff, standingsAtRuns, statistics, timeline, type ScoreboardState,
+    computeScoreboard, runsByTeam, scoreboardDiff, standingsAtRuns, statistics, teamTrend, timeline, type ScoreboardState,
 } from './scoreboard';
 import { AnalyticsService, chineseAnalyticsTemplates, QueueService, SpotlightService } from './services';
 import type { ContestInfo, OptimismLevel, RunInfo, TeamInfo } from './types';
@@ -86,6 +86,7 @@ export class LiveHub {
     private overview: LiveOverview | null = null;
     private overviewJson = '';
     private timelines = new Map<string, string>();
+    private trends = new Map<string, string>();
     private channels = new Map<string, Set<Listener>>();
     private logLines: string[] = [];
     private templates = new Map<string, string>();
@@ -158,9 +159,18 @@ export class LiveHub {
             });
         }, true);
         const teamViews = {} as typeof this.teamViews;
+        const onTeamViewChange = () => {
+            this.syncTeamViews();
+            changed();
+        };
         for (const position of S.teamViewPositions) {
             const normalize = S.teamViewSettings(position);
-            teamViews[position] = single(`teamView/${position}`, normalize({}), normalize, (settings) => this.teamViewWidget(position, settings), true);
+            const controller = new WidgetController<ReturnType<typeof normalize>, Widget>(
+                normalize({}), this.widgets, this.counter, (settings) => this.teamViewWidget(position, settings),
+                (input) => normalize(input), onTeamViewChange, null, true,
+            );
+            this.controllers[`teamView/${position}`] = controller;
+            teamViews[position] = controller;
         }
         this.teamViews = teamViews;
         const preset = <T>(normalize: (input: unknown) => T, construct: (settings: T) => Widget | null) =>
@@ -217,6 +227,7 @@ export class LiveHub {
             if (typeof name === 'string') await this.loadTemplate(name).catch(() => null);
         }
         for (const [name, controller] of Object.entries(this.controllers)) controller.load(state.controllers?.[name]);
+        this.syncTeamViews();
         this.advertisement.load(state.presets?.advertisement);
         this.picture.load(state.presets?.picture);
         this.title.load(titles);
@@ -264,6 +275,7 @@ export class LiveHub {
             } else if (key.startsWith('controller/')) {
                 const name = key.slice(11);
                 this.controllers[name]?.load(change.value);
+                if (name.startsWith('teamView/')) this.syncTeamViews();
                 uri = `/api/admin/${adminPath(name)}`;
             } else if (key.startsWith('preset/')) {
                 const [, name, idText] = key.split('/');
@@ -324,19 +336,38 @@ export class LiveHub {
         return substituteTemplate(template, values);
     }
 
+    /** TeamViews on air with a team to show (a view whose team is missing shows nothing). */
+    private shownTeamViewCount() {
+        return S.teamViewPositions.filter((position) => this.teamViews[position].shown
+            && this.teamViewTeam(position, this.teamViews[position].settings)).length;
+    }
+
+    /** Re-evaluate shown TeamViews so the single-team bottom bar hides whenever 2+ teams are on air. */
+    private syncTeamViews() {
+        for (const position of S.teamViewPositions) {
+            if (this.teamViews[position]?.shown) this.teamViews[position].sync();
+        }
+    }
+
+    /** The team a TeamView shows: its own, or for a view without one the spotlight's pick. */
+    private teamViewTeam(position: S.TeamViewPosition, settings: ReturnType<ReturnType<typeof S.teamViewSettings>>) {
+        const teamId = this.info ? settings.teamId ?? this.spotTeam(position) : null;
+        return (teamId && this.info?.teams.find((item) => item.id === teamId)) || null;
+    }
+
     private teamViewWidget(position: S.TeamViewPosition, settings: ReturnType<ReturnType<typeof S.teamViewSettings>>): Widget | null {
-        const info = this.info;
-        if (!info) return null;
-        const teamId = settings.teamId ?? this.spotTeam(position);
-        const team = teamId ? info.teams.find((item) => item.id === teamId) : undefined;
+        const team = this.teamViewTeam(position, settings);
         if (!team) return null;
         const content = settings.mediaTypes.map((type) => team.medias[type]).filter(Boolean);
         const id = `teamView${camel(position)}`;
+        const singleOnly = position === 'SINGLE' && this.shownTeamViewCount() <= 1;
+        const bottomBar: S.TeamViewBottomBar = singleOnly ? settings.bottomBar : 'none';
         return {
             type: 'TeamViewWidget', id, widgetLocationId: id, statisticsId: 'teamView',
             settings: {
                 teamId: team.id, primary: content[0] || [], secondary: content[1] || [], showTaskStatus: settings.showTaskStatus,
-                achievement: settings.showAchievement ? team.medias.achievement || [] : [], showTimeLine: settings.showTimeLine, position,
+                achievement: singleOnly && settings.showAchievement ? team.medias.achievement || [] : [],
+                showTimeLine: bottomBar === 'timeline', bottomBar, position,
             },
         };
     }
@@ -430,6 +461,7 @@ export class LiveHub {
         case 'admin': return argument === 'contestInfo' ? this.adminInfo : null;
         case 'runs': return [...this.runs.values()].sort((a, b) => a.time - b.time);
         case 'teamRuns': return timeline(this.byTeam.get(argument) || []);
+        case 'teamTrend': return this.info ? teamTrend(this.info, [...this.runs.values()], argument) : null;
         case 'statistics': return this.info && this.scoreboards.get('normal') ? statistics(this.info, this.scoreboards.get('normal')!, this.runs.values()) : { type: 'ICPC', teamsCount: 0, stats: [], verdictCounts: {} };
         case 'overview': return this.overview;
         case 'scoreboard': {
@@ -472,6 +504,7 @@ export class LiveHub {
             if (this.channels.get(channel)?.size === 0) {
                 this.channels.delete(channel);
                 this.timelines.delete(channel);
+                this.trends.delete(channel);
             }
             this.lastActivity = Date.now();
         };
@@ -694,11 +727,21 @@ export class LiveHub {
         }
         if (changed.length || removed.length) this.publish('runs', this.current('runs'));
         for (const [channel] of this.channels) {
-            if (!channel.startsWith('teamRuns:')) continue;
-            const value = JSON.stringify(this.current(channel));
-            if (this.timelines.get(channel) !== value) {
-                this.timelines.set(channel, value);
-                this.publish(channel, JSON.parse(value));
+            if (channel.startsWith('teamRuns:')) {
+                const value = JSON.stringify(this.current(channel));
+                if (this.timelines.get(channel) !== value) {
+                    this.timelines.set(channel, value);
+                    this.publish(channel, JSON.parse(value));
+                }
+            } else if (channel.startsWith('teamTrend:')) {
+                const payload = this.current(channel);
+                if (payload !== null) {
+                    const value = JSON.stringify(payload);
+                    if (this.trends.get(channel) !== value) {
+                        this.trends.set(channel, value);
+                        this.publish(channel, payload);
+                    }
+                }
             }
         }
         if (infoChanged) {

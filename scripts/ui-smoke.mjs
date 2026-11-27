@@ -154,7 +154,22 @@ async function broadcastStyles(browser, base) {
             const card = document.querySelector('section[aria-label="单题战况"]')?.getBoundingClientRect();
             return team?.height > 0 && card && team.bottom <= card.top + 1;
         });
+        await output.locator('.TeamTrendGraph path[data-trend-rank]').waitFor({ state: 'attached' });
+        await change('teamView/SINGLE/show_with_settings', { teamId: teams[0].id, mediaTypes: [], bottomBar: 'card' });
+        await output.locator('.TeamInfoBanner').waitFor();
+        await change('splitScreen/TOP_LEFT/show_with_settings', { teamId: teams[1].id, mediaTypes: [], bottomBar: 'card', showTimeLine: true });
+        await output.waitForFunction(() => document.querySelectorAll('.TeamInfoBanner, .TeamTimeLine').length === 0);
+        await change('splitScreen/hide');
+        await output.locator('.TeamInfoBanner').waitFor();
         await change('teamView/hide');
+        await output.locator('.TeamViewContainer').first().waitFor({ state: 'detached' });
+        await change('teamPVP/PVP_TOP/show_with_settings', { teamId: teams[0].id, mediaTypes: [], bottomBar: 'timeline', showTimeLine: true });
+        await change('teamPVP/PVP_BOTTOM/show_with_settings', { teamId: teams[1].id, mediaTypes: [], bottomBar: 'card', showTimeLine: true });
+        // Both PVP views must be on screen before their missing bottom bars mean anything.
+        await output.waitForFunction(() => [...document.querySelectorAll('.TeamViewContainer')]
+            .filter((node) => node.getBoundingClientRect().height > 0).length === 2);
+        check('broadcast overlay', await output.locator('.TeamInfoBanner, .TeamTimeLine, .TeamTrendGraph').count() === 0, 'PVP should not render bottom bar');
+        await change('teamPVP/hide');
         await controls.getByRole('heading', { name: '隐藏 单题战况', exact: true }).getByRole('button', { name: '隐藏', exact: true }).click();
         await output.getByRole('region', { name: '单题战况' }).waitFor({ state: 'hidden' });
         await change('statistics/show');

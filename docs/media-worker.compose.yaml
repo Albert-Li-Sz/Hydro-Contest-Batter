@@ -1,6 +1,6 @@
 services:
   reactions:
-    image: ${HYDRO_MEDIA_IMAGE:-ghcr.io/albert-li-sz/reactions-generator-hydro:2.1.0}
+    image: ${HYDRO_MEDIA_IMAGE:-ghcr.io/albert-li-sz/reactions-generator-hydro:2.2.0}
     hostname: ${HYDRO_MEDIA_NODE:-reactions-01}
     restart: unless-stopped
     secrets:

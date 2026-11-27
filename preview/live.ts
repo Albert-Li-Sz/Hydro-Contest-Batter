@@ -80,6 +80,8 @@ export function createLivePreview(env: Environment, logoNames: Record<string, st
                 boards: resolverBoards(data, current, current.showIdentity),
                 reactionVideos: Object.fromEntries((reactions?.visible() ?? []).map(v=>[v.rid,[{type:'Video',url:v.url}]])),
                 medias: capture.medias(data),
+                seats: Object.fromEntries(template.teams.map((team, index) => [team.team_id, `A-${String(index + 1).padStart(2, '0')}`])),
+                coaches: Object.fromEntries(template.teams.slice(0, 6).map((team, index) => [team.team_id, [['杨丽英', '张明', '李华'][index % 3]]])),
             };
         },
         persist: async (patch) => {
