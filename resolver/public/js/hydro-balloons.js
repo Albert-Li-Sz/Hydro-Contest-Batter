@@ -1,6 +1,7 @@
 // 气球配送: the balloons a contest owes, by room (seat prefix) and problem, for contest managers
 // (with the settings: colours, receipt tickets) and for volunteers on a no-login link.
 import { $, copyText, el, get, notify, openDialog, post, runtime } from './hydro-manage-common.js';
+import { venueClock } from './venue-time.js';
 import { inkOn } from './ink.js';
 
 const manager = runtime.mode === 'manager';
@@ -40,7 +41,7 @@ const clock = (at) => {
     const seconds = Math.max(0, Math.floor((new Date(at) - new Date(data.contest.beginAt)) / 1000));
     return `${Math.floor(seconds / 3600)}:${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 };
-const wall = (at) => new Date(at).toLocaleTimeString('zh-CN', { hour12: false, timeZone: runtime.timeZone, timeZoneName: 'shortOffset' });
+const wall = venueClock(runtime.timeZone);
 const naturally = new Intl.Collator('zh-CN', { numeric: true });
 const zoneKey = (team) => (team?.seat ? team.zone || '（无前缀）' : '（未导入座位）');
 const stateOf = (balloon) => (balloon.state === 'revoked' ? 'revoked' : balloon.delivered ? 'delivered' : balloon.held ? 'held' : 'pending');

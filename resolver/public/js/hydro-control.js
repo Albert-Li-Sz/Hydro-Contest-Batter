@@ -1,6 +1,7 @@
 import { clarificationIcon } from './hydro-clarification-icon.js';
 // Quick settings save through their owning modules. The recording editor shares its explicit save
 // action with the capture page so staff can review both sources and their combined bandwidth.
+import { venueClock } from './venue-time.js';
 import { helpTip } from './hydro-ui.js';
 import { mountRecordingSettings } from './hydro-recordings.js';
 import { $, el, formatTime, get, notify, openDialog, post, runtime } from './hydro-manage-common.js';
@@ -84,9 +85,9 @@ function presetBar() {
 }
 
 const sameDay = (a, b) => new Date(a).toLocaleDateString('zh-CN', { timeZone: runtime.timeZone }) === new Date(b).toLocaleDateString('zh-CN', { timeZone: runtime.timeZone });
-const shortTime = (value, withDate) => new Date(value).toLocaleString('zh-CN', {
-    ...(withDate ? { month: 'numeric', day: 'numeric' } : {}), timeZone: runtime.timeZone, timeZoneName: 'shortOffset', hour: '2-digit', minute: '2-digit', hour12: false,
-});
+const clock = venueClock(runtime.timeZone, {});
+const datedClock = venueClock(runtime.timeZone, { month: 'numeric', day: 'numeric' });
+const shortTime = (value, withDate) => withDate ? datedClock(value) : clock(value);
 
 function contestBlock() {
     const { contest } = data;

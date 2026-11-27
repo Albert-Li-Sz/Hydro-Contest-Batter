@@ -1,4 +1,6 @@
 // 机位监控: every team's computer by room, its state from the reports of its contest pages, and alerts.
+import { venueClock } from './venue-time.js';
+
 const runtime = JSON.parse(document.getElementById('presence-runtime').textContent);
 const $ = (id) => document.getElementById(id);
 
@@ -26,7 +28,8 @@ const ago = (ms) => {
     const minutes = Math.floor(seconds / 60);
     return minutes < 60 ? `${minutes} 分` : `${Math.floor(minutes / 60)} 时 ${minutes % 60} 分`;
 };
-const clock = (value) => (value ? new Date(value).toLocaleTimeString('zh-CN', { hour12: false, timeZone: runtime.timeZone, timeZoneName: 'shortOffset' }) : '—');
+const clock = venueClock(runtime.timeZone);
+const dateTime = venueClock(runtime.timeZone, { year: 'numeric', month: 'numeric', day: 'numeric', second: '2-digit' });
 
 $('contest-title').textContent = runtime.title;
 $('back-link').href = runtime.contestUrl;
@@ -42,7 +45,7 @@ if (collection) {
         networks.value = value.networks.join(', ');
         link.href = value.url;
         link.hidden = !enabled.checked;
-        message.textContent = enabled.disabled ? '本场收集已截止' : `开赛前十分钟（${value.deadlineText}）截止`;
+        message.textContent = enabled.disabled ? '本场收集已截止' : `本场收集于 ${value.deadlineText} 截止（开赛前十分钟）`;
     }
     render(current);
     const expiry = setInterval(() => {
@@ -153,7 +156,7 @@ function details(uid) {
         team.mapped.length ? ['IP 登录', team.mapped.join('、')] : null,
         team.recent.length > 1 ? ['10 分钟内', team.recent.join('、')] : null,
         team.browser?.name ? ['浏览器', `${team.browser.name} ${team.browser.version}`] : null,
-        team.firstSeen ? ['首次上线', new Date(team.firstSeen).toLocaleString('zh-CN', { hour12: false, timeZone: runtime.timeZone, timeZoneName: 'shortOffset' })] : null,
+        team.firstSeen ? ['首次上线', dateTime(team.firstSeen)] : null,
         team.capture === null ? null : ['画面采集', captureLabels[team.capture]],
     ].filter(Boolean);
     const issues = (last.alerts || []).filter((alert) => alert.uid === uid);

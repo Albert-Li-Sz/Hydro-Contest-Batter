@@ -62,6 +62,8 @@ export async function venueOps(browser, base, contest) {
 
         await page.goto(base + contest + '/presence?phase=before');
         await page.getByText('收集机位 IP', { exact: true }).click();
+        await page.getByText(/\d{2}:\d{2}:\d{2} UTC\+8 更新/).waitFor();
+        await page.getByText(/本场收集于 \d{2}:\d{2}（UTC\+8）/).waitFor();
         await page.getByLabel('开启 IP 收集').check();
         await page.getByLabel('允许网段').fill('127.0.0.1/32');
         await page.getByRole('button', { name: '保存收集设置' }).click();
