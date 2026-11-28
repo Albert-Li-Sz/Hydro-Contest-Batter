@@ -6,8 +6,8 @@
 <text x="32" y="45" font-family="system-ui, PingFang SC, Microsoft YaHei, sans-serif" font-size="29" font-weight="680" fill="#4d1930">从发布包找到安装脚本</text>
 <path d="M32 64 L808 64" fill="none" stroke="#e4dadc" stroke-width="2"/>
 <rect x="32" y="81" width="776" height="161" rx="6" fill="#29232c" stroke="none"/>
-<text x="51" y="110" font-family="ui-monospace, Consolas, monospace" font-size="19" font-weight="500" fill="#fff4f7">$ sha256sum -c hydro-scoreboard-xcpcio-plus-2.5.0.tgz.sha256</text>
-<text x="51" y="146" font-family="ui-monospace, Consolas, monospace" font-size="19" font-weight="500" fill="#a6edc5">hydro-scoreboard-xcpcio-plus-2.5.0.tgz: OK</text>
-<text x="51" y="182" font-family="ui-monospace, Consolas, monospace" font-size="19" font-weight="500" fill="#fff4f7">$ ls xcpcio-v2.5.0/package/install.sh</text>
-<text x="51" y="218" font-family="ui-monospace, Consolas, monospace" font-size="19" font-weight="500" fill="#a6edc5">xcpcio-v2.5.0/package/install.sh</text>
+<text x="51" y="110" font-family="ui-monospace, Consolas, monospace" font-size="19" font-weight="500" fill="#fff4f7">$ sha256sum -c hydro-scoreboard-xcpcio-plus-2.6.0.tgz.sha256</text>
+<text x="51" y="146" font-family="ui-monospace, Consolas, monospace" font-size="19" font-weight="500" fill="#a6edc5">hydro-scoreboard-xcpcio-plus-2.6.0.tgz: OK</text>
+<text x="51" y="182" font-family="ui-monospace, Consolas, monospace" font-size="19" font-weight="500" fill="#fff4f7">$ ls xcpcio-v2.6.0/package/install.sh</text>
+<text x="51" y="218" font-family="ui-monospace, Consolas, monospace" font-size="19" font-weight="500" fill="#a6edc5">xcpcio-v2.6.0/package/install.sh</text>
 </svg>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Hydro Contest Better v2.5.0 办赛手册。了解如何安装升级、核对观众视角与选手视角、配对并遥控场馆大屏、切换二维或三维滚榜、导出可编辑的颁奖 PowerPoint，以及配置答疑、气球、打印和直播。">
+  <meta name="description" content="Hydro Contest Better v2.6.0 办赛手册。了解如何安装升级、核对观众视角与选手视角、配对并遥控场馆大屏、切换原版或 CCPCOJ 风格滚榜、导出可编辑的颁奖 PowerPoint，以及配置答疑、气球、打印和直播。">
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#1b1b1f" media="(prefers-color-scheme: dark)">
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
@@ -25,7 +25,7 @@
         <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/usage.md">完整文档</a>
       </nav>
       <div class="nav-tools">
-        <a class="version-pill" href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.5.0" title="下载 v2.5.0">v2.5.0</a>
+        <a class="version-pill" href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.6.0" title="下载 v2.6.0">v2.6.0</a>
         <button class="icon-btn theme-toggle" type="button" aria-label="切换深色模式"><svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 1.5v2M12 20.5v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1.5 12h2M20.5 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg></button>
         <a class="icon-btn" href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better" aria-label="GitHub 仓库" title="GitHub 仓库"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.07 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3"/></svg></a>
       </div>
@@ -81,10 +81,10 @@
     <div class="content">
     <main id="manual">
       <header class="hero">
-        <a class="hero-badge" href="#install"><span>v2.5.0</span>升级说明与下载</a>
+        <a class="hero-badge" href="#install"><span>v2.6.0</span>升级说明与下载</a>
         <h1><span class="name">Hydro Contest Better</span><br>比赛操作手册</h1>
         <p class="tagline">Hydro OJ 的 ACM 办赛插件。从安装插件、配置比赛，到现场投屏、气球配送、打印、直播、赛后滚榜和闭幕式颁奖。</p>
-        <p class="meta">适用于插件 v2.5.0 · Hydro 5.x · Node.js 22+ · 截图使用演示比赛数据，点击配图可查看原图</p>
+        <p class="meta">适用于插件 v2.6.0 · Hydro 5.x · Node.js 22+ · 截图使用演示比赛数据，点击配图可查看原图</p>
         <div class="actions">
           <a class="btn btn-brand" href="#configuration">开始配置比赛</a>
           <a class="btn btn-alt" href="#install">安装与升级</a>
@@ -118,21 +118,21 @@
       <section id="install" aria-labelledby="install-heading">
         <h2 id="install-heading">安装与升级</h2>
         <p>使用运行 Hydro 的系统账号执行命令。需要 Hydro 5.x、Node.js 22 或以上。用 PM2 管理 Hydro 时，默认进程名为 <code>hydrooj</code>。</p>
-        <p>从 v2.5.0 发布页下载 <code>hydro-scoreboard-xcpcio-plus-2.5.0.tgz</code> 和同名 <code>.sha256</code> 校验文件，放在同一个目录。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.5.0">v2.5.0 下载</a></p>
+        <p>从 v2.6.0 发布页下载 <code>hydro-scoreboard-xcpcio-plus-2.6.0.tgz</code> 和同名 <code>.sha256</code> 校验文件，放在同一个目录。<a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.6.0">v2.6.0 下载</a></p>
 
         <p><strong>从 v2.3.0 或更早版本升级</strong>　升级后首次启动 Hydro 时，插件会永久清除历届比赛的证书配置、签发记录和上传素材。需要留档时，请在升级前备份这三类数据。旧领取链接和验真二维码随功能移除而失效。</p>
 
         <h3>校验并解压</h3>
-        <pre><code>sha256sum -c hydro-scoreboard-xcpcio-plus-2.5.0.tgz.sha256 &amp;&amp;
-  mkdir -p xcpcio-v2.5.0 &amp;&amp;
-  tar -xzf hydro-scoreboard-xcpcio-plus-2.5.0.tgz -C xcpcio-v2.5.0</code></pre>
+        <pre><code>sha256sum -c hydro-scoreboard-xcpcio-plus-2.6.0.tgz.sha256 &amp;&amp;
+  mkdir -p xcpcio-v2.6.0 &amp;&amp;
+  tar -xzf hydro-scoreboard-xcpcio-plus-2.6.0.tgz -C xcpcio-v2.6.0</code></pre>
 
         <figure class="guide-shot">
           <a href="./images/manual/install-archive.svg"><img src="./images/manual/install-archive.svg" width="840" height="262" loading="lazy" alt="终端示例中的 SHA-256 校验显示 OK，解压后可找到 package/install.sh"></a>
           <figcaption>校验结果显示 OK 后再解压。进入新目录，确认 package 下有 install.sh。</figcaption>
         </figure>
         <h3>首次安装</h3>
-        <pre><code>bash xcpcio-v2.5.0/package/install.sh install</code></pre>
+        <pre><code>bash xcpcio-v2.6.0/package/install.sh install</code></pre>
         <p>脚本将插件复制到 <code>$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus</code>，执行 <code>hydrooj addon add</code>，然后重启 Hydro。</p>
         <figure class="guide-shot">
           <a href="./images/manual/install-choice.svg"><img src="./images/manual/install-choice.svg" width="840" height="298" loading="lazy" alt="首次安装选 install，已有安装从新包执行 upgrade，两种方式都要验证比赛入口"></a>
@@ -142,7 +142,7 @@
           <summary>手动安装到新目录</summary>
           <pre><code>addon_dir="$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 mkdir -p "$addon_dir"
-tar -xzf hydro-scoreboard-xcpcio-plus-2.5.0.tgz -C "$addon_dir" --strip-components=1
+tar -xzf hydro-scoreboard-xcpcio-plus-2.6.0.tgz -C "$addon_dir" --strip-components=1
 hydrooj addon add "$addon_dir"
 pm2 restart hydrooj</code></pre>
           <figure class="guide-shot">
@@ -152,7 +152,7 @@ pm2 restart hydrooj</code></pre>
         </details>
 
         <h3>已有安装时升级</h3>
-        <pre><code>bash xcpcio-v2.5.0/package/install.sh upgrade
+        <pre><code>bash xcpcio-v2.6.0/package/install.sh upgrade
 pm2 status hydrooj</code></pre>
         <p>在浏览器打开 Hydro 首页和一场 ACM 比赛，确认榜单、滚榜和大屏入口可用。自定义目录用 <code>--dir</code> 指向原安装位置，非默认 PM2 进程用 <code>--service</code>。容器部署用 <code>--no-restart</code>，然后通过容器管理方式重启 Hydro。</p>
         <figure class="guide-shot">
@@ -436,7 +436,7 @@ submit print a.cpp</code></pre>
 
       <section id="resolver" aria-labelledby="resolver-heading">
         <h2 id="resolver-heading">赛后滚榜</h2>
-        <p>配置页可选默认的原版 2D 或三维 3D。三维滚榜以黑白和电蓝依次播放赛后开场、提交回放与队伍巡礼、翻牌揭晓、领奖台。揭晓时题牌先翻出判定，再更新过题数与罚时，最后把队伍移到新名次。主持人在「画面设置」可随时切换 2D / 3D、机位和音效。大屏可以跟随主持会话或单独选定样式。两种画面共用同一步进度，浏览器缺少 WebGL 时会切回 2D。</p>
+        <p>配置页可选默认的原版 2D、CCPCOJ 一代或 CCPCOJ 二代。一代为白底整屏榜单，揭晓中的队伍标为青色，获奖信息以对话框显示。二代先显示深色开场幕布，榜单名次块按奖区着色，获奖时全屏显示照片舞台和队伍信息。两种 CCPCOJ 样式都是先改变题目格颜色和分数，再将队伍移到新名次。主持人在「画面设置」可随时切换样式和音效。大屏可以跟随主持会话或单独选定样式。三种画面共用同一步进度，都不需要 WebGL。v2.5.0 选择「三维 3D」的会话和大屏按 CCPCOJ 二代播放。</p>
         <p>在滚榜播放页打开「颁奖台本」，按本场会话的揭晓顺序查看候场、上台和特别奖名单。可直接打印，彩排会话的台本标有「仅供彩排」。</p>
         <ol>
           <li>在比赛侧边栏打开「滚榜预演与播放」。赛前可彩排。正式滚榜应在比赛结束、相关提交评测或重测完成之后进行。</li>
@@ -652,8 +652,8 @@ submit print a.cpp</code></pre>
       <footer class="manual-footer">
         <nav aria-label="更多资料">
           <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/main/docs/usage.md">完整使用文档</a>
-          <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v2.5.0/docs/verification.md">验证记录</a>
-          <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v2.5.0/NOTICE">来源与许可</a>
+          <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v2.6.0/docs/verification.md">验证记录</a>
+          <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v2.6.0/NOTICE">来源与许可</a>
           <a href="https://github.com/Albert-Li-Sz/Hydro-Contest-Better/issues">报告问题</a>
         </nav>
         <p>自研代码以 MIT 许可发布，第三方组件、字体与标识保留各自许可。</p>

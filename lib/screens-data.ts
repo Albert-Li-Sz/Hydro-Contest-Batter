@@ -64,7 +64,7 @@ export const screenLabels: Record<ScreenType, string> = {
     balloons: '气球配送图', announce: '通过播报', judges: '评测机状态', poster: '图片海报', clarifications: '比赛公告滚动', 'problem-list': '题目列表',
 };
 export const screenVariants: Partial<Record<ScreenType, [string, string][]>> = {
-    resolver: [['', '跟随会话'], ['2d', '原版 2D'], ['3d', '三维 3D']],
+    resolver: [['', '跟随会话'], ['2d', '原版 2D'], ['ccpcoj', 'CCPCOJ 一代'], ['ccpcoj2', 'CCPCOJ 二代']],
     tiles: [['standings', '实时方块榜（Tiles）'], ['rank', '按通过数分组（Tile rank）'], ['list', '按队名排列（Tile list）']],
     queue: [['queue', '判题队列（Judge queue）'], ['teams', '队伍判题（Team judgements）']],
     countdown: [['digital', '数字倒计时'], ['polar', '环形倒计时']],
@@ -143,8 +143,10 @@ export function normalizeScreenConfig(raw: unknown, base = defaultScreenConfig()
         }
         if (item.variant !== undefined) {
             const allowed = screenVariants[type]?.map(([value]) => value) || [''];
-            if (!allowed.includes(item.variant)) throw new ScreenError(`${screenLabels[type]}的样式无效`);
-            next.variant = item.variant;
+            // Screens saved by v2.5 name the CCPCOJ 二代 resolver style '3d'.
+            const variant = type === 'resolver' && item.variant === '3d' ? 'ccpcoj2' : item.variant;
+            if (!allowed.includes(variant)) throw new ScreenError(`${screenLabels[type]}的样式无效`);
+            next.variant = variant;
         }
         if (item.target !== undefined) {
             if (!['end', 'start', 'custom'].includes(item.target)) throw new ScreenError('倒计时目标无效');

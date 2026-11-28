@@ -1,13 +1,21 @@
 import { ResolverView } from './resolver-view.js';
 
-// A canvas's context type is fixed after its first draw. Replace it whenever a view takes over,
-// including returning the audience canvas to an ordinary 2D programme.
+export const RENDERERS = [['2d', '原版 2D'], ['ccpcoj', 'CCPCOJ 一代'], ['ccpcoj2', 'CCPCOJ 二代']];
+
+/** The style to draw: sessions and screens saved by v2.5 call the CCPCOJ 二代 style '3d'. */
+export function rendererKind(value) {
+    if (value === '3d') return 'ccpcoj2';
+    return RENDERERS.some(([kind]) => kind === value) ? value : '2d';
+}
+
+// Replace the canvas whenever a view takes over, so no state of one view's drawing (size,
+// transform, data attributes) leaks into the next one's.
 export function replaceCanvas(canvas) {
     const next = canvas.cloneNode(false);
     delete next.dataset.renderer;
     delete next.dataset.act;
     delete next.dataset.reveal;
-    if (canvas.dataset.renderer === '3d') next.removeAttribute('aria-description');
+    if (canvas.dataset.renderer && canvas.dataset.renderer !== '2d') next.removeAttribute('aria-description');
     canvas.replaceWith(next);
     return next;
 }
@@ -22,45 +30,34 @@ export class ResolverStage {
     }
 
     async select(kind, retry = false) {
-        const requested = kind === '3d' ? '3d' : '2d';
+        const requested = rendererKind(kind);
         if (this.requested === requested && !retry) return;
         const generation = ++this.generation;
         this.requested = requested;
         let View = ResolverView;
         let message = '';
-        if (requested === '3d') {
-            try { ({ ResolverView3D: View } = await import('../render3d/resolver-view-3d.js')); }
-            catch { message = '三维组件加载失败，已切换到原版 2D'; }
+        const name = RENDERERS.find(([kind]) => kind === requested)[1];
+        if (requested !== '2d') {
+            try { ({ ResolverViewCcpcoj: View } = await import('../ccpcoj/resolver-view-ccpcoj.js')); }
+            catch { message = name + ' 组件加载失败，已切换到原版 2D'; }
         }
         if (generation !== this.generation) return;
         this.unmount();
         this.canvas = replaceCanvas(this.canvas);
-        try { this.view = new View(this.canvas, this.game); }
+        try { this.view = new View(this.canvas, this.game, requested === 'ccpcoj2' ? 2 : 1); }
         catch (error) {
             if (View === ResolverView) throw error;
             this.canvas = replaceCanvas(this.canvas);
             this.view = new ResolverView(this.canvas, this.game);
-            message = '此设备无法使用 WebGL，已切换到原版 2D';
+            message = name + ' 无法在此设备显示，已切换到原版 2D';
         }
-        this.canvas.dataset.renderer = this.view instanceof ResolverView ? '2d' : '3d';
-        if (this.canvas.dataset.renderer === '3d') {
-            this.lost = event => {
-                event.preventDefault();
-                this.select('2d').then(() => {
-                    this.requested = requested;
-                    this.mounted(this.canvas, this.view, 'WebGL 连接已中断，已切换到原版 2D');
-                });
-            };
-            this.canvas.addEventListener('webglcontextlost', this.lost);
-        }
+        this.canvas.dataset.renderer = this.view instanceof ResolverView ? '2d' : this.view.kind;
         const { steps, index } = this.position();
         this.view.seek(steps, index);
         this.mounted(this.canvas, this.view, message);
     }
 
     unmount() {
-        if (this.lost) this.canvas.removeEventListener('webglcontextlost', this.lost);
-        this.lost = null;
         this.view?.dispose();
         this.view = null;
     }
@@ -73,10 +70,10 @@ export class ResolverStage {
 }
 
 export function rendererControls(holder, change, follow = '') {
-    holder.innerHTML = '<label>滚榜样式<select class="select" aria-label="滚榜样式"><option value="2d">原版 2D</option><option value="3d">三维 3D</option></select></label>'
-        + '<label hidden>机位<select class="select" aria-label="机位"><option value="auto">自动运镜</option><option value="front">正面</option><option value="side">侧面</option></select></label>'
+    holder.innerHTML = '<label>滚榜样式<select class="select" aria-label="滚榜样式">'
+        + RENDERERS.map(([kind, label]) => '<option value="' + kind + '">' + label + '</option>').join('') + '</select></label>'
         + '<label hidden><input type="checkbox"> 音效</label><span role="status"></span>';
-    const [style, camera] = holder.querySelectorAll('select');
+    const style = holder.querySelector('select');
     const sound = holder.querySelector('input');
     const note = holder.querySelector('[role=status]');
     let current;
@@ -84,16 +81,14 @@ export function rendererControls(holder, change, follow = '') {
     holder.onchange = event => {
         event.stopPropagation();
         if (event.target === style) change(style.value);
-        else if (event.target === camera) current?.setCamera?.(camera.value);
         else current?.setSound?.(sound.checked);
     };
     return { style, mounted(canvas, view, message = '') {
         current = view;
-        const three = canvas.dataset.renderer === '3d';
-        camera.parentElement.hidden = sound.parentElement.hidden = !three;
-        if (!follow) style.value = three ? '3d' : '2d';
+        const kind = canvas.dataset.renderer || '2d';
+        sound.parentElement.hidden = kind === '2d';
+        if (!follow) style.value = kind;
         note.textContent = message;
-        view.setCamera?.(camera.value);
-        if (three && sound.checked) view.setSound(true);
+        if (kind !== '2d' && sound.checked) view.setSound(true);
     } };
 }

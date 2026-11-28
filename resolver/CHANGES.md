@@ -119,3 +119,9 @@
 - `public/js/render3d/` 拆为 `graphics.js`（二维计分板与文字绘制）、`scene.js`（正交机位下的立体道具与背景）和 `resolver-view-3d.js`（揭晓节奏与状态）。计分板始终正面绘制，机位只改变道具角度。
 - 揭晓分三段：题牌先翻出判定，再更新过题数与罚时，最后队伍移到新名次。回退或跳转时立即落到目标状态。旧会话没有提交流时，提交回放使用封榜前公开的格子记录。
 - `public/js/render/renderer.js` 从三维切回原版时清除画布上的揭晓阶段与无障碍描述。
+
+## 2.6 的调整
+
+- 三维滚榜改为两种 Canvas 2D 样式：`public/js/ccpcoj/gen1.js`（CCPCOJ 一代，白底整屏榜单与获奖对话框）和 `gen2.js`（CCPCOJ 二代，深色开场幕布、双语表头、奖区名次块与全屏获奖页），共用 `draw.js` 的绘图工具和 `resolver-view-ccpcoj.js` 的揭晓节奏：先改变题目格和分数，再按 cubic-bezier(1, 0, 1, 1) 移到新名次，移动时长随距离增加。两种样式只参照 CCPCOJ 的版式，不含其代码或图片。删除 `public/js/render3d/`、Three.js 模块及其许可文件，机位选项随之移除。
+- 样式值为 `2d`、`ccpcoj`、`ccpcoj2`。引擎、滚榜配置和大屏设置把 v2.5 的旧值 `3d` 读作 `ccpcoj2`。
+- `public/js/render/renderer.js` 不再监听 WebGL 断连。CCPCOJ 样式模块加载或创建失败时回到原版 2D。缩略图上报不再需要先重绘 WebGL 缓冲区。

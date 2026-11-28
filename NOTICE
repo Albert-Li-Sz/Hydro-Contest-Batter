@@ -103,7 +103,7 @@ licenses/fix-webm-duration-MIT.txt.
 
 Reaction video templates use the ICPC Live mark from icpc/reactions-generator (5d42acb), Hydro branding from hydro-dev/Hydro, and the decorative skyline from the supplied contest layout. The bundled demonstrations use synthetic video sources.
 
-The 3D resolver uses Three.js 0.160.1, distributed under the MIT license
-in licenses/three-MIT.txt. The ES module is bundled locally from the three
-npm package for use in venues without public Internet access.
-https://github.com/mrdoob/three.js
+The CCPCOJ 一代 and CCPCOJ 二代 resolver styles follow the layout of the rank roll in CCPCOJ
+(https://github.com/CSGrandeur/CCPCOJ) and the screenshots in the CCPCOJ-2 documentation
+(https://github.com/SZTU-ACM/CCPCOJ-2). They are drawn with this plugin's own Canvas 2D code;
+no CCPCOJ source code, images or other assets are included.

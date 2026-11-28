@@ -84,7 +84,7 @@ export interface ResolverConfig {
     autoplaySpeed: number;
     autoStopAtMedals: boolean;
     startScreen: 'splash' | 'scoreboard';
-    renderer?: '2d' | '3d';
+    renderer?: '2d' | 'ccpcoj' | 'ccpcoj2';
     showSchool: boolean;
 }
 

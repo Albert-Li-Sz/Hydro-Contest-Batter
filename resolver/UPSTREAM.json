@@ -134,7 +134,7 @@
       "source": "public/js/render/resolver-view.js",
       "destination": "resolver/public/js/render/resolver-view.js",
       "sha256": "a7ad7808df01fee371f753b5161452bd24c5800a58cf62cba7f7305b3bc689b1",
-      "modifiedSha256": "f178612f5dd2b52715773443ef2bfd19f423771d47d134842621deb50552454a"
+      "modifiedSha256": "502cc7eac64d0b280f5e509532e6a448ac3ddd15b31ac5845da21671b6ea79e0"
     },
     {
       "source": "public/js/render/shaded-rect.js",
@@ -176,7 +176,7 @@
       "source": "server/lib/engine.js",
       "destination": "resolver/server/lib/engine.js",
       "sha256": "b74872b78f03b96d06a0c40e94464f26d19326c6200808d9bb007e94bb39b0e1",
-      "modifiedSha256": "02363c56eb298701349c31bd96d03ceab07f62ef8cb51eb385a361e942398b2e"
+      "modifiedSha256": "58f484c7e9e5d8e1969d41a388704f9f9b4f4a7fae4d4508c2dc5b6f7305792b"
     },
     {
       "source": "server/lib/limits.js",

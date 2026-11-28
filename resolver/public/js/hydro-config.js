@@ -1,5 +1,5 @@
 import { ratioMeter } from './hydro-ui.js';
-import { ResolverStage } from './render/renderer.js';
+import { ResolverStage, rendererKind } from './render/renderer.js';
 import { actionIndicesFor, startIndexFor } from './playback-model.js';
 
 const runtime = JSON.parse(document.getElementById('resolver-runtime').textContent);
@@ -136,7 +136,7 @@ function showPreviewPosition() {
 
 function resetPreview() {
     if (!game || !view) return;
-    const index = game.options.renderer === '3d' ? startIndexFor(game)
+    const index = rendererKind(game.options.renderer) !== '2d' ? startIndexFor(game)
         : game.steps.findIndex((step) => step.type === 'presentation' && step.screen === 'scoreboard');
     position = Math.max(0, actions.indexOf(index));
     view.seek(game.steps, actions[position]);

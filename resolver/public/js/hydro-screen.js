@@ -260,8 +260,6 @@ async function sendThumb() {
     try {
         let payload = null;
         if (!canvas.hidden && canvas.width) {
-            // Read the WebGL back buffer in the same task that draws it.
-            if (canvas.dataset.renderer === '3d') resolver?.view?.render(performance.now());
             payload = { kind: 'image', data: frameData(canvas, 384, 384 * canvas.height / canvas.width) };
         } else if (!content.hidden) payload = { kind: 'html', data: snapshot() };
         if (!payload) return;

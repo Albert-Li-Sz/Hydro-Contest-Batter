@@ -21,6 +21,10 @@ describe('big-screen configuration', () => {
         expect(base.items.tiles.variant).toBe('standings');
         expect(base.items.queue).toMatchObject({ variant: 'queue', boardId: 'all' });
         expect(normalizeScreenConfig({ items: { queue: { variant: 'teams' } } }).items.queue.variant).toBe('teams');
+        // A resolver screen saved by v2.5 with the CCPCOJ 二代 style named '3d'.
+        expect(normalizeScreenConfig({ items: { resolver: { variant: '3d' } } }).items.resolver.variant).toBe('ccpcoj2');
+        expect(normalizeScreenConfig({ items: { resolver: { variant: 'ccpcoj' } } }).items.resolver.variant).toBe('ccpcoj');
+        expect(() => normalizeScreenConfig({ items: { resolver: { variant: 'webgl' } } })).toThrow('样式');
         // Settings saved before the queue screen existed still load, with its defaults.
         const { queue: _queue, ...older } = base.items;
         expect(normalizeScreenConfig({ locale: 'zh-CN', items: older }).items.queue.variant).toBe('queue');

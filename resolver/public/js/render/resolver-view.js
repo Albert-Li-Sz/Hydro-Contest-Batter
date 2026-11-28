@@ -194,7 +194,7 @@ export class ResolverView {
     };
     this.width = WIDTH;
     this.height = HEIGHT;
-    // A null surface reuses just the step/checkpoint state for the 3D renderer.
+    // A null surface reuses just the step/checkpoint state for the CCPCOJ-style renderers.
     if (canvas) {
       canvas.width = this.width;
       canvas.height = this.height;

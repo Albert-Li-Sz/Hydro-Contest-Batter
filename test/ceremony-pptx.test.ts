@@ -45,16 +45,20 @@ it('requires a current deck and background and finite, measured positions', () =
     expect(() => parseCeremonyLayout(JSON.stringify(fit), deck, 13)).toThrow('排版');
 });
 
-it('preserves the default original renderer, validates the new option and limits replay to public events', () => {
+it('preserves the default original renderer, validates the CCPCOJ options and limits replay to public events', () => {
     const settings = { ...defaultSettings, podiumEnabled: true };
     const data = demoData();
     const defaults = defaultResolverConfig(settings, true);
     expect(defaults.renderer).toBe('2d');
     expect(() => parseResolverConfig({ renderer: 'other' }, defaults)).toThrow();
-    const config = parseResolverConfig({ renderer: '3d', freezeMode: 'custom', freezeAtSeconds: 3600 }, defaults);
+    // Configurations and sessions saved by v2.5 call the CCPCOJ 二代 style '3d'.
+    expect(parseResolverConfig({ renderer: '3d' }, defaults).renderer).toBe('ccpcoj2');
+    expect(parseResolverConfig({ renderer: 'ccpcoj' }, defaults).renderer).toBe('ccpcoj');
+    const config = parseResolverConfig({ renderer: 'ccpcoj2', freezeMode: 'custom', freezeAtSeconds: 3600 }, defaults);
     const { game, snapshot } = prepareResolver(data, resolverBoards(data, settings, true), config, { contestId: 'c', ended: true, capturedAt: new Date(), logoNames: {} });
     expect(() => buildGame(snapshot, { renderer: 'other' })).toThrow('滚榜样式');
-    expect(game.options.renderer).toBe('3d');
+    expect(buildGame(snapshot, { renderer: '3d' }).options.renderer).toBe('ccpcoj2');
+    expect(game.options.renderer).toBe('ccpcoj2');
     const replay = game.initialState.replay as number[][];
     expect(replay).toHaveLength(data.submissions.filter(r => r.timestamp <= 3600000).length);
     expect(replay.every(([ms,t,p]) => ms <= 3600000 && !!game.contest.teams[t] && !!game.contest.problems[p])).toBe(true);

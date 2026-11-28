@@ -51,12 +51,14 @@ export function parseResolverConfig(raw: unknown, defaults: ResolverConfig): Res
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new ResolverError('滚榜配置格式无效');
     const input = raw as Record<string, unknown>;
     const config = { ...defaults };
-    const enums = { mode: ['board', 'official'], freezeMode: ['contest', 'custom'], startScreen: ['splash', 'scoreboard'], renderer: ['2d', '3d'] };
+    const enums = { mode: ['board', 'official'], freezeMode: ['contest', 'custom'], startScreen: ['splash', 'scoreboard'], renderer: ['2d', 'ccpcoj', 'ccpcoj2', '3d'] };
     for (const [key, allowed] of Object.entries(enums)) {
         if (input[key] === undefined) continue;
         if (!allowed.includes(input[key] as string)) throw new ResolverError(`${key} 无效`);
         Object.assign(config, { [key]: input[key] });
     }
+    // Configurations saved by v2.5 name the CCPCOJ 二代 style '3d'.
+    if ((config.renderer as string) === '3d') config.renderer = 'ccpcoj2';
     for (const key of ['rehearsal', 'medalSameScore', 'podiumEnabled', 'firstSolve', 'autoplay', 'autoStopAtMedals', 'showSchool'] as const) {
         if (input[key] === undefined) continue;
         if (typeof input[key] !== 'boolean') throw new ResolverError(`${key} 必须为布尔值`);

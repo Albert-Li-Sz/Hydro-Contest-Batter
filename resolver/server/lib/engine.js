@@ -135,8 +135,9 @@ export function normalizeOptions(options) {
   opts.showAwards = bool(raw.showAwards, DEFAULT_OPTIONS.showAwards);
   opts.title = raw.title == null || raw.title === '' ? null : String(raw.title);
   if (opts.title && opts.title.length > 200) throw inputError('标题长度不能超过 200 字');
-  if (raw.renderer != null && !['2d', '3d'].includes(raw.renderer)) throw inputError('滚榜样式无效');
-  opts.renderer = raw.renderer || '2d';
+  if (raw.renderer != null && !['2d', 'ccpcoj', 'ccpcoj2', '3d'].includes(raw.renderer)) throw inputError('滚榜样式无效');
+  // '3d' is the name sessions saved by v2.5 use for the CCPCOJ 二代 style.
+  opts.renderer = raw.renderer === '3d' ? 'ccpcoj2' : raw.renderer || '2d';
   opts.startScreen = raw.startScreen === 'scoreboard' ? 'scoreboard' : 'splash';
   return opts;
 }

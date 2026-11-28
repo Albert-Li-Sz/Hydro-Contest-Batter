@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { powerPointExport } from './resolver-3d-check.mjs';
+import { powerPointExport } from './resolver-ccpcoj-check.mjs';
 import { actionIndicesFor, awardStops, teamJump } from '../resolver/public/js/playback-model.js';
 
 const contest = '/contest/demo';
