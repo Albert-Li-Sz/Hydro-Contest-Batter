@@ -116,12 +116,12 @@ Schema 测试固定使用官方 2026-01 分支文件；上游 schema 对 runs �
 
 ### 手动安装
 
-从 v2.4.0 发布页下载 `hydro-scoreboard-xcpcio-plus-2.4.0.tgz` 和同名 `.sha256` 文件，放入同一个目录。首次安装按以下步骤校验、解压、注册 addon 并重启服务。[v2.4.0 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.4.0)
+从 v2.5.0 发布页下载 `hydro-scoreboard-xcpcio-plus-2.5.0.tgz` 和同名 `.sha256` 文件，放入同一个目录。首次安装按以下步骤校验、解压、注册 addon 并重启服务。[v2.5.0 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.5.0)
 
 ```bash
-sha256sum -c hydro-scoreboard-xcpcio-plus-2.4.0.tgz.sha256
+sha256sum -c hydro-scoreboard-xcpcio-plus-2.5.0.tgz.sha256
 mkdir -p "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
-tar -xzf hydro-scoreboard-xcpcio-plus-2.4.0.tgz \
+tar -xzf hydro-scoreboard-xcpcio-plus-2.5.0.tgz \
   -C "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus" --strip-components=1
 hydrooj addon add "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 pm2 restart hydrooj
@@ -134,9 +134,9 @@ pm2 restart hydrooj
 在新的临时目录中校验并解压安装包。
 
 ```bash
-sha256sum -c hydro-scoreboard-xcpcio-plus-2.4.0.tgz.sha256
+sha256sum -c hydro-scoreboard-xcpcio-plus-2.5.0.tgz.sha256
 mkdir -p xcpcio-update
-tar -xzf hydro-scoreboard-xcpcio-plus-2.4.0.tgz -C xcpcio-update
+tar -xzf hydro-scoreboard-xcpcio-plus-2.5.0.tgz -C xcpcio-update
 ```
 
 首次安装运行 `bash xcpcio-update/package/install.sh install`。升级已有安装运行 `bash xcpcio-update/package/install.sh upgrade`。
@@ -460,7 +460,7 @@ pnpm preview
 1. 选择“仅滚所选榜单”，展示主榜或指定分榜的成员并保留参赛身份。选择“所选分榜正式，其余非正式”则展示全部成员，正式排名、奖杯以分榜内原本正式的成员为准。分榜内的打星成员按该榜的奖牌和一血开关参评。分榜外的队伍只展示成绩。
 2. 默认继承比赛封榜点。没有封榜设置时，选择“本场滚榜自定义”并填写封榜时长，即比赛最后多少分钟封榜，页面会显示换算出的封榜时刻。恰好在封榜点的提交可见，之后的提交隐藏。该选项作用于当前滚榜。
 3. 奖项区显示所选榜单的共享规则，通过“配置榜单与滚榜奖项”统一修改。预览与开始时重新读取设置。“选手名后显示学校”默认开启，学校未填写时只显示名字。
-4. 「滚榜样式」默认原版 2D，也可选三维 3D。三维依次展示序幕、提交回放与队伍巡礼、翻牌揭晓与升榜、领奖台。主持页的「画面设置」可切换样式、机位和音效。大屏可跟随会话或指定样式，观众本机也能切换。两种样式共用进度和结果，浏览器无法创建 WebGL 画面时自动回到 2D。默认每屏 12 行，手动播放。启用自动阶段后默认 4 倍速，可调整至 0.25–16 倍。即时预览与播放使用同一引擎和绘图模块。
+4. 「滚榜样式」默认原版 2D，也可选三维 3D。三维以黑白和电蓝呈现赛后开场、公开提交回放与队伍巡礼、翻牌揭晓和领奖台。揭晓时，题牌先翻出判定，再更新过题数与罚时，最后将队伍移到新名次。机位切换只改变立体场景的角度，计分板始终正面显示。起始画面选「冻结榜单」可直接进入榜单。主持页的「画面设置」可切换样式、机位和音效。大屏可跟随会话或指定样式，观众本机也能切换。两种样式共用进度和结果，设备无法创建 WebGL 画面时自动回到 2D。默认每屏 12 行，手动播放。启用自动阶段后默认 4 倍速，可调整至 0.25–16 倍。即时预览与播放使用同一引擎和绘图模块。
 5. 点击“开始滚榜”重新读取最新数据，固定比赛、成员、打星状态、配置与步骤。后续提交、重判及分榜修改需新建会话才能纳入。
 6. 比赛结束前自动作为彩排并标注“仅供彩排”。彩排忽略未完成评测的提交并提示数量。结束后可选择彩排，正式滚榜要求相关提交全部评测完成。
 7. 从当前管理员会话列表继续或删除会话。默认永久保留，插件配置 `resolverSessionDays` 为 `0`。需要自动清理时可显式设置 1 至 365 天，清理会检查最近使用时间，保护并发打开或推进的会话。刷新、重启和多进程恢复后从已保存步骤开始并暂停。发生版本冲突或断线时停止推进。
@@ -741,7 +741,7 @@ Hydro 的系统管理员（`PRIV_EDIT_SYSTEM`）可在控制面板（`/manage`�
 
 在比赛题目页打开「选手命令行 submit」，选择 Linux、macOS 或 Windows 的 amd64 / arm64 安装包。解压到同一目录，运行 `./submit install`，Windows 使用 `.\submit.exe install`。安装包包含本比赛站点的域地址。命令通过 onsite-toolkit 的机位 IP 绑定识别选手。
 
-管理员也可在发布页下载六个平台的独立程序和 SHA-256 清单。分发独立程序时，在 `install --server` 后填写比赛域的完整地址，例如 `https://oj.example.edu/d/contest`。从比赛题目页下载的 ZIP 已带该地址。[v2.4.0 发布附件](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.4.0)
+管理员也可在发布页下载六个平台的独立程序和 SHA-256 清单。分发独立程序时，在 `install --server` 后填写比赛域的完整地址，例如 `https://oj.example.edu/d/contest`。从比赛题目页下载的 ZIP 已带该地址。[v2.5.0 发布附件](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.5.0)
 
 ```sh
 submit info

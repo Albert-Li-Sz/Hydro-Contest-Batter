@@ -1,401 +1,380 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { ResolverView } from '../render/resolver-view.js';
+import { initFonts } from '../render/text.js';
 import { renderDimensions, readDisplaySettings } from '../display-preferences.js';
+import { DEFAULT_SCHOOL_LOGO, teamLogoUrl } from '../logos.js';
+import { award, board, opening, podium, replay, stageLayout, teamName } from './graphics.js';
+import { BroadcastScene } from './scene.js';
 
-const palette = { ink: '#edf5ff', muted: '#a3b6ce', cyan: '#65e1e3', gold: '#f8d188', failed: '#ff9a91', pending: '#e3b369' };
-const actNames = ['', '序幕', '提交回放与队伍巡礼', '翻牌揭晓', '领奖台'];
-const placeNames = ['冠军', '亚军', '季军'];
-const podiumColors = [0xe3b86d, 0x96aec9, 0xbb815e];
-const faceFont = 'system-ui, "PingFang SC", "Microsoft YaHei", sans-serif';
+const FLIP_MS = 480;
+const MOVE_MS = 525;
+const REPLAY_MS = 23500;
+const acts = ['赛后滚榜', '提交回放', '翻牌揭晓', '领奖台'];
+const unit = x => Math.max(0, Math.min(1, x));
+const ease = x => x * x * (3 - 2 * x);
+const between = (a, b, mix) => a + (b - a) * mix;
 
-function text(ctx, value, x, y, width, height, color, { align = 'left', weight = 550 } = {}) {
-    if (!value || width <= 0) return;
-    ctx.font = weight + ' ' + height + 'px ' + faceFont;
-    ctx.fillStyle = color;
-    ctx.textAlign = align;
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(value), x, y, width);
+function publicReplay(game, teams, problems) {
+    const initial = game.initialState;
+    // Older saved games have no run stream; use only the public starting cells.
+    const source = Array.isArray(initial?.replay) ? initial.replay
+        : teams.flatMap((team, t) => (initial?.results?.[team.id] || []).flatMap((cell, p) => {
+            if (cell.time == null || (cell.status !== 'solved' && cell.status !== 'failed')) return [];
+            return [[(cell.timeSeconds ?? cell.time * 60) * 1000, t, p, Number(cell.status === 'solved')]];
+        }));
+    return source.filter(run => Array.isArray(run) && Number.isFinite(run[0]) && run[0] >= 0
+        && teams[run[1]] && problems[run[2]]).sort((a, b) => a[0] - b[0]);
 }
-function backdrop(ctx, w, h, light = false) {
-    const grad = ctx.createLinearGradient(0, 0, w, h);
-    grad.addColorStop(0, light ? '#204550' : '#162f4c');
-    grad.addColorStop(1, '#0a182e');
-    ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = light ? '#71dad2' : '#34516d';
-    ctx.lineWidth = 3; ctx.strokeRect(2, 2, w - 4, h - 4);
+
+function through(runs, elapsed) {
+    let lo = 0, hi = runs.length;
+    while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (runs[mid][0] <= elapsed) lo = mid + 1;
+        else hi = mid;
+    }
+    return lo;
 }
-function nameOf(team) { return team?.displayName || team?.name || team?.id || '—'; }
-function timeLabel(ms) {
-    const minute = Math.floor(ms / 60000);
-    return String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
-}
-function box(group, w, h, depth, color, x = 0, y = 0, z = 0) {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, depth),
-        new THREE.MeshStandardMaterial({ color, metalness: 0.45, roughness: 0.4 }));
-    mesh.position.set(x, y, z);
-    group.add(mesh);
-    return mesh;
-}
-// Every card has a physical edge, a front face and its own transform in the stage.
-function card(group, w, h, pixelWidth = 900) {
-    const holder = new THREE.Group();
-    group.add(holder);
-    box(holder, w, h, 0.13, 0x243e55, 0, 0, -0.08);
-    const surface = document.createElement('canvas');
-    surface.width = pixelWidth;
-    surface.height = Math.max(32, Math.round(pixelWidth * h / w));
-    const ctx = surface.getContext('2d');
-    const texture = new THREE.CanvasTexture(surface);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.minFilter = THREE.LinearFilter;
-    texture.generateMipmaps = false;
-    const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: texture, toneMapped: false }));
-    holder.add(face);
-    return { holder, paint(draw) { ctx.clearRect(0, 0, surface.width, surface.height); draw(ctx, surface.width, surface.height); texture.needsUpdate = true; } };
-}
-function clearGroup(group) {
-    group.traverse(object => {
-        object.geometry?.dispose();
-        const mats = Array.isArray(object.material) ? object.material : [object.material];
-        for (const mat of mats) if (mat) { mat.map?.dispose(); mat.dispose(); }
-    });
-    group.clear();
-}
-function layeredPanel(ctx, w, h, kicker, title, detail = '', accent = palette.cyan) {
-    backdrop(ctx, w, h);
-    text(ctx, kicker, w / 2, h * .18, w * .88, Math.min(h * .10, w * .048), accent, { align: 'center', weight: 700 });
-    text(ctx, title, w / 2, h * .49, w * .88, Math.min(h * .25, w * .12), palette.ink, { align: 'center', weight: 750 });
-    text(ctx, detail, w / 2, h * .78, w * .88, Math.min(h * .11, w * .065), palette.muted, { align: 'center' });
-}
-function historicalReplay(game) {
-    if (Array.isArray(game.initialState?.replay)) return game.initialState.replay;
-    // Earlier saved games retain the latest public time per problem, but no per-submission stream.
-    return game.contest.teams.flatMap((team, t) => (game.initialState?.results?.[team.id] || []).flatMap((cell, p) => {
-        if (!['solved','failed'].includes(cell.status) || cell.time == null) return [];
-        return [[(cell.timeSeconds ?? cell.time * 60) * 1000, t, p, Number(cell.status === 'solved')]];
-    })).sort((a, b) => a[0] - b[0]);
+
+function awardsScene(screen) { return screen === 'teamAward' || screen === 'teamList'; }
+
+function podiumWinners(state, awards) {
+    const winners = [null, null, null];
+    for (const entry of awards || []) {
+        if (!Number.isInteger(entry.place) || entry.place < 0 || entry.place > 2 || !entry.teamIds?.length) continue;
+        if (!winners[entry.place]) winners[entry.place] = { name: entry.name, teamIds: [] };
+        winners[entry.place].teamIds.push(...entry.teamIds.filter(id => !winners[entry.place].teamIds.includes(id)));
+    }
+    if (winners.some(Boolean)) return winners;
+    for (const id of state.order) {
+        const score = state.standings.get(id);
+        if (!score?.solved || score.rank < 1 || score.rank > 3) continue;
+        const at = score.rank - 1;
+        winners[at] ||= { teamIds: [] };
+        winners[at].teamIds.push(id);
+    }
+    return winners;
 }
 
 export class ResolverView3D {
     constructor(canvas, game) {
         this.canvas = canvas;
         this.game = game;
-        const attributes = { antialias: true, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: false };
+        const attributes = { alpha: false, antialias: true, powerPreference: 'high-performance' };
         const gl = canvas.getContext('webgl2', attributes) || canvas.getContext('webgl', attributes);
         if (!gl) throw new Error('WebGL unavailable');
-        this.renderer = new THREE.WebGLRenderer({ canvas, context: gl, ...attributes });
+        this.renderer = new THREE.WebGLRenderer({ canvas, context: gl, alpha: false, antialias: true });
         try {
-            // Share ranking, selection and seek checkpoints without a second drawing surface or image cache.
+            this.stage = new BroadcastScene(this.renderer);
             this.board = new ResolverView(null, game);
             this.options = this.board.options;
             this.teams = game.contest.teams || [];
-            this.byId = new Map(this.teams.map(t => [t.id, t]));
             this.problems = game.contest.problems || [];
-            this.replay = historicalReplay(game);
+            this.teamOf = new Map(this.teams.map(team => [team.id, team]));
+            this.organizations = new Map((game.contest.organizations || []).map(org => [org.id, org]));
+            this.title = game.contest.formalName || game.contest.name || 'ICPC';
+            this.runs = publicReplay(game, this.teams, this.problems);
+            this.duration = Math.max(1, game.initialState?.contestTimeMs || game.contest.durationMs || 0, this.runs.at(-1)?.[0] || 0);
+            this.timeline = new Array(96);
+            for (const run of this.runs) {
+                const i = Math.min(95, Math.floor(run[0] / this.duration * 96));
+                this.timeline[i] ||= run;
+            }
+            this.images = new Map();
             this.reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
             this.cameraMode = 'auto';
-            this.scene = new THREE.Scene();
-            this.scene.background = new THREE.Color(0x081427);
-            this.scene.fog = new THREE.FogExp2(0x081427, .026);
-            this.camera = new THREE.PerspectiveCamera(36, 16 / 9, .1, 150);
-            this.scene.add(new THREE.HemisphereLight(0xd8f3ff, 0x152139, 2.5));
-            const key = new THREE.DirectionalLight(0xe0ecff, 3.4);
-            key.position.set(-5, 9, 9); this.scene.add(key);
-            const rim = new THREE.DirectionalLight(0x64ddd6, 2.6);
-            rim.position.set(6, 2, -7); this.scene.add(rim);
-            this.stage = new THREE.Group(); this.scene.add(this.stage);
-            const floor = box(this.scene, 85, .14, 85, 0x101f30, 0, -3.75, -13);
-            floor.material.roughness = .32;
-            const grid = new THREE.GridHelper(56, 36, 0x355166, 0x1c3448);
-            grid.position.set(0, -3.67, -13); this.scene.add(grid);
-            this.orbit = new THREE.Group(); this.scene.add(this.orbit);
-            for (let i = 0; i < 3; i++) {
-                const ring = new THREE.Mesh(new THREE.TorusGeometry(4.3 + i * .38, .024 + i * .006, 6, 96, Math.PI * (1.35 + i * .19)),
-                    new THREE.MeshStandardMaterial({ color: i === 1 ? 0xdfbb76 : 0x5cb7c3, emissive: 0x20424a, metalness: .65, roughness: .25 }));
-                ring.rotation.set(.45 + i * .33, i * .46, i * 1.85); this.orbit.add(ring);
-            }
-            this.orbit.position.set(0, .2, -1.6);
-            this.target = new THREE.Vector3();
-            this.elapsed = this.sinceAct = this.flip = 0;
+            this.elapsed = 0;
             this.resetCue();
             this.onResize = () => this.resize();
             window.addEventListener('resize', this.onResize);
             window.addEventListener('resolver-display', this.onResize);
             this.resize();
-            this.paintStage();
-        } catch (error) { this.dispose(); throw error; }
+            this.fonts = initFonts('zh-CN').then(() => this.markFrame());
+        } catch (error) {
+            this.dispose();
+            throw error;
+        }
     }
 
-    ready() { return document.fonts.ready; }
+    ready() { return this.fonts; }
 
     resetCue() {
-        this.act = this.options.startScreen === 'scoreboard' ? 2 : 1;
-        this.revealed = null;
-        this.finalPodium = [];
+        this.act = this.options.startScreen === 'scoreboard' ? 3 : 1;
+        this.revelation = null;
+        this.scrolling = false;
+        this.finalAwards = [];
+        this.motion = null;
+        this.rankChange = null;
     }
 
     cue(step) {
-        if (step.type === 'presentation' && step.screen === 'splash') this.act = 1;
-        if (step.type === 'presentation' && step.screen === 'scoreboard' && this.act === 1) this.act = 2;
-        if (step.type === 'selectTeam' && step.teamIds?.length && step.role !== 'setup') { this.act = 3; this.revealed = null; }
-        if (step.type === 'selectSubmission') { this.act = 3; this.revealed = null; }
-        if (step.type === 'resolve') { this.act = 3; this.revealed = step; }
-        if (step.role === 'finale' || (step.type === 'selectTeam' && !step.teamIds?.length && !step.role && this.act === 3)) {
-            this.act = 4; this.finalPodium = step.podium || [];
+        switch (step.type) {
+            case 'presentation':
+                if (step.screen === 'splash') this.act = 1;
+                else if (step.screen === 'scoreboard' && this.act === 1) this.act = 2;
+                else if (awardsScene(step.screen)) this.act = 3;
+                this.revelation = null;
+                break;
+            case 'selectTeam':
+                this.scrolling = false;
+                this.revelation = null;
+                if (step.role === 'finale' || (!step.role && !step.teamIds?.length && this.act === 3)) {
+                    this.act = 4;
+                    this.finalAwards = step.podium || [];
+                } else if (step.teamIds?.length && step.role !== 'setup') this.act = 3;
+                break;
+            case 'scroll':
+                this.scrolling = true;
+                this.revelation = null;
+                break;
+            case 'selectSubmission':
+                this.act = 3;
+                this.scrolling = false;
+                this.revelation = null;
+                break;
+            case 'resolve':
+                this.act = 3;
+                this.scrolling = false;
+                this.revelation = step;
+                break;
         }
     }
 
     applyStep(step, { instant = false } = {}) {
         if (!step) return;
+        const resolves = step.type === 'resolve', scrolls = step.type === 'scroll';
+        const before = this.board.stageState();
+        const lastAct = this.act;
+        const animate = !instant && !this.reduced;
+        const start = (resolves || scrolls) ? this.windowFor(before, this.focusOf(before).team?.id) : 0;
+        const order = resolves && animate ? before.order.slice() : before.order;
+        const cellsBefore = resolves && animate ? (before.results[step.teamId] || []).slice() : null;
+        const previous = resolves ? before.standings.get(step.teamId) : null;
         this.board.applyStep(step, { instant });
         if (instant) this.board.finishReplay();
-        const old = this.act;
+        if (step.type === 'pause' || step.type === 'delay') return;
         this.cue(step);
-        if (this.act !== old) this.sinceAct = 0;
-        if (step.type === 'resolve') { this.flip = instant || this.reduced ? 1 : 0; this.chime(step.status === 'solved' ? 660 : 220, instant); }
-        if (this.act === 4 && old !== 4) this.chime(880, instant);
-        if (!['delay','pause'].includes(step.type)) this.paintStage(instant);
+        const state = this.board.stageState();
+        if (lastAct !== this.act || before.screen !== state.screen) {
+            this.elapsed = instant ? 1200 : 0;
+            this.lastDraw = null;
+        }
+        const score = resolves ? state.standings.get(step.teamId) : null;
+        if (resolves) {
+            this.rankChange = previous?.rank && score?.rank ? { from: previous.rank, to: score.rank } : null;
+            const canMove = order.indexOf(step.teamId) !== state.order.indexOf(step.teamId);
+            const speed = Math.max(.4, Math.min(12, Number(step.speedMultiplier) || 1));
+            this.motion = animate ? {
+                kind: 'resolve', start, before: order, standings: before.standings, cells: cellsBefore,
+                teamId: step.teamId, clock: 0, speed, moving: canMove,
+            } : null;
+        } else if (this.act === 3 && animate && scrolls) {
+            this.motion = { kind: 'scroll', start, clock: 0, speed: Math.max(.5, Math.min(12, Number(step.speedMultiplier) || 1)) };
+        } else if (step.type !== 'selectTeam' || this.motion?.kind !== 'scroll') {
+            this.motion = null;
+        }
+        if (this.act === 4 && lastAct !== 4) this.chime('finale', instant);
+        this.markFrame();
     }
 
     seek(steps, target) {
         this.board.seek(steps, target);
         this.resetCue();
         for (let i = 0; i <= target && i < steps.length; i++) this.cue(steps[i]);
-        this.sinceAct = 0; this.flip = 1;
-        this.paintStage(true);
+        this.elapsed = this.act <= 2 ? 0 : 1200;
+        this.lastDraw = null;
+        this.markFrame();
     }
 
-    paintStage(instant = true) {
-        const changed = this.paintedAct !== this.act;
-        if (changed) {
-            clearGroup(this.stage);
-            this.rows = new Map();
-            this.panels = [];
-            this.paradeKey = '';
-            this.podiumKey = '';
-            this.paintedAct = this.act;
-            this.canvas.dataset.act = String(this.act);
-            this.orbit.visible = this.act === 1 || this.act === 2;
-            this.orbit.scale.setScalar(this.act === 2 ? .86 : 1);
-            this.heading = card(this.stage, 8.1, .65, 1000);
-            this.heading.holder.position.set(0, 3.12, -.25);
-            this.heading.paint((ctx, w, h) => {
-                backdrop(ctx, w, h);
-                text(ctx, actNames[this.act], w * .04, h / 2, w * .47, h * .53, palette.cyan, { weight: 750 });
-                text(ctx, this.game.contest.name, w * .96, h / 2, w * .45, h * .40, palette.muted, { align: 'right' });
-            });
+    focusOf(state) {
+        if (this.scrolling) return {};
+        const selected = state.submission || this.revelation;
+        const team = this.teamOf.get(selected?.teamId || state.selected[0]);
+        return { team, problemIndex: selected?.problemIndex };
+    }
+
+    windowFor(state, id) {
+        const count = this.L.count;
+        const end = Math.max(0, state.order.length - count);
+        let start = Math.min(end, Math.max(0, Number(state.scroll) || 0));
+        if (!id) return start;
+        const index = state.order.indexOf(id);
+        if (index >= 0) start = Math.max(0, Math.min(index, Math.max(start, index - count + 1)));
+        return start;
+    }
+
+    boardFrame(state, flip, moving) {
+        const focus = this.focusOf(state);
+        const from = this.motion;
+        const destination = this.windowFor(state, focus.team?.id);
+        const mix = from ? moving : 1;
+        const scroll = from ? between(from.start, destination, mix) : destination;
+        const low = Math.max(0, Math.floor(scroll) - 2), high = Math.ceil(scroll) + this.L.count + 2;
+        const ids = new Set(state.order.slice(low, high));
+        if (from?.before) for (const id of from.before.slice(low, high)) ids.add(id);
+        if (focus.team) ids.add(focus.team.id);
+        const rows = [];
+        for (const id of ids) {
+            const index = state.order.indexOf(id);
+            if (index < 0) continue;
+            const first = from?.before?.indexOf(id) ?? index;
+            const position = between(first < 0 ? index : first, index, mix) - scroll;
+            if (position <= -1 || position >= this.L.count) continue;
+            const old = from?.before && flip < .5 ? {
+                score: from.standings.get(id), cells: id === from.teamId ? from.cells : null,
+            } : null;
+            const rank = from?.standings && (flip < .5 || mix < 1) ? from.standings.get(id)?.rank : state.standings.get(id)?.rank;
+            rows.push({ id, index, position, rank, selected: focus.team?.id === id, old });
         }
-        const title = this.game.contest.formalName || this.game.contest.name || 'ICPC';
-        if (this.act === 1 && changed) {
-            const main = card(this.stage, 10.6, 3.2, 1280);
-            main.paint((ctx,w,h) => layeredPanel(ctx,w,h,'XCPC · RESOLVER', title, this.teams.length + ' 支队伍    /    ' + this.problems.length + ' 道赛题', palette.gold));
-            this.panels.push(main);
-        } else if (this.act === 2) {
-            if (changed) {
-                const run = card(this.stage, 7.8, 2.36); run.holder.position.set(-1.8, .82, .5);
-                const team = card(this.stage, 7.8, 1.76); team.holder.position.set(1.3, -1.55, .65);
-                const history = card(this.stage, 2.1, 3.50, 360); history.holder.position.set(4.7, .62, -.3);
-                this.panels.push(run, team, history);
+        rows.sort((a, b) => Number(a.selected) - Number(b.selected) || a.position - b.position);
+        const problemStart = Math.max(0, Math.min(this.problems.length - this.L.slots,
+            (focus.problemIndex ?? 0) - Math.floor(this.L.slots / 2)));
+        if (this.revelation && flip >= .5) focus.result = this.revelation;
+        if (mix >= 1 && flip >= .5) focus.rank = this.rankChange;
+        return { rows, state, focus, problemStart };
+    }
+
+    image(src) {
+        if (!src || src === DEFAULT_SCHOOL_LOGO) return null;
+        let img = this.images.get(src);
+        if (!img) {
+            img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => this.markFrame();
+            img.src = src;
+            if (this.images.size >= 14) {
+                const key = this.images.keys().next().value;
+                this.images.get(key).onload = null;
+                this.images.delete(key);
             }
-            this.paintParade();
-        } else if (this.act === 3) {
-            if (changed) {
-                this.focusCard = card(this.stage, 3.55, 3.25, 620);
-                this.focusCard.holder.position.set(4.48, .30, .52);
-            }
-            this.paintRows(instant);
-            this.paintFocus();
-        } else if (this.act === 4) {
-            if (changed) {
-                this.winners = this.podium();
-                const heights = [2.9, 2.15, 1.55];
-                for (let i = 0; i < 3; i++) {
-                    const x = [0,-3.65,3.65][i], h = heights[i], z = i ? -.45 : .05;
-                    box(this.stage, 3.35, h, 2.1, podiumColors[i], x, -3.55 + h / 2, z);
-                    const panel = card(this.stage, 3.65, 1.72, 550);
-                    panel.holder.position.set(x, -3.55 + h + 1.15, z + .28);
-                    this.panels.push(panel);
-                    const number = card(this.stage, .78, .70, 128);
-                    number.holder.position.set(x, -3.55 + h * .52, z + 1.09);
-                    number.paint((ctx,w,h) => { backdrop(ctx,w,h); text(ctx,String(i+1),w/2,h/2,w*.8,h*.65,palette.ink,{align:'center'}); });
-                }
-            }
-            this.paintPodium();
-        }
+        } else this.images.delete(src);
+        this.images.set(src, img);
+        return img.complete && img.naturalWidth ? img : null;
     }
 
-    paintParade() {
-        const span = this.game.initialState.contestTimeMs || this.game.contest.durationMs || 1;
-        const elapsed = this.sinceAct / 1000;
-        const fraction = (elapsed % 22) / 22, time = span * fraction;
-        let lo = 0, hi = this.replay.length;
-        while (lo < hi) { const mid = (lo + hi) >>> 1; if (this.replay[mid][0] <= time) lo = mid + 1; else hi = mid; }
-        const index = lo - 1, entry = this.replay[index];
-        const t = Math.floor(elapsed / 3) % Math.max(1, this.teams.length);
-        const key = [index, t, Math.floor(fraction * 96)].join('/');
-        if (key === this.paradeKey) return;
-        this.paradeKey = key;
-        const [runCard, teamCard, list] = this.panels;
-        runCard.paint((ctx,w,h) => {
-            const team = entry && this.teams[entry[1]], p = entry && this.problems[entry[2]];
-            const label = Array.isArray(this.game.initialState.replay) ? '公开提交回放' : '封榜前题目记录';
-            layeredPanel(ctx,w,h,label + '  ·  ' + timeLabel(time), entry ? nameOf(team) : '等待首个公开记录',
-                entry ? timeLabel(entry[0]) + '    ' + (p?.label || p?.id) + '    ' + (entry[3] ? '通过' : '未通过') : '', entry && !entry[3] ? palette.failed : palette.cyan);
-            ctx.fillStyle = '#27425a'; ctx.fillRect(w*.06,h*.91,w*.88,h*.022);
-            ctx.fillStyle = palette.cyan; ctx.fillRect(w*.06,h*.91,w*.88*fraction,h*.022);
-        });
-        const team = this.teams[t];
-        teamCard.paint((ctx,w,h) => layeredPanel(ctx,w,h,'队伍巡礼' + (team ? '    ' + (t+1) + ' / ' + this.teams.length : ''),
-            nameOf(team), team?.organizationName || '', palette.gold));
-        list.paint((ctx,w,h) => {
-            backdrop(ctx,w,h); text(ctx,'最近提交',w/2,h*.11,w*.85,w*.17,palette.ink,{align:'center'});
-            this.replay.slice(Math.max(0,lo-5),lo).reverse().forEach((r,j) => {
-                text(ctx,timeLabel(r[0]) + '  ' + (this.problems[r[2]]?.label || ''),w*.10,h*(.28+.14*j),w*.8,w*.145,r[3]?palette.cyan:palette.failed);
-            });
-        });
+    logo(team) {
+        const org = this.organizations.get(team?.organizationId);
+        return this.image(teamLogoUrl(team, org) || org?.logo || team?.logo);
     }
 
-    paintRows(instant) {
-        const state = this.board.stageState(), focus = state.selected[0] || this.revealed?.teamId;
-        const count = Math.min(9, Math.max(4, this.options.rowsPerScreen || 8));
-        const focusRow = focus ? state.order.indexOf(focus) : -1;
-        const start = Math.max(0, Math.min(state.order.length - count, focusRow >= 0 ? focusRow - Math.floor(count / 2) : state.scroll));
-        const visible = state.order.slice(start, start + count);
-        for (const [id, row] of this.rows) if (!visible.includes(id)) {
-            clearGroup(row.holder); this.stage.remove(row.holder); this.rows.delete(id);
-        }
-        const spacing = 5.65 / count;
-        visible.forEach((id,i) => {
-            let row = this.rows.get(id);
-            if (!row) {
-                row = card(this.stage, 8.45, spacing*.90, 940);
-                row.holder.position.set(-2.25, 2.60 - i*spacing - spacing/2, 0);
-                this.rows.set(id, row);
-            }
-            const selected = state.selected.includes(id), score = state.standings.get(id), team = this.byId.get(id), cells = state.results[id] || [];
-            row.y = 2.60 - i*spacing - spacing/2;
-            row.z = selected ? .42 : 0;
-            if (instant || this.reduced) { row.holder.position.y = row.y; row.holder.position.z = row.z; }
-            row.paint((ctx,w,h) => {
-                backdrop(ctx,w,h,selected);
-                text(ctx, String(score?.rank || '★'), w*.06, h*.49, w*.085, h*.55, selected?palette.gold:palette.muted, {align:'center'});
-                text(ctx, nameOf(team), w*.124, h*.34, w*.65, h*.43, palette.ink, {weight:700});
-                text(ctx, (score?.solved || 0) + ' / ' + (score?.time || 0), w*.96,h*.38,w*.19,h*.39,palette.cyan,{align:'right'});
-                const cellWidth = Math.min(w*.055, w*.74 / Math.max(1,cells.length));
-                cells.forEach((cell,p) => {
-                    const x = w*.124+p*cellWidth;
-                    ctx.fillStyle = { solved: cell.firstToSolve?'#428bc5':'#26756c', failed:'#8b494f', pending:'#8d703c' }[cell.status] || '#26394d';
-                    ctx.fillRect(x,h*.64,cellWidth*.88,h*.28);
-                    text(ctx,this.problems[p]?.label || '',x+cellWidth*.44,h*.78,cellWidth*.76,h*.21,palette.ink,{align:'center'});
-                });
-            });
-        });
+    setCamera(mode) {
+        this.cameraMode = ['front', 'side'].includes(mode) ? mode : 'auto';
+        this.markFrame();
     }
 
-    paintFocus(back = false) {
-        const state = this.board.stageState();
-        const reveal = this.revealed, pending = state.submission;
-        const id = pending?.teamId || reveal?.teamId || state.selected[0];
-        const team = this.byId.get(id);
-        const p = pending?.problemIndex ?? reveal?.problemIndex;
-        const result = pending || back ? '待揭晓' : reveal?.status === 'solved' ? '通过' : '未通过';
-        this.focusCard.paint((ctx,w,h) => {
-            if ((state.screen === 'teamAward' || state.screen === 'teamList') && state.award?.awards?.length) {
-                const a = state.award.awards;
-                layeredPanel(ctx,w,h,a.map(x=>x.citation).join(' · '), nameOf(team || this.byId.get(a[0].teamIds[0])),
-                    state.screen === 'teamList' ? a[0].teamIds.map(x=>nameOf(this.byId.get(x))).join('、') : team?.organizationName || '',palette.gold);
-            } else if (p != null) {
-                layeredPanel(ctx,w,h,this.problems[p]?.label || '题目',result, nameOf(team),
-                    pending || back ? palette.pending : reveal?.status === 'solved' ? palette.cyan : palette.failed);
-            } else layeredPanel(ctx,w,h,'队伍',nameOf(team),team?.organizationName || '');
-        });
-        this.back = back;
-    }
-
-    podium() {
-        if (this.finalPodium.length) return this.finalPodium;
-        const state = this.board.stageState();
-        const places = new Map();
-        for (const id of state.order) {
-            const score = state.standings.get(id);
-            if (!score?.rank || !score.solved || score.rank > 3) continue;
-            const place = score.rank - 1;
-            if (!places.has(place)) places.set(place, { place, name: '第 ' + score.rank + ' 名', teamIds: [] });
-            places.get(place).teamIds.push(id);
-        }
-        return [...places.values()];
-    }
-
-    paintPodium() {
-        const cycle = Math.floor(this.sinceAct / 3000);
-        if (this.podiumKey === cycle) return;
-        this.podiumKey = cycle;
-        this.panels.forEach((p,i) => {
-            const prize = this.winners.find(w => w.place === i), ids = prize?.teamIds || [];
-            const team = ids.length && this.byId.get(ids[cycle % ids.length]);
-            p.paint((ctx,w,h) => layeredPanel(ctx,w,h,prize?.name || placeNames[i],team ? nameOf(team) : '—',
-                (team?.organizationName || '') + (ids.length > 1 ? '  ·  并列 ' + (cycle % ids.length + 1) + '/' + ids.length : ''),palette.gold));
-        });
-    }
-
-    setCamera(mode) { this.cameraMode = ['front','side','auto'].includes(mode) ? mode : 'auto'; }
     setSound(enabled) {
         this.sound = enabled;
-        if (enabled) {
-            const Audio = window.AudioContext || window.webkitAudioContext;
-            if (Audio) { this.audio ||= new Audio(); this.audio.resume().catch(() => {}); }
-        }
+        if (!enabled) return;
+        const Audio = window.AudioContext || window.webkitAudioContext;
+        if (!Audio) return;
+        this.audio ||= new Audio();
+        this.audio.resume().catch(() => {});
     }
-    chime(frequency, instant) {
+
+    chime(kind, instant = false) {
         if (instant || !this.sound || this.audio?.state !== 'running') return;
-        const at = this.audio.currentTime, osc = this.audio.createOscillator(), gain = this.audio.createGain();
-        osc.type = 'sine'; osc.frequency.setValueAtTime(frequency, at);
-        gain.gain.setValueAtTime(.0001, at); gain.gain.exponentialRampToValueAtTime(.065, at + .018);
-        gain.gain.exponentialRampToValueAtTime(.0001, at + .24);
-        osc.connect(gain).connect(this.audio.destination); osc.start(at); osc.stop(at + .25);
-        osc.onended = () => { osc.disconnect(); gain.disconnect(); };
+        const tones = kind === 'finale' ? [392, 523, 659] : kind === 'solved' ? [440, 659] : [196];
+        tones.forEach((frequency, i) => {
+            const at = this.audio.currentTime + i * .072;
+            const oscillator = this.audio.createOscillator(), gain = this.audio.createGain();
+            oscillator.frequency.value = frequency;
+            gain.gain.setValueAtTime(.0001, at);
+            gain.gain.exponentialRampToValueAtTime(.047, at + .014);
+            gain.gain.exponentialRampToValueAtTime(.0001, at + .215);
+            oscillator.connect(gain).connect(this.audio.destination);
+            oscillator.start(at); oscillator.stop(at + .22);
+            oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
+        });
     }
+
+    markFrame() {
+        this.dirty = true;
+        this.canvas.dataset.act = String(this.act);
+    }
+
     update(dt) {
-        this.elapsed += dt; this.sinceAct += dt;
-        if (this.act === 2) this.paintParade();
-        if (this.act === 4) this.paintPodium();
-        if (this.act === 3) {
-            const factor = this.reduced ? 1 : 1 - Math.exp(-dt / 135);
-            for (const row of this.rows.values()) {
-                row.holder.position.y += (row.y - row.holder.position.y) * factor;
-                row.holder.position.z += (row.z - row.holder.position.z) * factor;
-            }
-            if (this.revealed) {
-                this.flip = Math.min(1,this.flip + dt/620);
-                const back = this.flip < .5;
-                if (this.back !== back) this.paintFocus(back);
-                this.focusCard.holder.rotation.y = (back ? this.flip : this.flip-1) * Math.PI;
-            } else this.focusCard.holder.rotation.y = 0;
+        this.elapsed += dt;
+        if (this.motion) {
+            const before = this.motion.clock;
+            this.motion.clock += dt * this.motion.speed;
+            const resolving = this.motion.kind === 'resolve';
+            const duration = resolving ? FLIP_MS + (this.motion.moving ? MOVE_MS : 0) : MOVE_MS;
+            if (resolving && before < FLIP_MS / 2 && this.motion.clock >= FLIP_MS / 2) this.chime(this.revelation?.status);
+            if (this.motion.clock >= duration) this.motion = null;
+            this.dirty = true;
         }
-        if (!this.reduced) this.orbit.rotation.y = this.elapsed / 7800;
-        const side = this.cameraMode === 'side' ? 3.0 : this.cameraMode === 'front' || this.reduced ? 0
-            : this.act === 3 ? 1.0 : Math.sin(this.elapsed / 4800)*1.55;
-        const distance = Math.max(13.9, 22.2/this.camera.aspect);
-        this.target.set(side, this.act === 4 ? 1.65 : .65, distance);
-        this.camera.position.lerp(this.target, this.reduced ? 1 : 1-Math.exp(-dt/170));
-        this.camera.lookAt(0,-.05,0);
+        // The entrance eases camera yaw and backdrop in every act, including the reveal board.
+        const movingStage = !this.reduced && this.elapsed <= 1250;
+        const state = this.board.stageState();
+        const page = Math.floor(this.elapsed / (this.act === 4 ? 3600 : 5200));
+        const key = this.act === 2 ? Math.min(Math.floor(REPLAY_MS / 50), Math.floor(this.elapsed / 50)) + '/' + page
+            : this.act === 4 || awardsScene(state.screen) ? page : null;
+        if (key !== this.lastDraw || movingStage) this.dirty = true;
+        this.lastDraw = key;
     }
-    render() { this.renderer.render(this.scene, this.camera); }
+
+    render() {
+        if (this.dirty) {
+            const L = this.L, state = this.board.stageState(), motion = this.motion;
+            const enter = this.reduced ? 1 : ease(unit(this.elapsed / 650));
+            const flip = motion?.kind === 'resolve' ? unit(motion.clock / FLIP_MS) : this.revelation ? 1 : 0;
+            const travel = motion?.kind === 'resolve' ? motion.moving ? ease(unit((motion.clock - FLIP_MS) / MOVE_MS)) : 1
+                : motion ? ease(unit(motion.clock / MOVE_MS)) : 1;
+            const rows = this.act === 3 && !awardsScene(state.screen) ? this.boardFrame(state, flip, travel) : null;
+            const problem = this.problems[rows?.focus.problemIndex];
+            const winners = this.act === 4 ? podiumWinners(state, this.finalAwards) : [];
+            const progress = [360, 100, 0].map(delay => this.reduced ? 1 : unit((this.elapsed - delay) / 570));
+            this.stage.pose({
+                act: this.act, camera: this.reduced ? 'front' : this.cameraMode, enter, flip, winners,
+                podiumProgress: progress,
+                focus: problem ? { label: problem.label || problem.id, result: this.revelation } : null,
+            });
+            this.stage.paint(ctx => {
+                if (this.act === 1) opening(ctx, L, this.title, this.teams.length, this.problems.length);
+                if (this.act === 2) {
+                    const time = this.duration * unit(this.elapsed / REPLAY_MS);
+                    const team = this.teams[Math.floor(this.elapsed / 5200) % Math.max(1, this.teams.length)];
+                    replay(ctx, L, this.title, time, this.duration, this.runs, through(this.runs, time), this.teams,
+                        this.problems, team, this.image(team?.photo), this.logo(team), this.timeline);
+                }
+                if (rows) board(ctx, L, this.title, rows, this.teamOf, this.problems);
+                else if (this.act === 3) {
+                    const team = this.teamOf.get(state.award?.teamId || state.selected[0]);
+                    award(ctx, L, this.title, state, this.teamOf, this.elapsed, this.image(team?.photo), this.logo(team));
+                }
+                if (this.act === 4) podium(ctx, L, this.title, winners, this.teamOf, Math.floor(this.elapsed / 3600),
+                    team => this.logo(team), progress);
+            });
+            const phase = motion?.kind === 'resolve' ? flip < .5 ? 'turning' : travel < 1 ? 'rising' : 'result'
+                : problem ? this.revelation ? 'result' : 'pending' : '';
+            this.canvas.dataset.reveal = phase;
+            const labels = [acts[this.act - 1]];
+            if (rows?.focus.team) labels.push(teamName(rows.focus.team));
+            if (problem) labels.push(problem.label, rows.focus.result ? rows.focus.result.status === 'solved' ? '通过' : '未通过' : '待揭晓');
+            const description = labels.join(' · ');
+            if (this.canvas.getAttribute('aria-description') !== description) this.canvas.setAttribute('aria-description', description);
+            this.dirty = false;
+        }
+        this.stage.render();
+    }
+
     resize() {
-        const width = Number(this.canvas.dataset.logicalWidth) || 1920;
-        const { width: w, height: h } = renderDimensions(width, this.canvas.dataset.resolution || readDisplaySettings().resolution);
-        this.renderer.setSize(w,h,false);
-        this.camera.aspect = w/h; this.camera.updateProjectionMatrix();
-        this.camera.position.set(0,.65,Math.max(13.9,22.2/this.camera.aspect));
-        this.camera.lookAt(0,-.05,0);
-        if (this.act === 3 && this.paintedAct === 3) this.paintRows(true);
+        const logicalWidth = Math.max(1080, Math.min(5760, Number(this.canvas.dataset.logicalWidth) || 1920));
+        const dims = renderDimensions(logicalWidth, this.canvas.dataset.resolution || readDisplaySettings().resolution);
+        this.L = stageLayout(logicalWidth, this.options.rowsPerScreen, this.teams.length, this.problems.length);
+        this.stage.resize(this.L, dims.width, dims.height);
+        this.markFrame();
     }
+
     debugState() { return { ...this.board.debugState(), act: this.act, renderer: '3d' }; }
+
     dispose() {
         window.removeEventListener('resize', this.onResize);
         window.removeEventListener('resolver-display', this.onResize);
         this.board?.dispose();
-        if (this.scene) clearGroup(this.scene);
+        this.stage?.dispose();
+        for (const img of this.images?.values() || []) img.onload = null;
+        this.images?.clear();
         this.audio?.close().catch(() => {});
         this.renderer.dispose();
         this.renderer.forceContextLoss();

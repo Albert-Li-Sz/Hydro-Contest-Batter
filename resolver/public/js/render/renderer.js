@@ -6,6 +6,8 @@ export function replaceCanvas(canvas) {
     const next = canvas.cloneNode(false);
     delete next.dataset.renderer;
     delete next.dataset.act;
+    delete next.dataset.reveal;
+    if (canvas.dataset.renderer === '3d') next.removeAttribute('aria-description');
     canvas.replaceWith(next);
     return next;
 }

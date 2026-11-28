@@ -44,11 +44,52 @@ export async function resolver3D(browser, base) {
             }
             const a = state.debugState(), b = reference.debugState();
             const equal = JSON.stringify([a.order,a.standings]) === JSON.stringify([b.order,b.standings]);
+            const movingIndex = api.steps.findIndex(step => step.type === 'resolve' && step.move && step.move.to < step.move.from);
+            const phases = [];
+            if (movingIndex >= 0) {
+                state.seek(api.steps, movingIndex - 1);
+                state.render();
+                phases.push(state.canvas.dataset.reveal);
+                state.applyStep(api.steps[movingIndex]);
+                state.render();
+                for (let frame = 0; frame < 190; frame++) {
+                    const phase = state.canvas.dataset.reveal;
+                    if (phases.at(-1) !== phase) phases.push(phase);
+                    if (phase === 'result') break;
+                    state.update(16);
+                    state.render();
+                }
+                state.seek(api.steps, movingIndex - 1);
+                state.render();
+                phases.push(state.canvas.dataset.reveal);
+            }
+            const originalWidth = state.canvas.dataset.logicalWidth;
+            const widths = [];
+            for (const width of [1080, 4320]) {
+                state.canvas.dataset.logicalWidth = String(width);
+                state.resize();
+                state.render();
+                widths.push(Math.round(state.canvas.width / state.canvas.height * 1080));
+            }
+            if (originalWidth) state.canvas.dataset.logicalWidth = originalWidth;
+            else delete state.canvas.dataset.logicalWidth;
+            state.resize();
+            const { ResolverView3D } = await import(new URL('./render3d/resolver-view-3d.js', url));
+            const saved = structuredClone(api.game);
+            delete saved.initialState.replay;
+            saved.options.startScreen = 'scoreboard';
+            const legacy = new ResolverView3D(document.createElement('canvas'), saved);
+            const legacyStartsFrozen = legacy.act === 3 && legacy.runs.length > 0;
+            legacy.dispose();
             reference.dispose(); state.seek(api.steps,api.index);
-            return { acts: [...acted], pixels, equal, steps: api.steps.length, finale: api.steps.findLastIndex(step => step.role === 'finale') };
+            return { acts: [...acted], pixels, equal, phases, widths, legacyStartsFrozen, steps: api.steps.length,
+                finale: api.steps.findLastIndex(step => step.role === 'finale') };
         });
         assert.deepEqual(proof.acts, [1,2,3,4]);
         assert.ok(proof.equal); assert.ok(Object.values(proof.pixels).every(n => n > 3), JSON.stringify(proof));
+        assert.deepEqual(proof.phases, ['pending', 'turning', 'rising', 'result', 'pending']);
+        assert.deepEqual(proof.widths, [1080, 4320]);
+        assert.equal(proof.legacyStartsFrozen, true);
         await host.getByRole('button', { name: '投到观众屏' }).click();
         const audience = context.newPage();
         const link = host.locator('#audience-link:not([hidden])'); await link.waitFor();
@@ -77,7 +118,7 @@ export async function resolver3D(browser, base) {
         await fallback.goto(host.url()); await active(fallback,'2d');
         assert.equal(await fallback.evaluate(() => window.ICPCResolver.index),proof.finale);
         assert.deepEqual(errors,[]);
-        console.log('Resolver 3D: ' + proof.steps + ' steps, four rendered acts, matching standings, presenter/audience switching and WebGL fallback');
+        console.log('Resolver 3D: ' + proof.steps + ' steps, four acts, flip then climb and rewind, legacy replay, matching standings, audience sync and WebGL fallback');
     } finally { await context.close(); }
 }
 
