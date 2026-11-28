@@ -91,15 +91,15 @@ CCS 系统需求列出了以下管理功能：移除一段比赛时间（可撤�
 | J 证书 | 选择已结算的成绩快照和榜单，校对或导入中英文制证信息，锁表后出证。支持队伍、队员、教练、参赛证明，模板背景为 PNG 或 JPEG。可按校打包或下载合并 PDF，选手可从比赛页领取。 | 核对样张、页数、学校目录、领取权限和公开核验信息。单队更正后核对旧号、新号与其他队伍保留的编号。 |
 | J2 颁奖台本 | 从一个已生成的滚榜会话编排候场、上台和特别奖，支持打印。台本标明彩排状态。 | 对照同一会话的揭晓次序、获奖队伍与特别奖。成绩变更后，重新创建会话。 |
 
-赛务人员可在颁奖前将制证快照与滚榜会话选在同一榜单、同一成绩时点。具体操作见[使用手册](../docs/usage.md)，实测的样例、运行环境和设备边界见[验收记录](../docs/verification.md)。
+赛务人员可在颁奖前将制证快照与滚榜会话选在同一榜单、同一成绩时点。具体操作见[使用手册](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.24.0/docs/usage.md)，实测的样例、运行环境和设备边界见[验收记录](../docs/verification.md)。
 
-v1.24.1 为 J 证书增加横向和纵向竞赛版式。主办方可为一场比赛选择或上传最多两枚校徽，获奖证书和参赛证明共用。调整校徽或版式后，重新下载的 PDF 沿用已签发的证书编号。[三页排版样张](../docs/examples/certificates.pdf)
+v1.24.1 为 J 证书增加横向和纵向竞赛版式。主办方可为一场比赛选择或上传最多两枚校徽，获奖证书和参赛证明共用。调整校徽或版式后，重新下载的 PDF 沿用已签发的证书编号。[三页排版样张](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.24.1/docs/examples/certificates.pdf)
 
-v1.25.0 的制证信息表支持按中文校名匹配英文校名、为队员和教练生成拼音。证书编辑器提供五套可切换横竖方向的样式，支持拖动和缩放上传的装饰图片。[五套证书的横竖版样张](../docs/examples/certificate-styles.pdf)
+v1.25.0 的制证信息表支持按中文校名匹配英文校名、为队员和教练生成拼音。证书编辑器提供五套可切换横竖方向的样式，支持拖动和缩放上传的装饰图片。[五套证书的横竖版样张](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.25.0/docs/examples/certificate-styles.pdf)
 
-v1.26.0 新增中英文赛事模板。主办方可分别替换左、中、右三处签名，设置署名和职务的文字颜色，并在中文模板中切换赛事左侧标识。[中文赛事样张](../docs/examples/certificate-event-zh.pdf) · [英文赛事样张](../docs/examples/certificate-event.pdf)
+v1.26.0 新增中英文赛事模板。主办方可分别替换左、中、右三处签名，设置署名和职务的文字颜色，并在中文模板中切换赛事左侧标识。[中文赛事样张](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.26.0/docs/examples/certificate-event-zh.pdf) · [英文赛事样张](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.26.0/docs/examples/certificate-event.pdf)
 
-v1.27.0 完成全项目安全与稳定性加固：ICPC Live 原生支持 CCPC 封榜前隐藏题号模式；CCS 自动奖项与同分/领奖台规则完全对齐比赛配置并新增 Webhook 防 SSRF 校验与配额；STUN 限流、画面采集跨赛越权与 WebRTC 断流修复、打印客户端并发调度与配对码校验、媒体机防磁盘爆满与单任务退避全部落地；项目主许可证变更为 MIT 并在 [NOTICE](../NOTICE) 中单独声明上游组件与内置样例素材的权利边界。
+v1.27.0 完成全项目安全与稳定性加固：ICPC Live 原生支持 CCPC 封榜前隐藏题号模式；CCS 自动奖项与同分/领奖台规则完全对齐比赛配置并新增 Webhook 防 SSRF 校验与配额；STUN 限流、画面采集跨赛越权与 WebRTC 断流修复、打印客户端并发调度与配对码校验、媒体机防磁盘爆满与单任务退避全部落地；项目主许可证变更为 MIT 并在 [NOTICE](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/blob/v1.27.0/NOTICE) 中单独声明上游组件与内置样例素材的权利边界。
 
 v1.27.1 修复 v1.27.0 审查中发现的问题：录像存储上限改为按本场录制设置估算，完整的高清双路留档不再被截断；Webhook 投递在建立连接时校验解析地址，堵住 DNS 重绑定；人工改判不再伪装成 Hydro 判题事件；气球、概览、大屏和 XCPCIO 榜单统一按 WCAG 对比度选择题目文字颜色，证书奖牌色按奖牌等级取色。
 

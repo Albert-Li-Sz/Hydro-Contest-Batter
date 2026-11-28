@@ -85,11 +85,5 @@ export function createResultsPreview(env: Environment, version: string, db = pre
         handle, current, sources: async () => [{ id: 'current', name: '当前成绩' }, ...(await store.list(scope)).map(snapshotOption)],
         readSource: async (data: BoardData, settings: BoardSettings, id: string) => id === 'current' ? current(data, settings) : store.read(scope, id),
         unlock: (data: BoardData, settings: BoardSettings) => capture(current(data, settings), 'unlock', 'demo-unlock'),
-        /** A manual snapshot of the current results (证书 are issued from one). */
-        snapshot: async (data: BoardData, settings: BoardSettings, label: string) => {
-            const key = `manual-${++id}`;
-            await capture(current(data, settings), 'manual', key, label);
-            return key;
-        },
     };
 }

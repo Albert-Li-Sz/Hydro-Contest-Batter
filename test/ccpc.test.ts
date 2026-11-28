@@ -5,7 +5,6 @@ import { createContest, createTeams, createSubmissions, MedalType, Rank } from '
 import { ccsFixture } from './ccs-fixture';
 import { buildObjects } from '../lib/ccs/model';
 import { ceremonyDefaults, ceremonySlides } from '../lib/ceremony-slides';
-import { certificateEntries, defaultConfig, parseCsv } from '../lib/certificates/model';
 import { applyBoardRules, dropAfterAccept, hideProblemLabels, labelsHidden, revealThreshold } from '../lib/ccpc-board';
 import { buildContestInfo, buildRuns } from '../lib/live/model';
 import { computeScoreboard, runsByTeam, statistics } from '../lib/live/scoreboard';
@@ -309,9 +308,9 @@ describe('every channel names the same winners', () => {
         rank.buildRank();
         const resultsSource = { data, settings, ...source.contest, at: source.now, problemIds: [100, 101, 102], coaches: {} };
         const result = resultBoard(resultsSource, 'all');
-        const csv = parseCsv(standingsCsv(result)).slice(1);
+        // The team names and other text fields in this fixture contain no commas.
+        const csv = standingsCsv(result).trimEnd().split('\r\n').slice(1).map(line => line.split(','));
         const presentation = ceremonySlides(resultsSource, ceremonyDefaults, {}).slides;
-        const certificates = certificateEntries(result, { ...defaultConfig('C'), kinds: { team: true, member: false, coach: false, participation: false } });
         const game = prepareResolver(data, boards, { ...defaultResolverConfig(settings, true), freezeMode: 'custom', freezeAtSeconds: 900 },
             { contestId: 'c', ended: true, capturedAt: new Date(source.now), logoNames: {} }).game;
         const resolverAwards = game.contest.awards as { id: string; teamIds: string[] }[];
@@ -330,13 +329,11 @@ describe('every channel names the same winners', () => {
             expect(state.ranking.awards.find(award => award.id === awardId)?.teams.slice().sort(), 'Live ' + label).toEqual(expected);
             expect(ccs.awards.find(award => award.id === awardId)?.team_ids?.slice().sort(), 'CCS ' + label).toEqual(expected);
             expect(result.rows.filter(row => row.medals.includes(label)).map(row => row.id).sort(), '成绩 ' + label).toEqual(expected);
-            expect(csv.filter(row => row[9] === label).map(row => row[2]).sort(), '成绩 CSV ' + label).toEqual(expected);
+            expect(csv.filter(row => row[9] === `"${label}"`).map(row => row[2]).sort(), '成绩 CSV ' + label).toEqual(expected);
             expect(presentation.flatMap(slide => slide.kind === 'award' && slide.tier === tier ? slide.teams.map(team => team.name.slice(1)) : []).sort(), '颁奖 ' + label).toEqual(expected);
-            expect(certificates.filter(entry => entry.values.award === label).map(entry => entry.teamId).sort(), '证书 ' + label).toEqual(expected);
         }
         expect(result.rows.filter(row => starred.has(row.id)).every(row => row.rank === 0 && row.schoolRank === 0)).toBe(true);
-        expect(certificates.filter(entry => starred.has(entry.teamId)).every(entry => entry.values.rank === '')).toBe(true);
-        expect(csv.filter(row => starred.has(row[2])).every(row => row[0] === '*' && row[1] === '*')).toBe(true);
+        expect(csv.filter(row => starred.has(row[2])).every(row => row[0] === '"*"' && row[1] === '"*"')).toBe(true);
         expect(medalCutoff(info, state, 'all', 'gold')).toMatchObject({ inside: { name: 'T1', rank: 1 }, outside: { name: 'T2', rank: 2 } });
     });
 

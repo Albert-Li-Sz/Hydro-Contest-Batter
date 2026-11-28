@@ -19,7 +19,7 @@ import { applyLive } from './lib/live/routes';
 import { applyMonitor } from './lib/monitor-routes';
 import { applyOverview } from './lib/overview-routes';
 import { applyResults } from './lib/results-routes';
-import { applyCertificates } from './lib/certificates/routes';
+import { removeRetiredCertificates } from './lib/retired-certificates';
 import { applyJury } from './lib/jury';
 import { applyJuryRoutes, juryStore } from './lib/jury-routes';
 import { applyIntegrity } from './lib/integrity-routes';
@@ -397,7 +397,7 @@ export async function apply(ctx: Context, config: ReturnType<typeof Config>) {
         screenVideos: reactions?.screenVideos, playScreenVideo: reactions?.playScreenVideo, screenLayouts: reactions?.screenLayouts });
     applyOverview(ctx, { loadSettings, loadData });
     const results = applyResults(ctx, { loadSettings, loadData, statusOf: boardStatus, resolver });
-    applyCertificates(ctx, { loadSettings, snapshot: results.snapshot });
+    ctx.on('app/started', () => removeRetiredCertificates(ctx.db));
     applyCeremony(ctx, results);
     // 选手视角: Hydro's contest pages as one team sees them (team names as on the board, identities shown).
     applyPerspective(ctx, { teams: async (tdoc) => (await loadData(tdoc, true, true)).teams

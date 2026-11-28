@@ -429,7 +429,7 @@ export function applyResults(ctx: Context, dependencies: {
         const sessions = await dependencies.resolver?.ofContest(tdoc) ?? [];
         return { changes: review.changes.length, pending: review.pending, stale: staleSessions(sessions, lastChange(review.changes)).length };
     }
-    /** A manual snapshot of the current results, for certificates issued from a version that does not change. */
+    /** Capture the current results before a jury or integrity decision. */
     async function snapshotNow(tdoc: Tdoc, label: string, operator: number) {
         const id = resultKey(scopeFor(tdoc), `manual-${randomUUID()}`);
         await capture(tdoc, id, 'manual', { label, operator });

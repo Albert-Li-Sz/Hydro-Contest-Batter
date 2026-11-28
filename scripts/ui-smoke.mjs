@@ -30,7 +30,7 @@ const themed = [
     '/manage/xcpcio-users', '/manage/xcpcio-users#seats', '/manage/xcpcio-judges', '/manage/xcpcio-rejudge', '/manage/xcpcio-printers',
     `${contest}/clarification-desk`, ...['recordings', 'settings', 'tests'].map((tab) => `${contest}/live/capture#${tab}`),
     `${contest}/reactions/manage`, `${contest}/reactions/manage/layouts`, `${contest}/reactions`,
-    `${contest}/jury`, `${contest}/integrity`, `${contest}/certificates`, `${contest}/certificates/mine`,
+    `${contest}/jury`, `${contest}/integrity`,
     `${contest}/results`, `${contest}/control`, ...['access', 'venue', 'media', 'recording', 'work'].map(key => `${contest}/control#${key}`), `${contest}/rejudge-review`,
 ];
 const plain = ['/xcpcio-screen', `${contest}/live-capture/me?as=1`, `${contest}/problems?as=1`, `${contest}/presence?phase=before`,

@@ -1,10 +1,10 @@
 Hydro Contest Better (hydro-scoreboard-xcpcio-plus) original project code is
 licensed under the MIT License (see LICENSE).
 
-IMPORTANT SEPARATE LICENSING, COPYRIGHT, TRADEMARK & SIGNATURE NOTICE
-=====================================================================
-Third-party components, upstream derived code, typefaces, institutional marks,
-and reference certificate assets bundled in this repository are NOT covered by
+IMPORTANT SEPARATE LICENSING, COPYRIGHT & TRADEMARK NOTICE
+==========================================================
+Third-party components, upstream derived code, typefaces, and institutional marks
+bundled in this repository are NOT covered by
 this project's MIT License and remain subject to their respective licenses,
 copyrights, trademarks, and personal rights:
 
@@ -24,21 +24,6 @@ copyrights, trademarks, and personal rights:
    must comply with those restrictions independently of this project's MIT
    license, or remove the ICPC Tools components when commercial or unrestricted
    redistribution is required.
-
-3. Event certificate sample artwork, personal handwritten signatures & proprietary fonts:
-   Files under lib/certificates/event-art/, lib/certificates/event-fonts/, and
-   resolver/public/js/certificate-event/ contain reference letterhead, marks,
-   handwritten signatures (William B. Poucher, C. Jinshong Hwang, WangQiang),
-   and embedded ArialMT / Arial-BoldMT font subsets extracted from an
-   organizer-provided 2026 ICPC Asia Shenyang Regional Contest certificate.
-   - These assets belong exclusively to their respective rights holders (ICPC /
-     ICPC Foundation, Northeastern University, the named signatories, and
-     Monotype / font copyright holders) and are NOT licensed under MIT.
-   - They are retained strictly as layout/editing reference placeholders.
-   - Organizers MUST replace or clear all third-party marks, personal
-     signatures, and proprietary fonts with their own authorized materials
-     before generating or distributing official certificates, and MUST NOT
-     misrepresent unofficial events as ICPC-endorsed contests.
 
 Detailed Third-Party Component Inventory
 ========================================
@@ -116,22 +101,7 @@ https://github.com/yusitnikov/fix-webm-duration
 MIT License, Copyright (c) 2018 Yury Sitnikov, reproduced in
 licenses/fix-webm-duration-MIT.txt.
 
-Certificate pinyin uses the pinyin API and surname dictionary from pinyin-pro
-3.29.5, Copyright (c) 2022-present zh-lx, distributed under the MIT license
-in licenses/pinyin-pro-MIT.txt. https://github.com/zh-lx/pinyin-pro
-English organization names come from the Hydro Avatar Registry, using the
-display spelling in registry.tsv at ad02e4750755c82ddb27eca105761f11cb60df98.
-https://github.com/hydro-dev/avatar-registry
-
 Reaction video templates use the ICPC Live mark from icpc/reactions-generator (5d42acb), Hydro branding from hydro-dev/Hydro, and the decorative skyline from the supplied contest layout. The bundled demonstrations use synthetic video sources.
-
-赛事模板 uses the static letterhead, signature blocks and embedded Arial font
-subsets from the organizer-provided 2026 ICPC Asia Shenyang Regional Contest
-team certificate. ICPC and ICPC Foundation artwork, original signatures and
-typefaces belong to their respective owners. The recipient roster is generated
-from the contest's own certificate data.
-The Chinese event preset uses separate crops of the medal and optional ICPC
-mark, and Chinese captions for the three signature blocks from the same source.
 
 The 3D resolver uses Three.js 0.160.1, distributed under the MIT license
 in licenses/three-MIT.txt. The ES module is bundled locally from the three

@@ -18,7 +18,6 @@ import { createMonitorPreview } from '../preview/monitor';
 import { createPresencePreview } from '../preview/presence';
 import { createOverviewPreview } from '../preview/overview';
 import { createResultsPreview } from '../preview/results';
-import { createCertificatesPreview } from '../preview/certificates';
 import { createJuryPreview } from '../preview/jury';
 import { createIntegrityPreview } from '../preview/integrity';
 import { applyJury } from '../lib/jury';
@@ -74,9 +73,6 @@ const controlPreview = createControlPreview(env, pluginVersion, demoData, { get:
     { balloons: balloonsPreview.settings, capture: livePreview.captureSettings }, reactionsPreview);
 const base = '/contest/demo';
 let unlocked = false;
-const certificatesPreview = createCertificatesPreview(env, pluginVersion, previewDb, {
-    snapshot: (label) => resultsPreview.snapshot(demoData(), settings, label), showIdentity: () => settings.showIdentity, title: () => demoData().contest.contest_name,
-});
 const boardUrl = `${base}/scoreboard/xcpcio-plus`;
 const settingsUrl = `${base}/xcpcio-settings`;
 const publicUrl = `${base}/xcpcio-public`;
@@ -127,7 +123,6 @@ const server = http.createServer(async (request, response) => {
             })); return;
         }
         if (await resultsPreview.handle(request, response, url, displayData, settings)) return;
-        if (await certificatesPreview.handle(request, response, url)) return;
         if (await juryPreview.handle(request, response, url)) return;
         if (await integrityPreview.handle(request, response, url)) return;
         if (await printersPreview(request, response, url)) return;

@@ -7,6 +7,7 @@ import { awardsFor, defaultSettings } from '../lib/settings';
 import { defaultProfileFields } from '../lib/roster';
 import { verdictFor } from '../lib/live/model';
 import { ResolverSessions } from '../lib/resolver-sessions';
+import { removeRetiredCertificates } from '../lib/retired-certificates';
 import { previewDatabase } from '../preview/resolver-memory-db';
 
 const state = vi.hoisted(() => ({ entries: [] as any[], users: {} as Record<number, any>, locked: false, ended: true, started: true, contest: null as any, director: null as any, records: [] as any[], judges: [] as any[] }));
@@ -256,6 +257,30 @@ describe('Hydro 数据与权限', () => {
             hydro.Hydro = previous;
         }
     }, 10_000);
+    it('removes the certificate routes while preserving results, awards exports and ceremony routes', async () => {
+        const app = setup();
+        await app.init();
+        expect(app.routeNames().filter(name => name.includes('certificate'))).toEqual([]);
+        expect(app.routeNames()).toEqual(expect.arrayContaining([
+            'contest_xcpcio_results', 'contest_xcpcio_results_export', 'contest_xcpcio_ceremony', 'contest_xcpcio_ceremony_pptx',
+        ]));
+    });
+
+    it('clears legacy certificate records across domains without changing other collections, even on repeated startups', async () => {
+        const { db, tables } = previewDatabase();
+        const retired = ['xcpcio.certificates', 'xcpcio.certificates.issued', 'xcpcio.certificates.assets'];
+        const retained = ['xcpcio.results.snapshots', 'xcpcio.results.chunks', 'xcpcio.ceremony', 'xcpcio.certificates.archive'];
+        const records = ['system', 'regional'].map(domainId => ({ _id: domainId + '/contest', domainId }));
+        for (const name of [...retired, ...retained]) {
+            tables.set(name, new Map(records.map(record => [record._id, { ...record }])));
+        }
+
+        await Promise.all([removeRetiredCertificates(db), removeRetiredCertificates(db)]);
+        await removeRetiredCertificates(db);
+        for (const name of retired) expect(tables.get(name)?.size, name).toBe(0);
+        for (const name of retained) expect([...tables.get(name)!.values()], name).toEqual(records);
+    });
+
     it('系统管理：用户配置排在“导入用户”下方，评测机控制与批量重测追加到控制面板', async () => {
         const app = setup(); await app.init();
         expect(app.routeNames()).toEqual(expect.arrayContaining([

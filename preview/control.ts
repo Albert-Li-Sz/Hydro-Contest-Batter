@@ -104,7 +104,7 @@ export function createControlPreview(env: Environment, version: string, demo: ()
             review: { changes: summary.total, pending: summary.pending, stale: summary.sessions.filter((session) => session.stale).length },
             links: {
                 settings: `${base}/xcpcio-settings`, board: `${base}/scoreboard/xcpcio-plus`, publicBoard: settings.publicAccess ? `${base}/xcpcio-public` : null,
-                results: `${base}/results`, ceremony: `${base}/ceremony`, perspective: `${base}/perspective`, certificates: `${base}/certificates`, jury: `${base}/jury`, integrity: `${base}/integrity`, review: `${base}/rejudge-review`, resolver: `${base}/resolver`, screens: `${base}/screens`, balloons: `${base}/balloons`,
+                results: `${base}/results`, ceremony: `${base}/ceremony`, perspective: `${base}/perspective`, jury: `${base}/jury`, integrity: `${base}/integrity`, review: `${base}/rejudge-review`, resolver: `${base}/resolver`, screens: `${base}/screens`, balloons: `${base}/balloons`,
                 reactions: `${base}/reactions/manage`, live: `${base}/live`, capture: `${base}/live/capture`, presence: `${base}/presence`, monitor: `${base}/monitor`, overview: `${base}/overview`,
                 desk: `${base}/clarification-desk`, seats: '/manage/xcpcio-users#seats', judges: '/manage/xcpcio-judges', printers: '/manage/xcpcio-printers', rejudge: '/manage/xcpcio-rejudge', edit: `${base}/edit`,
             },
