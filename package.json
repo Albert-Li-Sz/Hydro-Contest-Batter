@@ -68,6 +68,8 @@
     "docs/examples/certificate-event-zh.pdf",
     "docs/images",
     "docs/manual.css",
+    "docs/manual.js",
+    "docs/favicon.svg",
     "docs/usage.md",
     "docs/verification.md",
     "docs/.nojekyll",

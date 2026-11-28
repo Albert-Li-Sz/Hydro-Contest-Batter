@@ -24,7 +24,7 @@ docker compose up -d
 
 ## 从源码构建或本机运行
 
-从 [v2.2.0 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.2.0) 下载 `reactions-generator-hydro-2.2.0.tar.gz`，解压后进入含 Dockerfile 的目录。在本目录保存上述 `.env`，运行 `docker compose up -d --build`。
+从 [v2.3.0 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.3.0) 下载 `reactions-generator-hydro-2.3.0.tar.gz`，解压后进入含 Dockerfile 的目录。在本目录保存上述 `.env`，运行 `docker compose up -d --build`。
 
 本机运行需要 Python 3.12、Poetry 及系统 FFmpeg/FFprobe。运行 `poetry install` 后在同一目录执行 `poetry run main all --hydro-upload`。Apple 芯片可使用 `poetry run main all --hydro-upload --hardware apple`。已有 Pillow、requests 和 FFmpeg 的环境可以运行 `python3 reactions_generator/hydro_worker.py all --hydro-upload`。NVIDIA 编码为 `--hardware nvidia`，Intel QSV 为 `--hardware qsv`。Linux VAAPI 可用 `--hardware vaapi` 并为容器映射 /dev/dri。NVIDIA Container Toolkit 可用 `--gpus all`；`--hardware nvidia_full` 使用 CUDA 叠加画面。
 

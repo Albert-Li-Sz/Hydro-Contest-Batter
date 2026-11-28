@@ -2,7 +2,7 @@
 
 基于 `@hydrooj/scoreboard-xcpcio` 的独立增强插件，使用 XCPCIO 0.98.0 前端，适用于 Hydro ACM 比赛。可与原插件同时安装，通过单独的 `xcpcio-plus` 视图使用。
 
-**v2.3 办赛入口**　[奖牌与名次](#规则) · [机位登记与密码条](#座位与-ip) · [选手命令行](#选手命令行-submit) · [OBS 画面管理](#直播) · [二维与三维滚榜](#resolver-滚榜) · [颁奖 PowerPoint](#颁奖幻灯片)
+**v2.3.0 办赛入口**　[奖牌与名次](#规则) · [机位登记与密码条](#座位与-ip) · [选手命令行](#选手命令行-submit) · [OBS 画面管理](#直播) · [二维与三维滚榜](#resolver-滚榜) · [颁奖 PowerPoint](#颁奖幻灯片)
 
 - 使用 Hydro 原生分区、表单、按钮和深色主题，适配桌面、平板和手机。
 - 榜单显示金、银、铜牌标记，开启一血奖后用深绿色高亮符合资格的最早通过。
@@ -14,7 +14,7 @@
 - 每场比赛可创建手动榜，从参赛名单勾选成员；同一选手可加入多个榜。
 - 支持多学校、参赛资格、用户组及公开资料字段的组合筛选，可批量勾选、取消或替换为筛选结果，并可撤销上一次批量操作。
 - **每个分榜独立排名、计算奖牌和组内一血**，符合本项目采用的比赛规则。
-- 每个榜单均可独立设置金银铜名额（固定数量或按有效队伍比例）与名称、并列同奖、一血奖、奖杯和打星选手的一血资格；奖牌和奖杯可按队伍名次或学校名次颁发。同分规则可选 Hydro、ICPC 区域赛或 CCPC 规则，并支持 CCPC 新榜单模式（封榜前隐藏题号）。榜单、滚榜、大屏、直播、CCS API 与成绩导出共用设置，入口为比赛右侧菜单的“榜单规则与奖项”，比赛当天的常用设置集中在“比赛配置与工作台”。
+- 每个榜单均可独立设置金银铜名额（固定数量或按有效队伍比例）与名称、并列同奖、一血奖、奖杯，以及打星队的奖牌和一血资格；奖牌和奖杯可按队伍名次或学校名次颁发。同分规则可选 Hydro、ICPC 区域赛或 CCPC 规则，并支持 CCPC 新榜单模式（封榜前隐藏题号）。榜单、滚榜、大屏、直播、CCS API 与成绩导出共用设置，入口为比赛右侧菜单的“榜单规则与奖项”，比赛当天的常用设置集中在“比赛配置与工作台”。
 - 打星队保留成绩与星号。每个榜可单独允许打星队获金银铜牌和一血，奖杯授予正式队，特别奖按各自规则评选。
 - 设置按域和比赛保存在 Hydro MongoDB 中，重启后保留。
 - 支持替换原生榜单，并提供无需登录、域权限或比赛权限的公开链接；公开数据继续遵守封榜规则和开赛前不显示榜单的规则。
@@ -98,7 +98,7 @@ webhook 只发送注册后的变更。使用 `POST $CCS_BASE/webhooks`，JSON �
 
 ### 数据边界与验证范围
 
-没有伪造 Hydro 未记录的数据：历史评测的开始时间仅在监控或写入器实际观察到时提供；测试点没有绝对完成时间，因此 runs 不提供 time/contest_time。没有原生 PDF 题面、Kattis 题目包、输出大小配置、ICPC CMS 编号、场地坐标、座位号、教练登记、队伍媒体流与反应视频等来源时，不输出这些字段。邮件、性别、账号密码等未作为本插件比赛公开资料提供。旧 `team.hidden`、单个 `to_team_id`、整数 penalty_time、XML Event Feed 和旧 JSON Scoreboard 不实现。
+没有伪造 Hydro 未记录的数据：历史评测的开始时间仅在监控或写入器实际观察到时提供；测试点没有绝对完成时间，因此 runs 不提供 time/contest_time。没有原生 PDF 题面、Kattis 题目包、输出大小配置、ICPC CMS 编号、场地坐标、座位号、教练登记、队伍媒体流与反应视频等来源时，不输出这些字段。队伍的女队标记随「向所有观众显示学校」开关控制，关闭后公开分组与历史事件也会隐藏相关信息。个人邮箱、性别和账号密码均属非公开资料。旧 `team.hidden`、单个 `to_team_id`、整数 penalty_time、XML Event Feed 和旧 JSON Scoreboard 不实现。
 
 Schema 测试固定使用官方 2026-01 分支文件；上游 schema 对 runs 时间和 submission files 的无条件 required 与可见性/缺失数据有差异，本地测试仅放宽这些要求，原始 schema 文件不改。历史 judgement 开始时间缺失也属于上述数据例外。因此不能把测试结果解释为所有响应均通过未调整的官方校验器。
 
@@ -110,12 +110,12 @@ Schema 测试固定使用官方 2026-01 分支文件；上游 schema 对 runs �
 
 需要 Node.js 22 或以上版本及 Hydro 5.x。使用运行 Hydro 的系统用户操作；命令中的 `$HOME` 对应这个用户。自 0.8.1 起，安装包包含供 Hydro 直接加载的源码和完整预构建资源。
 
-以下安装命令以 v2.2.0 的已发布包为例。从对应发布页下载 `hydro-scoreboard-xcpcio-plus-2.2.0.tgz` 和同名 `.sha256` 文件，放入同一个目录。首次安装按以下步骤校验、解压、注册 addon 并重启服务。[v2.2.0 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.2.0)
+从 v2.3.0 发布页下载 `hydro-scoreboard-xcpcio-plus-2.3.0.tgz` 和同名 `.sha256` 文件，放入同一个目录。首次安装按以下步骤校验、解压、注册 addon 并重启服务。[v2.3.0 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.3.0)
 
 ```bash
-sha256sum -c hydro-scoreboard-xcpcio-plus-2.2.0.tgz.sha256
+sha256sum -c hydro-scoreboard-xcpcio-plus-2.3.0.tgz.sha256
 mkdir -p "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
-tar -xzf hydro-scoreboard-xcpcio-plus-2.2.0.tgz \
+tar -xzf hydro-scoreboard-xcpcio-plus-2.3.0.tgz \
   -C "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus" --strip-components=1
 hydrooj addon add "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 pm2 restart hydrooj
@@ -128,9 +128,9 @@ pm2 restart hydrooj
 在新的临时目录中校验并解压安装包。
 
 ```bash
-sha256sum -c hydro-scoreboard-xcpcio-plus-2.2.0.tgz.sha256
+sha256sum -c hydro-scoreboard-xcpcio-plus-2.3.0.tgz.sha256
 mkdir -p xcpcio-update
-tar -xzf hydro-scoreboard-xcpcio-plus-2.2.0.tgz -C xcpcio-update
+tar -xzf hydro-scoreboard-xcpcio-plus-2.3.0.tgz -C xcpcio-update
 ```
 
 首次安装运行 `bash xcpcio-update/package/install.sh install`。升级已有安装运行 `bash xcpcio-update/package/install.sh upgrade`。
@@ -160,7 +160,7 @@ bash "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus/install.sh" uninstall
 
 ![从时间戳备份目录找到旧插件和原注册信息，核对后恢复](images/manual/install-backup.svg)
 
-在源码目录执行 `pnpm install --frozen-lockfile` 和 `pnpm pack --pack-destination ./dist` 可生成同样的完整安装包。`prepack` 会生成所需静态资源。
+从源码打包需要 Go 1.22 或更高版本。在项目根目录依次运行 `pnpm install --frozen-lockfile`、`pnpm build:print-client` 和 `pnpm pack --pack-destination ./dist`。打包时会自动构建六个平台的 `submit`，并将两个客户端和预构建前端一起放入插件包。
 
 ## 使用
 
@@ -768,6 +768,8 @@ Hydro 的系统管理员（`PRIV_EDIT_SYSTEM`）可在控制面板（`/manage`�
 
 在比赛题目页打开「选手命令行 submit」，选择 Linux、macOS 或 Windows 的 amd64 / arm64 安装包。解压到同一目录，运行 `./submit install`，Windows 使用 `.\submit.exe install`。安装包包含本比赛站点的域地址。命令通过 onsite-toolkit 的机位 IP 绑定识别选手。
 
+管理员也可在发布页下载六个平台的独立程序和 SHA-256 清单。分发独立程序时，在 `install --server` 后填写比赛域的完整地址，例如 `https://oj.example.edu/d/contest`。从比赛题目页下载的 ZIP 已带该地址。[v2.3.0 发布附件](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.3.0)
+
 ```sh
 submit info
 submit a.cpp
@@ -898,7 +900,7 @@ submit print a.cpp
    HYDRO_MEDIA_CONNECTION=hydro-reactions:此处粘贴完整连接码
    ```
 
-3. 执行配置校验、拉取和启动。配置默认使用 CPU 与固定版本公共镜像 `ghcr.io/albert-li-sz/reactions-generator-hydro:2.2.0`。输出保存在本机 `./out`（常驻模式上传完成后会自动清理本地成片以防占满磁盘）。
+3. 执行配置校验、拉取和启动。配置默认使用 CPU 与固定版本公共镜像 `ghcr.io/albert-li-sz/reactions-generator-hydro:2.3.0`。输出保存在本机 `./out`（常驻模式上传完成后会自动清理本地成片以防占满磁盘）。
 
    ```sh
    docker compose config --quiet
