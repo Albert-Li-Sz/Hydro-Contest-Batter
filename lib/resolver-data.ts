@@ -43,7 +43,7 @@ export function defaultResolverConfig(settings: BoardAwards, ended: boolean): Re
     return {
         mode: 'board', boardId: 'all', rehearsal: !ended, freezeMode: 'contest', freezeAtSeconds: null,
         ...resolverAwardConfig(settings), rowsPerScreen: 12, autoplay: false,
-        autoplaySpeed: 4, autoStopAtMedals: true, startScreen: 'splash', showSchool: true,
+        autoplaySpeed: 4, autoStopAtMedals: true, startScreen: 'splash', renderer: '2d', showSchool: true,
     };
 }
 
@@ -51,7 +51,7 @@ export function parseResolverConfig(raw: unknown, defaults: ResolverConfig): Res
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new ResolverError('滚榜配置格式无效');
     const input = raw as Record<string, unknown>;
     const config = { ...defaults };
-    const enums = { mode: ['board', 'official'], freezeMode: ['contest', 'custom'], startScreen: ['splash', 'scoreboard'] };
+    const enums = { mode: ['board', 'official'], freezeMode: ['contest', 'custom'], startScreen: ['splash', 'scoreboard'], renderer: ['2d', '3d'] };
     for (const [key, allowed] of Object.entries(enums)) {
         if (input[key] === undefined) continue;
         if (!allowed.includes(input[key] as string)) throw new ResolverError(`${key} 无效`);

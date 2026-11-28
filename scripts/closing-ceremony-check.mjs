@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { powerPointExport } from './resolver-3d-check.mjs';
 import { actionIndicesFor, awardStops, teamJump } from '../resolver/public/js/playback-model.js';
 
 const contest = '/contest/demo';
@@ -115,6 +116,7 @@ async function slides(context, browser, base, folder, image) {
     const last = (await count.innerText()).split(' / '); assert.equal(last[0], last[1]);
     await page.keyboard.press('Home'); assert.match(await count.innerText(), /^1 \/ /);
     await page.keyboard.press('f');
+    await powerPointExport(page, folder);
     const ready = page.waitForEvent('download');
     await page.locator('#ceremony-export').click();
     const local = path.join(folder, '颁奖.html'); await (await ready).saveAs(local);

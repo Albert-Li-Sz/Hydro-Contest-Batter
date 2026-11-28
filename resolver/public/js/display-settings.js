@@ -15,6 +15,7 @@ export function setupDisplay() {
   panel.innerHTML = `<form method="dialog">
     <div class="help-head"><h2 id="display-title">画面设置</h2><button class="button" value="close" aria-label="关闭校准设置">关闭</button></div>
     <p class="help-note">画面设置保存在本浏览器的当前滚榜会话中。</p>
+    <div id="resolver-style-controls"></div>
     <label>渲染分辨率<select class="select" name="resolution"><option value="1080p">1080p · 1920 × 1080</option><option value="1440p">2K · 2560 × 1440（推荐）</option><option value="2160p">4K · 3840 × 2160</option></select></label>
     <label>输出区域<select class="select" name="region"><option value="full">整个屏幕</option><option value="top">上半屏</option><option value="bottom">下半屏</option><option value="left">左半屏</option><option value="right">右半屏</option><option value="tl">左上四分之一</option><option value="tr">右上四分之一</option><option value="bl">左下四分之一</option><option value="br">右下四分之一</option><option value="custom">自定义区域</option></select></label>
     <fieldset id="display-custom"><legend>区域百分比</legend><div class="display-grid"><label>左边距 %<input class="textbox" name="x" type="number" min="0" max="90" step="0.1"></label><label>上边距 %<input class="textbox" name="y" type="number" min="0" max="90" step="0.1"></label><label>宽度 %<input class="textbox" name="width" type="number" min="10" max="100" step="0.1"></label><label>高度 %<input class="textbox" name="height" type="number" min="10" max="100" step="0.1"></label></div></fieldset>
@@ -48,8 +49,9 @@ export function setupDisplay() {
   function apply() {
     current = displayGeometry(settings, viewport.clientWidth, viewport.clientHeight);
     Object.assign(stage.style, { inset: 'auto', left: `${current.left}px`, top: `${current.top}px`, width: `${current.width}px`, height: `${current.height}px` });
-    screen.dataset.logicalWidth = String(current.logicalWidth);
-    screen.dataset.resolution = settings.resolution;
+    const activeCanvas = stage.querySelector('#screen');
+    activeCanvas.dataset.logicalWidth = String(current.logicalWidth);
+    activeCanvas.dataset.resolution = settings.resolution;
     window.dispatchEvent(new CustomEvent('resolver-display'));
     panel.querySelector('#display-custom').hidden = settings.region !== 'custom';
     const pixels = renderDimensions(current.logicalWidth, settings.resolution);

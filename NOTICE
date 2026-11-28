@@ -132,3 +132,8 @@ typefaces belong to their respective owners. The recipient roster is generated
 from the contest's own certificate data.
 The Chinese event preset uses separate crops of the medal and optional ICPC
 mark, and Chinese captions for the three signature blocks from the same source.
+
+The 3D resolver uses Three.js 0.160.1, distributed under the MIT license
+in licenses/three-MIT.txt. The ES module is bundled locally from the three
+npm package for use in venues without public Internet access.
+https://github.com/mrdoob/three.js

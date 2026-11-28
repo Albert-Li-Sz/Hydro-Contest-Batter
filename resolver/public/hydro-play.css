@@ -63,3 +63,4 @@
   #hydro-resolver-player .help-panel { position:fixed; }
   #hydro-resolver-player .help-card dl div { grid-template-columns:1fr; gap:0; margin-bottom:8px; }
 }
+#hydro-resolver-player #resolver-style-controls input[type="checkbox"] { display:inline; width:auto; }

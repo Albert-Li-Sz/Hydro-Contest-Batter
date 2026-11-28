@@ -345,7 +345,7 @@ export function applyScreens(ctx: Context, dependencies: {
             if (!session) {
                 return { ...base, notice: item.sessionId ? '滚榜会话已结束或删除，请重新投屏' : '等待主持人投到观众屏' };
             }
-            return { ...base, session: session._id, ...await sessions.audience(session, known, revision, index) };
+            return { ...base, renderer: item.variant, session: session._id, ...await sessions.audience(session, known, revision, index) };
         }
         // Like the public board, standings stay hidden until the contest starts.
         if (hiddenBeforeStart.has(type) && !ContestModel.canShowScoreboard.call(handler, tdoc, false)) {

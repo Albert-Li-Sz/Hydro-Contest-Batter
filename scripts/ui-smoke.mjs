@@ -17,6 +17,7 @@ import { recordingWorkflow, venueWorkflow } from './recording-workflow-check.mjs
 import { captureContinuity } from './capture-continuity-check.mjs';
 import { closingCeremony } from './closing-ceremony-check.mjs';
 import { venueOps } from './venue-ops-check.mjs';
+import { resolver3D } from './resolver-3d-check.mjs';
 import { resolverAudience } from './resolver-audience-check.mjs';
 import { liveOverlays } from './live-overlays-check.mjs';
 
@@ -558,6 +559,7 @@ try {
     }
     if (!mode || mode === 'venue-ops') await venueOps(browser, base, contest);
     if (mode === 'venue') await venueWorkflow(browser, base, contest);
+    if (!mode || mode === 'resolver3d') await resolver3D(browser, base);
     if (!mode || mode === 'resolver') console.log('Resolver audience', JSON.stringify(await resolverAudience(browser, base)));
     if (!mode || mode === 'live') { await broadcastStyles(browser, base); await liveOverlays(browser, base, contest); }
     if (!mode || mode === 'interactions' || mode === 'recording') await interactions(browser, base);

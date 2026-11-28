@@ -76,6 +76,7 @@ export const DEFAULT_OPTIONS = Object.freeze({
   showAwards: false,
   title: null,
   startScreen: 'splash',
+  renderer: '2d',
 });
 
 /**
@@ -134,6 +135,8 @@ export function normalizeOptions(options) {
   opts.showAwards = bool(raw.showAwards, DEFAULT_OPTIONS.showAwards);
   opts.title = raw.title == null || raw.title === '' ? null : String(raw.title);
   if (opts.title && opts.title.length > 200) throw inputError('标题长度不能超过 200 字');
+  if (raw.renderer != null && !['2d', '3d'].includes(raw.renderer)) throw inputError('滚榜样式无效');
+  opts.renderer = raw.renderer || '2d';
   opts.startScreen = raw.startScreen === 'scoreboard' ? 'scoreboard' : 'splash';
   return opts;
 }
@@ -1504,8 +1507,14 @@ function buildStepsInternal(contest, options, frozenView, finalView) {
   }
 
   phase = 'manual';
-  // End of resolving: deselect everything.
-  push({ type: 'selectTeam', teamIds: [], selectType: 'NORMAL' });
+  // The audience receives this action only at the finale, so no podium recipients leak early.
+  const places = ['podium-champion', 'podium-runner-up', 'podium-third-place'];
+  const podium = contest.awards.flatMap(award => {
+    const ranked = /^rank-([123])$/.exec(award.id);
+    const place = ranked ? Number(ranked[1]) - 1 : award.id === 'winner' ? 0 : places.indexOf(award.id);
+    return place < 0 ? [] : [{ place, name: award.citation, teamIds: award.teamIds }];
+  });
+  push({ type: 'selectTeam', teamIds: [], selectType: 'NORMAL', role: 'finale', podium });
   push(pause('done'));
 
   if (steps.length > LIMITS.steps) throw inputError('滚榜步骤数量超出上限', 413);
@@ -1542,11 +1551,19 @@ export function buildGame(contest, options, meta = {}) {
   const { steps, resolveStartRow, autoStopTeamId } = buildStepsInternal(c, opts, frozenView, finalView);
 
   const id = meta && typeof meta === 'object' ? meta.id : undefined;
+  // A compact public timeline also allows an existing 2D session to be played in 3D.
+  const teamIndices = new Map(c.teams.map((t, i) => [t.id, i]));
+  const problemIndices = new Map(c.problems.map((p, i) => [p.id, i]));
+  const replay = c.submissions.filter(s => s.contestTime >= 0 && s.contestTime < c.durationMs && s.contestTime <= frozenView.freezeTimeMs
+    && teamIndices.has(s.teamId) && problemIndices.has(s.problemId) && judgementVisible(c, s, true))
+    .sort((a, b) => a.contestTime - b.contestTime)
+    .map(s => [s.contestTime, teamIndices.get(s.teamId), problemIndices.get(s.problemId), Number(s.status === 'solved')]);
   const game = {
     ...(id ? { id: String(id) } : {}),
     contest: publicContest(c),
     options: opts,
     initialState: {
+      replay,
       frozen: c.freezeDurationMs > 0,
       contestTimeMs: c.freezeDurationMs > 0 ? frozenView.freezeTimeMs : c.durationMs,
       order: frozenView.order.slice(),

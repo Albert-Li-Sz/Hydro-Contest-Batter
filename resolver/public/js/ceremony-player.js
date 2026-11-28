@@ -193,7 +193,7 @@ export function ceremonyPlayer(stage, deck, config, onPage = () => {}, options =
     }
     render();
     return {
-        full, go, renderInto, prev: () => go(index - 1), next: () => go(index + 1), get index() { return index; },
+        full, go, renderInto, fitFor, prev: () => go(index - 1), next: () => go(index + 1), get index() { return index; },
         update(data, appearance) { deck = data; config = appearance; fits = new Map(); go(index); },
     };
 }

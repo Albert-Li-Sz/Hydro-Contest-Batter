@@ -114,3 +114,8 @@ body.fullscreen.idle #screen { cursor: none; }
 #screen-site { font-size:.72em; }
 #screen-identify { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); max-width:90%; padding:.4em .8em; background:#081421ed; color:#fff; text-align:center; overflow-wrap:anywhere; font:700 clamp(32px,8vw,150px)/1.2 system-ui,sans-serif; pointer-events:none; }
 #screen-pair[hidden], #screen-identify[hidden] { display:none; }
+
+#screen-style-controls:not([hidden]) { position:fixed; top:16px; left:16px; display:flex; align-items:center; gap:.55em; flex-wrap:wrap;
+  max-width:calc(100vw - 125px); padding:6px 10px; border-radius:5px; background:#071322e8; color:#eef6ff; font:14px/1.4 system-ui,sans-serif; }
+#screen-style-controls select { margin-left:.35em; background:#15263b; color:#fff; border:1px solid #7b8fa4; border-radius:3px; padding:3px; }
+body.idle #screen-style-controls:not(:focus-within) { opacity:0; pointer-events:none; }
