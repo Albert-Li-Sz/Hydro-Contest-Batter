@@ -7,7 +7,8 @@ import * as classic from './gen1.js';
 import * as modern from './gen2.js';
 
 // The problem chip changes colour first; then the row travels, slow to start and fast to land
-// (cubic-bezier(1, 0, 1, 1)), longer the further it goes.
+// (cubic-bezier(1, 0, 1, 1)), longer the further it goes. Every row and the scroll glide from
+// where they are drawn to their new place, so a step that lands mid-move never pulls them back.
 const FLIP_MS = 360;
 const SETTLE_MS = 120;
 const SCROLL_MS = 256;
@@ -113,12 +114,46 @@ export class ResolverViewCcpcoj {
         this.revelation = null;
         this.scrolling = false;
         this.finalAwards = [];
-        this.motion = null;
+        this.reveal = null;
         this.rankChange = null;
         this.recent = null;
         this.pick = null;
-        this.tween = null;
-        this.shownScroll = null;
+        this.settle();
+    }
+
+    /** Drop every move in flight: rows and scroll are drawn at their places from the next frame. */
+    settle() {
+        this.places = new Map();
+        this.glide = null;
+        this.nextGlide = null;
+        this.moving = 0;
+    }
+
+    /** Where a row is drawn now, in rows from the top of the board. */
+    placeOf(id) {
+        const p = this.places.get(id);
+        if (!p) return null;
+        if (p.clock >= p.delay + p.duration) return p.to;
+        return between(p.from, p.to, climb(unit((p.clock - p.delay) / p.duration)));
+    }
+
+    /** Send every row whose index changed from where it is drawn to its new index. */
+    retarget(order, ranks, { delay = 0, duration = moveDuration(1), speed = 1 } = {}) {
+        order.forEach((id, index) => {
+            const p = this.places.get(id);
+            if (!p) { this.places.set(id, { from: index, to: index, clock: 0, delay: 0, duration: 0, speed: 1 }); return; }
+            if (p.to === index) return;
+            const from = this.placeOf(id);
+            const rank = p.clock < p.delay + p.duration ? p.rank : ranks?.get(id)?.rank;
+            this.places.set(id, { from, to: index, clock: 0, delay, duration, speed, rank });
+        });
+    }
+
+    scrollOf() {
+        const g = this.glide;
+        if (!g) return null;
+        if (g.clock >= g.delay + g.duration) return g.to;
+        return between(g.from, g.to, g.curve(unit((g.clock - g.delay) / g.duration)));
     }
 
     cue(step) {
@@ -161,8 +196,13 @@ export class ResolverViewCcpcoj {
         const before = this.board.stageState();
         const lastAct = this.act;
         const animate = !instant && !this.reduced;
-        const start = this.shownScroll ?? this.windowFor(before, this.focusOf(before).team?.id);
-        const order = resolves && animate ? before.order.slice() : before.order;
+        // Rows and scroll not drawn yet since a seek start where the board stands before this step.
+        if (animate && this.places.size !== before.order.length) this.retarget(before.order, before.standings);
+        if (animate && !this.glide) {
+            const at = this.windowFor(before, this.focusOf(before).team?.id);
+            this.glide = { from: at, to: at, clock: 0, delay: 0, duration: 0, speed: 1, curve: ease };
+        }
+        const fromIndex = resolves ? before.order.indexOf(step.teamId) : -1;
         const cellsBefore = resolves && animate ? (before.results[step.teamId] || []).slice() : null;
         const previous = resolves ? before.standings.get(step.teamId) : null;
         this.board.applyStep(step, { instant });
@@ -172,22 +212,28 @@ export class ResolverViewCcpcoj {
         const state = this.board.stageState();
         if (lastAct !== this.act || before.screen !== state.screen) this.elapsed = instant ? 1400 : 0;
         this.pick = step.type === 'selectSubmission' && animate ? { clock: 0 } : null;
+        const speed = Math.max(.4, Math.min(12, Number(step.speedMultiplier) || 1));
+        if (!animate) {
+            this.reveal = null;
+            this.settle();
+        } else if (resolves) {
+            const rows = Math.abs(fromIndex - state.order.indexOf(step.teamId));
+            this.reveal = { clock: 0, speed, teamId: step.teamId, standings: before.standings, cells: cellsBefore };
+            this.retarget(state.order, before.standings, { delay: FLIP_MS, duration: moveDuration(rows), speed });
+            this.nextGlide = rows ? { delay: FLIP_MS, duration: moveDuration(rows), curve: climb, speed } : null;
+        } else {
+            // The focus moves on: the turned chip settles, rows still travelling finish their move.
+            this.reveal = null;
+            this.retarget(state.order, before.standings);
+            if (scrolls) {
+                const rows = Math.abs(this.windowFor(state, null) - (this.scrollOf() ?? 0));
+                this.nextGlide = { delay: 0, duration: moveDuration(rows), curve: ease, speed };
+            } else this.nextGlide = null;
+        }
         if (resolves) {
             const score = state.standings.get(step.teamId);
             this.rankChange = previous?.rank && score?.rank ? { from: previous.rank, to: score.rank } : null;
-            const rows = Math.abs(order.indexOf(step.teamId) - state.order.indexOf(step.teamId));
-            const speed = Math.max(.4, Math.min(12, Number(step.speedMultiplier) || 1));
-            this.motion = animate ? {
-                kind: 'resolve', start, before: order, standings: before.standings, cells: cellsBefore,
-                teamId: step.teamId, clock: 0, speed, moving: rows > 0, moveMs: moveDuration(rows),
-            } : null;
-        } else if (animate && scrolls) {
-            const rows = Math.abs(this.windowFor(state, this.focusOf(state).team?.id) - start);
-            this.motion = { kind: 'scroll', start, clock: 0, moveMs: moveDuration(rows), speed: Math.max(.5, Math.min(12, Number(step.speedMultiplier) || 1)) };
-        } else if (step.type !== 'selectTeam' || this.motion?.kind !== 'scroll') {
-            this.motion = null;
         }
-        if (instant) { this.tween = null; this.shownScroll = null; }
         if (this.act === 4 && lastAct !== 4) this.chime('finale', instant);
         this.markFrame();
     }
@@ -225,43 +271,35 @@ export class ResolverViewCcpcoj {
         return null;
     }
 
-    boardFrame(state, flip, travel) {
+    boardFrame(state, flip) {
         const focus = this.focusOf(state);
-        const from = this.motion;
         const destination = this.windowFor(state, focus.team?.id);
-        const mix = from ? travel : 1;
-        let scroll;
-        if (from) {
-            scroll = between(from.start, destination, mix);
-            this.tween = null;
-        } else {
-            if (this.shownScroll != null && Math.abs(this.shownScroll - destination) > .001 && this.tween?.to !== destination && !this.reduced) {
-                this.tween = { from: this.shownScroll, to: destination, clock: 0 };
-            }
-            scroll = this.tween ? between(this.tween.from, this.tween.to, ease(unit(this.tween.clock / SCROLL_MS))) : destination;
+        // The scroll glides to a new window from where it is drawn, timed with the step that moved it.
+        if (!this.glide) this.glide = { from: destination, to: destination, clock: 0, delay: 0, duration: 0, speed: 1, curve: ease };
+        else if (this.glide.to !== destination) {
+            const plan = this.reduced ? { delay: 0, duration: 0, curve: ease, speed: 1 } : this.nextGlide || { delay: 0, duration: SCROLL_MS, curve: ease, speed: 1 };
+            this.glide = { from: this.scrollOf(), to: destination, clock: 0, ...plan };
+            this.nextGlide = null;
         }
-        this.shownScroll = scroll;
-        const low = Math.max(0, Math.floor(scroll) - 2), high = Math.ceil(scroll) + this.L.count + 2;
-        const ids = new Set(state.order.slice(low, high));
-        if (from?.before) for (const id of from.before.slice(low, high)) ids.add(id);
-        if (focus.team) ids.add(focus.team.id);
+        const scroll = this.scrollOf();
+        if (this.places.size !== state.order.length) this.retarget(state.order, state.standings);
+        const reveal = this.reveal, early = reveal && flip < .5;
         const rows = [];
-        for (const id of ids) {
-            const index = state.order.indexOf(id);
-            if (index < 0) continue;
-            const first = from?.before?.indexOf(id) ?? index;
-            const position = between(first < 0 ? index : first, index, mix) - scroll;
-            if (position <= -1 || position >= this.L.count) continue;
-            const early = from?.before && flip < .5;
-            const shownRank = from?.standings && (flip < .5 || mix < 1) ? from.standings.get(id)?.rank : state.standings.get(id)?.rank;
+        state.order.forEach((id, index) => {
+            const place = this.placeOf(id) ?? index;
+            const position = place - scroll;
+            if (position <= -1 || position >= this.L.count) return;
+            const p = this.places.get(id);
+            const travelling = p && p.clock < p.delay + p.duration;
+            const shownRank = early ? reveal.standings.get(id)?.rank : travelling && p.rank != null ? p.rank : state.standings.get(id)?.rank;
             const judging = focus.team?.id === id;
             rows.push({
                 id, index, position, rank: shownRank, medal: this.medalOf(shownRank),
-                score: early ? from.standings.get(id) : state.standings.get(id),
-                cells: early && id === from.teamId ? from.cells : null,
+                score: early ? reveal.standings.get(id) : state.standings.get(id),
+                cells: early && id === reveal.teamId ? reveal.cells : null,
                 judging, recent: !judging && this.recent === id,
             });
-        }
+        });
         // The judging row is painted last so it passes over the rows it overtakes.
         rows.sort((a, b) => Number(a.judging) - Number(b.judging) || a.position - b.position);
         return { rows, state, problemIndex: focus.problemIndex, focus, showSchool: this.options.showSchool !== false };
@@ -340,18 +378,23 @@ export class ResolverViewCcpcoj {
 
     update(dt) {
         this.elapsed += dt;
-        if (this.motion) {
-            const before = this.motion.clock;
-            this.motion.clock += dt * this.motion.speed;
-            const resolving = this.motion.kind === 'resolve';
-            const duration = resolving ? FLIP_MS + (this.motion.moving ? this.motion.moveMs : 0) + SETTLE_MS : this.motion.moveMs;
-            if (resolving && before < FLIP_MS / 2 && this.motion.clock >= FLIP_MS / 2) this.chime(this.revelation?.status);
-            if (this.motion.clock >= duration) this.motion = null;
+        if (this.reveal) {
+            const before = this.reveal.clock;
+            this.reveal.clock += dt * this.reveal.speed;
+            if (before < FLIP_MS / 2 && this.reveal.clock >= FLIP_MS / 2) this.chime(this.revelation?.status);
+            if (this.reveal.clock >= FLIP_MS + SETTLE_MS) this.reveal = null;
             this.dirty = true;
         }
-        if (this.tween) {
-            this.tween.clock += dt;
-            if (this.tween.clock >= SCROLL_MS) this.tween = null;
+        let moving = 0;
+        for (const p of this.places.values()) {
+            if (p.clock >= p.delay + p.duration) continue;
+            p.clock += dt * p.speed;
+            moving++;
+        }
+        if (moving || this.moving) this.dirty = true;
+        this.moving = moving;
+        if (this.glide && this.glide.clock < this.glide.delay + this.glide.duration) {
+            this.glide.clock += dt * this.glide.speed;
             this.dirty = true;
         }
         if (this.pick && this.pick.clock < FLICKER_MS) {
@@ -375,14 +418,12 @@ export class ResolverViewCcpcoj {
     render() {
         if (!this.dirty) return;
         this.dirty = false;
-        const { ctx, L } = this, state = this.board.stageState(), motion = this.motion;
-        const flip = motion?.kind === 'resolve' ? unit(motion.clock / FLIP_MS) : this.revelation ? 1 : 0;
-        const travel = motion?.kind === 'resolve' ? motion.moving ? climb(unit((motion.clock - FLIP_MS) / motion.moveMs)) : 1
-            : motion ? climb(unit(motion.clock / motion.moveMs)) : 1;
-        const frame = this.boardFrame(state, flip, travel);
+        const { ctx, L } = this, state = this.board.stageState(), reveal = this.reveal;
+        const flip = reveal ? unit(reveal.clock / FLIP_MS) : this.revelation ? 1 : 0;
+        const frame = this.boardFrame(state, flip);
         const fx = {
             solid: !!this.pick && this.pick.clock < FLICKER_MS && Math.floor(this.pick.clock / 200) % 2 === 1,
-            glow: motion?.kind === 'resolve' && flip < 1 ? Math.sin(Math.PI * flip) : 0,
+            glow: reveal && flip < 1 ? Math.sin(Math.PI * flip) : 0,
             pulse: this.reduced || this.revelation ? 0 : .5 + .5 * Math.sin(this.elapsed / 260),
         };
         const { board, openingCard, awardCard, teamListCard, podiumCard } = this.theme;
@@ -412,8 +453,9 @@ export class ResolverViewCcpcoj {
         }
 
         const problem = this.problems[frame.problemIndex];
-        const phase = motion?.kind === 'resolve' ? flip < .5 ? 'turning' : travel < 1 ? 'rising' : 'result'
-            : problem ? this.revelation ? 'result' : 'pending' : '';
+        const focused = this.places.get(this.revelation?.teamId);
+        const rising = !!this.revelation && !!focused && focused.clock < focused.delay + focused.duration;
+        const phase = reveal && flip < .5 ? 'turning' : rising ? 'rising' : problem ? this.revelation ? 'result' : 'pending' : '';
         this.canvas.dataset.reveal = phase;
         const labels = [acts[this.act - 1]];
         if (frame.focus.team) labels.push(teamName(frame.focus.team));
@@ -425,11 +467,10 @@ export class ResolverViewCcpcoj {
     resize() {
         const logicalWidth = Math.max(1080, Math.min(5760, Number(this.canvas.dataset.logicalWidth) || 1920));
         const dims = renderDimensions(logicalWidth, this.canvas.dataset.resolution || readDisplaySettings().resolution);
-        this.L = this.theme.stageLayout(logicalWidth, this.options.rowsPerScreen, this.teams.length, this.problems.length);
+        this.L = this.theme.stageLayout(logicalWidth, this.options.rowsPerScreen, this.problems.length);
         if (this.canvas.width !== dims.width) this.canvas.width = dims.width;
         if (this.canvas.height !== dims.height) this.canvas.height = dims.height;
-        this.tween = null;
-        this.shownScroll = null;
+        this.glide = null;
         this.markFrame();
     }
 

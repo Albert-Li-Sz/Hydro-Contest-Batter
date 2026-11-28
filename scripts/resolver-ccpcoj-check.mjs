@@ -39,7 +39,7 @@ export async function resolverCcpcoj(browser, base) {
                         acted.add(state.act);
                         state.update(40); state.render();
                         const ctx = state.canvas.getContext('2d'), colors = new Set();
-                        for (let x = .1; x < .95; x += .12) for (let y = .1; y < .95; y += .12) {
+                        for (let x = .05; x < .96; x += .05) for (let y = .05; y < .96; y += .05) {
                             colors.add(Array.from(ctx.getImageData(Math.floor(state.canvas.width*x),Math.floor(state.canvas.height*y),1,1).data).join(','));
                         }
                         pixels[state.act] = colors.size;
@@ -66,7 +66,30 @@ export async function resolverCcpcoj(browser, base) {
                     state.render();
                     phases.push(state.canvas.dataset.reveal);
                 }
-                return { acts: [...acted], pixels, equal, phases };
+                // Steps faster than the animation must never pull a row or the scroll back: every
+                // frame moves each of them by a fraction of a row at most.
+                let jumps = 0;
+                const last = new Map();
+                let lastScroll = null;
+                const sample = () => {
+                    for (const id of state.board.stageState().order) {
+                        const place = state.placeOf(id);
+                        if (place == null) continue;
+                        if (last.has(id) && Math.abs(place - last.get(id)) > .6) jumps++;
+                        last.set(id, place);
+                    }
+                    const scroll = state.scrollOf();
+                    if (scroll != null && lastScroll != null && Math.abs(scroll - lastScroll) > .6) jumps++;
+                    if (scroll != null) lastScroll = scroll;
+                };
+                const from = Math.max(0, movingIndex - 6);
+                state.seek(api.steps, from);
+                state.render(); sample();
+                for (let i = from + 1; i < Math.min(api.steps.length, movingIndex + 40); i++) {
+                    state.applyStep(api.steps[i]); sample();
+                    for (let frame = 0; frame < 6; frame++) { state.update(16); state.render(); sample(); }
+                }
+                return { acts: [...acted], pixels, equal, phases, jumps };
             }
             const modern = exercise(api.view);
             const widths = [];
@@ -96,6 +119,7 @@ export async function resolverCcpcoj(browser, base) {
             assert.deepEqual(run.acts, [1,2,3,4]);
             assert.ok(run.equal); assert.ok(Object.values(run.pixels).every(n => n > 3), JSON.stringify(run));
             assert.deepEqual(run.phases, ['pending', 'turning', 'rising', 'result', 'pending']);
+            assert.equal(run.jumps, 0, 'rows or scroll jumped during fast steps');
         }
         assert.equal(proof.classic.kind, 'ccpcoj');
         assert.deepEqual(proof.widths, [1080, 4320]);
@@ -138,7 +162,7 @@ export async function resolverCcpcoj(browser, base) {
         await fallback.goto(host.url()); await active(fallback,'2d');
         assert.equal(await fallback.evaluate(() => window.ICPCResolver.index),proof.finale);
         assert.deepEqual(errors,[]);
-        console.log('Resolver CCPCOJ styles: ' + proof.steps + ' steps, four acts in both generations, chip then climb and rewind, legacy style name, matching standings, audience sync, no WebGL needed and 2D fallback');
+        console.log('Resolver CCPCOJ styles: ' + proof.steps + ' steps, four acts in both generations, chip then climb and rewind, no jumps under fast steps, legacy style name, matching standings, audience sync, no WebGL needed and 2D fallback');
     } finally { await context.close(); }
 }
 

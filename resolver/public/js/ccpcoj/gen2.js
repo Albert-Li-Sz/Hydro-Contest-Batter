@@ -97,10 +97,11 @@ function medal(ctx, cx, cy, size, tier) {
     star(ctx, cx, cy + size * .12, size * .3, tone.edge);
 }
 
-export function stageLayout(width, rowsPerScreen, teamCount, problemCount) {
+export function stageLayout(width, rowsPerScreen, problemCount) {
     const span = Math.min(width, 2880);
     const left = (width - span) / 2 + 16, right = width - left;
-    const count = Math.max(1, Math.min(teamCount, 20, Math.max(4, Number(rowsPerScreen) || 12)));
+    // Row height follows the rows per screen even when fewer teams take part.
+    const count = Math.min(20, Math.max(4, Number(rowsPerScreen) || 12));
     const tableTop = 70;
     const pitch = Math.floor((HEIGHT - tableTop - 6) / count);
     // Proportions of a CCPCOJ-2 row, 114 units high; problem columns share the rest of the row.

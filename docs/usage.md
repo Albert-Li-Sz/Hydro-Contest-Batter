@@ -116,12 +116,12 @@ Schema 测试固定使用官方 2026-01 分支文件；上游 schema 对 runs �
 
 ### 手动安装
 
-从 v2.6.1 发布页下载 `hydro-scoreboard-xcpcio-plus-2.6.1.tgz` 和同名 `.sha256` 文件，放入同一个目录。首次安装按以下步骤校验、解压、注册 addon 并重启服务。[v2.6.1 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.6.1)
+从 v2.6.2 发布页下载 `hydro-scoreboard-xcpcio-plus-2.6.2.tgz` 和同名 `.sha256` 文件，放入同一个目录。首次安装按以下步骤校验、解压、注册 addon 并重启服务。[v2.6.2 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.6.2)
 
 ```bash
-sha256sum -c hydro-scoreboard-xcpcio-plus-2.6.1.tgz.sha256
+sha256sum -c hydro-scoreboard-xcpcio-plus-2.6.2.tgz.sha256
 mkdir -p "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
-tar -xzf hydro-scoreboard-xcpcio-plus-2.6.1.tgz \
+tar -xzf hydro-scoreboard-xcpcio-plus-2.6.2.tgz \
   -C "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus" --strip-components=1
 hydrooj addon add "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 pm2 restart hydrooj
@@ -134,9 +134,9 @@ pm2 restart hydrooj
 在新的临时目录中校验并解压安装包。
 
 ```bash
-sha256sum -c hydro-scoreboard-xcpcio-plus-2.6.1.tgz.sha256
+sha256sum -c hydro-scoreboard-xcpcio-plus-2.6.2.tgz.sha256
 mkdir -p xcpcio-update
-tar -xzf hydro-scoreboard-xcpcio-plus-2.6.1.tgz -C xcpcio-update
+tar -xzf hydro-scoreboard-xcpcio-plus-2.6.2.tgz -C xcpcio-update
 ```
 
 首次安装运行 `bash xcpcio-update/package/install.sh install`。升级已有安装运行 `bash xcpcio-update/package/install.sh upgrade`。
@@ -460,7 +460,7 @@ pnpm preview
 1. 选择“仅滚所选榜单”，展示主榜或指定分榜的成员并保留参赛身份。选择“所选分榜正式，其余非正式”则展示全部成员，正式排名、奖杯以分榜内原本正式的成员为准。分榜内的打星成员按该榜的奖牌和一血开关参评。分榜外的队伍只展示成绩。
 2. 默认继承比赛封榜点。没有封榜设置时，选择“本场滚榜自定义”并填写封榜时长，即比赛最后多少分钟封榜，页面会显示换算出的封榜时刻。恰好在封榜点的提交可见，之后的提交隐藏。该选项作用于当前滚榜。
 3. 奖项区显示所选榜单的共享规则，通过“配置榜单与滚榜奖项”统一修改。预览与开始时重新读取设置。“选手名后显示学校”默认开启，学校未填写时只显示名字。
-4. 「滚榜样式」默认原版 2D，也可选 CCPCOJ 一代或 CCPCOJ 二代。一代为白底整屏榜单：每行依次是名次（奖区名次带奖章底纹）、校徽、「学校：队名」与题目色块（尝试次数、题号、最后提交分钟）、题数和罚时。揭晓中的队伍整行标为青色，上一支揭晓的队伍为浅青色，获奖信息以对话框显示在榜单上。二代先显示深色开场幕布，列出队伍、院校、赛题、封榜时长和各档奖牌数。榜单表头为中英文双语并按列标出题号。每行的名次块按奖区着色，下方显示题数与罚时，题目格按列排列，首解标有金星。获奖时全屏显示左侧 4:3 照片舞台（无照片时显示奖章）和右侧院校、队名、奖项、全场排名、解题数与首答。两种 CCPCOJ 样式都是先改变题目格颜色和分数，再将队伍移到新名次，移动距离越远用时越长。起始画面选「冻结榜单」可直接进入榜单。主持页的「画面设置」可切换样式和音效。大屏可跟随会话或指定样式，观众本机也能切换。三种样式共用进度和结果，都只使用 Canvas 2D，不需要 WebGL。CCPCOJ 样式组件无法加载时自动回到原版 2D。v2.5.0 保存为「三维 3D」的会话和大屏设置按 CCPCOJ 二代播放。默认每屏 12 行，手动播放。启用自动阶段后默认 4 倍速，可调整至 0.25–16 倍。即时预览与播放使用同一引擎和绘图模块。
+4. 「滚榜样式」默认原版 2D，也可选 CCPCOJ 一代或 CCPCOJ 二代。一代为白底整屏榜单：每行依次是名次（奖区名次带奖章底纹）、校徽、「学校：队名」与题目色块（尝试次数、题号、最后提交分钟）、题数和罚时。揭晓中的队伍整行标为青色，上一支揭晓的队伍为浅青色，获奖信息以对话框显示在榜单上。二代先显示深色开场幕布，列出队伍、院校、赛题、封榜时长和各档奖牌数。榜单表头为中英文双语并按列标出题号。每行的名次块按奖区着色，下方显示题数与罚时，题目格按列排列，首解标有金星。获奖时全屏显示左侧 4:3 照片舞台（无照片时显示奖章）和右侧院校、队名、奖项、全场排名、解题数与首答。两种 CCPCOJ 样式都是先改变题目格颜色和分数，再将队伍移到新名次，移动距离越远用时越长。主持人在动画结束前继续推进时，正在移动的队伍和榜单滚动从当前位置接着移动，不会跳回。行高按每屏行数计算，参赛队伍少于每屏行数时榜单下方留白。起始画面选「冻结榜单」可直接进入榜单。主持页的「画面设置」可切换样式和音效。大屏可跟随会话或指定样式，观众本机也能切换。三种样式共用进度和结果，都只使用 Canvas 2D，不需要 WebGL。CCPCOJ 样式组件无法加载时自动回到原版 2D。v2.5.0 保存为「三维 3D」的会话和大屏设置按 CCPCOJ 二代播放。默认每屏 12 行，手动播放。启用自动阶段后默认 4 倍速，可调整至 0.25–16 倍。即时预览与播放使用同一引擎和绘图模块。
 5. 点击“开始滚榜”重新读取最新数据，固定比赛、成员、打星状态、配置与步骤。后续提交、重判及分榜修改需新建会话才能纳入。
 6. 比赛结束前自动作为彩排并标注“仅供彩排”。彩排忽略未完成评测的提交并提示数量。结束后可选择彩排，正式滚榜要求相关提交全部评测完成。
 7. 从当前管理员会话列表继续或删除会话。默认永久保留，插件配置 `resolverSessionDays` 为 `0`。需要自动清理时可显式设置 1 至 365 天，清理会检查最近使用时间，保护并发打开或推进的会话。刷新、重启和多进程恢复后从已保存步骤开始并暂停。发生版本冲突或断线时停止推进。
@@ -741,7 +741,7 @@ Hydro 的系统管理员（`PRIV_EDIT_SYSTEM`）可在控制面板（`/manage`�
 
 在比赛题目页打开「选手命令行 submit」，选择 Linux、macOS 或 Windows 的 amd64 / arm64 安装包。解压到同一目录，运行 `./submit install`，Windows 使用 `.\submit.exe install`。安装包包含本比赛站点的域地址。命令通过 onsite-toolkit 的机位 IP 绑定识别选手。
 
-管理员也可在发布页下载六个平台的独立程序和 SHA-256 清单。分发独立程序时，在 `install --server` 后填写比赛域的完整地址，例如 `https://oj.example.edu/d/contest`。从比赛题目页下载的 ZIP 已带该地址。[v2.6.1 发布附件](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.6.1)
+管理员也可在发布页下载六个平台的独立程序和 SHA-256 清单。分发独立程序时，在 `install --server` 后填写比赛域的完整地址，例如 `https://oj.example.edu/d/contest`。从比赛题目页下载的 ZIP 已带该地址。[v2.6.2 发布附件](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.6.2)
 
 ```sh
 submit info

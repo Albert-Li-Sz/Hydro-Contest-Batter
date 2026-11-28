@@ -13,12 +13,13 @@ const medalFill = { gold: '#ffd700', silver: '#c0c0c0', bronze: '#a52a2a' };
 const medalEdge = { gold: '#daa520', silver: '#808080', bronze: '#b8860b' };
 const medalTone = { gold: '#ffd700', silver: '#c0c0c0', bronze: '#b8860b' };
 
-export function stageLayout(width, rowsPerScreen, teamCount) {
+export function stageLayout(width, rowsPerScreen) {
     // Extra-wide LED walls keep the board within a readable central span.
     const span = Math.min(width, 2880);
     const left = (width - span) / 2 + 12, right = width - left;
     const inner = right - left;
-    const count = Math.max(1, Math.min(teamCount, 20, Math.max(4, Number(rowsPerScreen) || 12)));
+    // Row height follows the rows per screen even when fewer teams take part.
+    const count = Math.min(20, Math.max(4, Number(rowsPerScreen) || 12));
     const tableTop = 46;
     const pitch = Math.floor((HEIGHT - tableTop - 8) / count);
     // CCPCOJ proportions: a 60-unit line inside a 70-unit row, 75 units apart.
