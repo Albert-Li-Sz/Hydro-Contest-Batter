@@ -2,7 +2,7 @@
 
 基于 `@hydrooj/scoreboard-xcpcio` 的独立增强插件，使用 XCPCIO 0.98.0 前端，适用于 Hydro ACM 比赛。可与原插件同时安装，通过单独的 `xcpcio-plus` 视图使用。
 
-**v2.3.0 办赛入口**　[奖牌与名次](#规则) · [机位登记与密码条](#座位与-ip) · [选手命令行](#选手命令行-submit) · [OBS 画面管理](#直播) · [二维与三维滚榜](#resolver-滚榜) · [颁奖 PowerPoint](#颁奖幻灯片)
+**办赛入口**　[奖牌与名次](#规则) · [机位登记与密码条](#座位与-ip) · [选手命令行](#选手命令行-submit) · [OBS 画面管理](#直播) · [二维与三维滚榜](#resolver-滚榜) · [颁奖 PowerPoint](#颁奖幻灯片)
 
 - 使用 Hydro 原生分区、表单、按钮和深色主题，适配桌面、平板和手机。
 - 榜单显示金、银、铜牌标记，开启一血奖后用深绿色高亮符合资格的最早通过。
@@ -110,12 +110,18 @@ Schema 测试固定使用官方 2026-01 分支文件；上游 schema 对 runs �
 
 需要 Node.js 22 或以上版本及 Hydro 5.x。使用运行 Hydro 的系统用户操作；命令中的 `$HOME` 对应这个用户。自 0.8.1 起，安装包包含供 Hydro 直接加载的源码和完整预构建资源。
 
-从 v2.3.0 发布页下载 `hydro-scoreboard-xcpcio-plus-2.3.0.tgz` 和同名 `.sha256` 文件，放入同一个目录。首次安装按以下步骤校验、解压、注册 addon 并重启服务。[v2.3.0 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.3.0)
+### 升级前备份证书数据
+
+升级后首次启动 Hydro 时，插件会永久清空所有域和比赛的证书配置与名单（`xcpcio.certificates`）、签发记录（`xcpcio.certificates.issued`）和上传素材（`xcpcio.certificates.assets`）。需要留档时，请在升级前备份这三个 MongoDB 集合。如果设置了集合前缀或自定义映射，请按实际集合名备份。原领取链接和验真二维码随功能移除而失效。成绩快照、获奖名单 CSV 和颁奖幻灯片仍可从赛事工作台打开。
+
+### 手动安装
+
+从 v2.4.0 发布页下载 `hydro-scoreboard-xcpcio-plus-2.4.0.tgz` 和同名 `.sha256` 文件，放入同一个目录。首次安装按以下步骤校验、解压、注册 addon 并重启服务。[v2.4.0 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.4.0)
 
 ```bash
-sha256sum -c hydro-scoreboard-xcpcio-plus-2.3.0.tgz.sha256
+sha256sum -c hydro-scoreboard-xcpcio-plus-2.4.0.tgz.sha256
 mkdir -p "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
-tar -xzf hydro-scoreboard-xcpcio-plus-2.3.0.tgz \
+tar -xzf hydro-scoreboard-xcpcio-plus-2.4.0.tgz \
   -C "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus" --strip-components=1
 hydrooj addon add "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 pm2 restart hydrooj
@@ -125,14 +131,12 @@ pm2 restart hydrooj
 
 ### 脚本安装与升级
 
-**源码版升级提示（v2.3.0 之后）**　安装包含本次变更的版本并启动 Hydro 后，插件会永久清空所有域和比赛的证书配置与名单（`xcpcio.certificates`）、签发记录（`xcpcio.certificates.issued`）和上传素材（`xcpcio.certificates.assets`）。需要留档时，请在升级前备份这三个 MongoDB 集合。原领取链接和验真二维码随功能移除而失效。成绩快照、获奖名单 CSV 和颁奖幻灯片仍可从赛事工作台打开。
-
 在新的临时目录中校验并解压安装包。
 
 ```bash
-sha256sum -c hydro-scoreboard-xcpcio-plus-2.3.0.tgz.sha256
+sha256sum -c hydro-scoreboard-xcpcio-plus-2.4.0.tgz.sha256
 mkdir -p xcpcio-update
-tar -xzf hydro-scoreboard-xcpcio-plus-2.3.0.tgz -C xcpcio-update
+tar -xzf hydro-scoreboard-xcpcio-plus-2.4.0.tgz -C xcpcio-update
 ```
 
 首次安装运行 `bash xcpcio-update/package/install.sh install`。升级已有安装运行 `bash xcpcio-update/package/install.sh upgrade`。
@@ -737,7 +741,7 @@ Hydro 的系统管理员（`PRIV_EDIT_SYSTEM`）可在控制面板（`/manage`�
 
 在比赛题目页打开「选手命令行 submit」，选择 Linux、macOS 或 Windows 的 amd64 / arm64 安装包。解压到同一目录，运行 `./submit install`，Windows 使用 `.\submit.exe install`。安装包包含本比赛站点的域地址。命令通过 onsite-toolkit 的机位 IP 绑定识别选手。
 
-管理员也可在发布页下载六个平台的独立程序和 SHA-256 清单。分发独立程序时，在 `install --server` 后填写比赛域的完整地址，例如 `https://oj.example.edu/d/contest`。从比赛题目页下载的 ZIP 已带该地址。[v2.3.0 发布附件](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.3.0)
+管理员也可在发布页下载六个平台的独立程序和 SHA-256 清单。分发独立程序时，在 `install --server` 后填写比赛域的完整地址，例如 `https://oj.example.edu/d/contest`。从比赛题目页下载的 ZIP 已带该地址。[v2.4.0 发布附件](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.4.0)
 
 ```sh
 submit info
