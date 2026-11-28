@@ -78,6 +78,7 @@ function setup(saved = new Map<string, any>(), config: Record<string, unknown> =
             || name === 'xcpcio.presence' || name === 'iplogin' || name === 'user' || name === 'vuser' ? resolverDb.db.collection(name as any) : collection) },
         Route: (name: string, _path: string, handler: any) => { routes.set(name, handler); },
         Connection: (name: string, _path: string, handler: any) => { routes.set(name, handler); },
+        withHandlerClass: vi.fn(),
         effect: vi.fn((factory: () => () => unknown) => { const stop = factory(); if (typeof stop === 'function') cleanup.push(stop); }),
         broadcast: vi.fn(),
         i18n: { load: vi.fn() },

@@ -191,7 +191,7 @@ export function createCapturePreview(env: Environment, options: {
             const info = settings.enabled && settings.prompt
                 ? { url: `${base}/live-capture/me${url.search}`, channel: 'xcpcio-capture-demo', contest: contest.title, screenPublic: settings.screenDuringContest, webcam: settings.webcam, recording: settings.recording.clips.enabled || settings.recording.archive.enabled } : null;
             response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>比赛题目 · ${contest.title}</title></head>
-<body style="font-family:sans-serif;padding:24px"><h1>${contest.title}</h1><p>（预览：参赛选手看到的比赛页面${info ? '' : '。本场比赛未启用画面采集或未开启弹窗提示，所以没有提示'}）</p><p><a href="${base}/problems${url.search}">换一页</a></p>
+<body style="font-family:sans-serif;padding:24px"><h1>${contest.title}</h1><p>（预览：参赛选手看到的比赛页面${info ? '' : '。本场比赛未启用画面采集或未开启弹窗提示，所以没有提示'}）</p><p><a href="${base}/problems${url.search}">换一页</a> · <a href="${base}/submit-client">选手命令行 submit</a></p>
 <script type="module">import { installCapturePrompt } from '/preview-frontend/capture-prompt.js'; const info = ${JSON.stringify(info)}; if (info) installCapturePrompt(info);</script></body></html>`);
             return true;
         }
