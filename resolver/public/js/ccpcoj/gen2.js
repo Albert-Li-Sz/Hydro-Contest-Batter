@@ -4,22 +4,22 @@
 // darker square, the minute after). Awards open a full-screen sheet: a blue 4:3 photo stage on
 // the left and the team's details on the right. Drawn with this plugin's own code; logical
 // pixels, 1080 high and L.width wide.
-import { HEIGHT, box, cropImage, hash, star, stroke, teamName, text, unit } from './draw.js';
+import { HEIGHT, box, cropImage, hash, mono, star, stroke, teamName, text, unit } from './draw.js';
 
 export const colors = {
     ink: '#1f2937', soft: '#374151', muted: '#6b7280', line: '#e5e7eb', head: '#f3f5f8', page: '#ffffff',
     accent: '#2563eb', judging: '#eaf2ff', recent: '#f5f9ff',
 };
 const zones = {
-    gold: { fill: '#f6c445', ink: '#3b2f00' }, silver: { fill: '#cfd6de', ink: '#1f2937' },
-    bronze: { fill: '#e0a872', ink: '#3a2108' }, none: { fill: '#eef1f4', ink: '#1f2937' },
+    gold: { fill: '#f6c22e', edge: '#d9a514', ink: '#2e2400' }, silver: { fill: '#d3d9e0', edge: '#aab3bd', ink: '#1f2937' },
+    bronze: { fill: '#e3a96f', edge: '#c0854a', ink: '#331b05' }, none: { fill: '#eef0f3', edge: '#dde1e6', ink: '#374151' },
 };
 const chips = {
-    solved: { fill: '#1f7a4d', deep: '#125233', ink: '#ffffff' },
-    first: { fill: '#2b5fae', deep: '#1c437f', ink: '#ffffff' },
-    failed: { fill: '#c93a4a', deep: '#9c2735', ink: '#ffffff' },
-    pending: { fill: '#e0b43a', deep: '#bf931f', ink: '#2b2100' },
-    untried: { fill: '#e9ecef', deep: '#e9ecef', ink: '#6c757d' },
+    solved: { fill: '#176c43', deep: '#0f4c2f', ink: '#ffffff' },
+    first: { fill: '#2457a3', deep: '#1a3f78', ink: '#ffffff' },
+    failed: { fill: '#c0392b', deep: '#962c21', ink: '#ffffff' },
+    pending: { fill: '#f4c430', deep: '#d4a514', ink: '#2b2100' },
+    untried: { fill: '#e9ecef', deep: '#e9ecef', ink: '#868e96' },
 };
 const plaques = {
     gold: { top: '#fdf0b8', bottom: '#f1d27a', edge: '#c9a43a', ink: '#6b4e00', en: 'Gold' },
@@ -103,14 +103,13 @@ export function stageLayout(width, rowsPerScreen, teamCount, problemCount) {
     const count = Math.max(1, Math.min(teamCount, 20, Math.max(4, Number(rowsPerScreen) || 12)));
     const tableTop = 70;
     const pitch = Math.floor((HEIGHT - tableTop - 6) / count);
-    // Proportions of a CCPCOJ-2 row, 114 units high.
+    // Proportions of a CCPCOJ-2 row, 114 units high; problem columns share the rest of the row.
     const u = pitch / 114;
-    const contentX = left + 201 * u;
-    const area = right - contentX - 8 * u;
-    const column = Math.min(area / Math.max(1, problemCount), 170 * u);
+    const contentX = left + 200 * u;
+    const area = right - contentX - 10 * u;
     return { width, left, right, inner: right - left, count, tableTop, pitch, u,
-        rankX: left + 15 * u, rankW: 102 * u, logoX: left + 123 * u, logoW: 72 * u, nameX: left + 206 * u,
-        contentX, column };
+        rankX: left + 14 * u, rankW: 100 * u, logoX: left + 124 * u, logoW: 70 * u, nameX: left + 206 * u,
+        contentX, column: area / Math.max(1, problemCount) };
 }
 
 function header(ctx, L, problems) {
@@ -124,37 +123,41 @@ function header(ctx, L, problems) {
     label('排名', 'Rank', L.rankX + L.rankW / 2, L.rankW);
     label('标志', 'Logo', L.logoX + L.logoW / 2, L.logoW);
     problems.forEach((problem, p) => {
-        text(ctx, problem.label, L.contentX + (p + .5) * L.column, 36, L.column - 4 * u, 22, { align: 'center', weight: 800 });
+        text(ctx, problem.label, L.contentX + (p + .5) * L.column, 37, L.column - 4 * u, 23, { align: 'center', weight: 800, family: mono, color: colors.soft });
     });
 }
 
+/** A problem chip: attempts in a darker square (plain when solved first try), then the minute. */
 function chip(ctx, cell, problem, x, y, w, h, u, { judging = false, pulse = 0, glow = 0 } = {}) {
-    const kind = kindOf(cell), style = chips[kind], r = 3 * u;
+    const kind = kindOf(cell), style = chips[kind], r = 4 * u;
     if (judging) {
         ctx.save();
         ctx.shadowColor = 'rgba(37,99,235,' + (.35 + .45 * pulse).toFixed(2) + ')';
-        ctx.shadowBlur = 8 + 10 * pulse;
+        ctx.shadowBlur = 8 + 12 * pulse;
         box(ctx, style.fill, x, y, w, h, r);
         ctx.restore();
     } else box(ctx, style.fill, x, y, w, h, r);
+    const size = Math.min(20 * u, h * .62), cy = y + h / 2 + 1;
     if (kind === 'untried') {
-        text(ctx, problem?.label, x + w / 2, y + h / 2 + 1, w - 6 * u, 18 * u, { align: 'center', color: style.ink, weight: 700 });
+        text(ctx, problem?.label, x + w / 2, cy, w - 6 * u, size, { align: 'center', color: style.ink, weight: 800, family: mono });
     } else {
         const attempts = cell?.attempts || 1;
-        const sq = Math.min(h * .9, w * .34);
-        const deep = attempts > 1 || kind === 'pending';
-        if (deep) box(ctx, style.deep, x + 2 * u, y + 2 * u, sq, h - 4 * u, 2 * u);
-        text(ctx, attempts, x + 2 * u + sq / 2, y + h / 2 + 1, sq - 2 * u, 19 * u,
-            { align: 'center', color: deep ? style.ink : 'rgba(255,255,255,0.72)', weight: 700, squeeze: .7 });
-        if (kind === 'pending' && !deep) {
-            text(ctx, attempts, x + 2 * u + sq / 2, y + h / 2 + 1, sq - 2 * u, 19 * u, { align: 'center', color: style.ink, squeeze: .7 });
-        }
+        const sq = Math.min(h - 4 * u, w * .36);
+        const deep = attempts > 1 || kind === 'pending' || kind === 'failed';
+        if (deep) box(ctx, style.deep, x + 2 * u, y + 2 * u, sq, h - 4 * u, 3 * u);
+        text(ctx, attempts, x + 2 * u + sq / 2, cy, sq - 2 * u, size, {
+            align: 'center', family: mono, squeeze: .7,
+            color: deep ? style.ink : 'rgba(255,255,255,0.62)', weight: deep ? 800 : 500,
+        });
         const minute = cell?.time == null ? '?' : cell.time + "'";
-        text(ctx, minute, x + w - 6 * u, y + h / 2 + 1, w - sq - 12 * u, 19 * u, { align: 'right', color: style.ink, weight: 800, squeeze: .7 });
+        const rest = x + 2 * u + sq, room = x + w - rest;
+        // A wide chip centres the minute in its space; a narrow one sets it at the right edge.
+        if (room > 150 * u) text(ctx, minute, rest + room / 2, cy, room - 12 * u, size, { align: 'center', color: style.ink, weight: 800, family: mono, squeeze: .7 });
+        else text(ctx, minute, x + w - 7 * u, cy, room - 10 * u, size, { align: 'right', color: style.ink, weight: 800, family: mono, squeeze: .7 });
     }
-    if (kind === 'first') star(ctx, x + w - 2 * u, y + 1 * u, 13 * u, '#f5b301');
     if (glow > 0) box(ctx, 'rgba(255,255,255,' + (glow * .55).toFixed(3) + ')', x, y, w, h, r);
-    if (judging) stroke(ctx, colors.accent, x - 2 * u, y - 2 * u, w + 4 * u, h + 4 * u, r + 2 * u, 2.5 * u);
+    if (kind === 'first') star(ctx, x + w - 3 * u, y + 2 * u, 21 * u, '#f5b301');
+    if (judging) stroke(ctx, colors.accent, x - 3 * u, y - 3 * u, w + 6 * u, h + 6 * u, r + 3 * u, 2.5 * u);
 }
 
 export function board(ctx, L, data, teamOf, problems, logoOf, fx) {
@@ -171,40 +174,39 @@ export function board(ctx, L, data, teamOf, problems, logoOf, fx) {
         if (row.judging) box(ctx, colors.accent, L.left, y + 4 * u, 4 * u, rowH - 8 * u, 2 * u);
 
         const zone = zones[row.medal] || zones.none;
-        box(ctx, zone.fill, L.rankX, y + 6 * u, L.rankW, 58 * u, 4 * u);
-        text(ctx, row.rank || '*', L.rankX + L.rankW / 2, y + 35 * u, L.rankW - 8 * u, 26 * u, { align: 'center', color: zone.ink, weight: 800 });
-        const statY = y + 68 * u, statH = 36 * u, solvedW = 42 * u;
-        box(ctx, '#ffffff', L.rankX, statY, solvedW, statH, 3 * u);
-        stroke(ctx, colors.line, L.rankX, statY, solvedW, statH, 3 * u, Math.max(1, u));
-        box(ctx, '#ffffff', L.rankX + solvedW + 4 * u, statY, L.rankW - solvedW - 4 * u, statH, 3 * u);
-        stroke(ctx, colors.line, L.rankX + solvedW + 4 * u, statY, L.rankW - solvedW - 4 * u, statH, 3 * u, Math.max(1, u));
-        text(ctx, row.score?.solved ?? 0, L.rankX + solvedW / 2, statY + statH / 2 + 1, solvedW - 4 * u, 24 * u, { align: 'center', weight: 800 });
-        text(ctx, row.score?.time ?? 0, L.rankX + solvedW + 4 * u + (L.rankW - solvedW - 4 * u) / 2, statY + statH / 2 + 1,
-            L.rankW - solvedW - 10 * u, 17 * u, { align: 'center', color: colors.soft, squeeze: .7 });
+        box(ctx, zone.fill, L.rankX, y + 7 * u, L.rankW, 56 * u, 5 * u);
+        stroke(ctx, zone.edge, L.rankX, y + 7 * u, L.rankW, 56 * u, 5 * u, 1.5 * u);
+        text(ctx, row.rank || '*', L.rankX + L.rankW / 2, y + 36 * u, L.rankW - 10 * u, 30 * u, { align: 'center', color: zone.ink, weight: 800, family: mono });
+        const statY = y + 69 * u, statH = 36 * u, solvedW = 40 * u, timeX = L.rankX + solvedW + 4 * u, timeW = L.rankW - solvedW - 4 * u;
+        box(ctx, '#f4f5f7', L.rankX, statY, solvedW, statH, 4 * u);
+        box(ctx, '#f4f5f7', timeX, statY, timeW, statH, 4 * u);
+        text(ctx, row.score?.solved ?? 0, L.rankX + solvedW / 2, statY + statH / 2 + 1, solvedW - 4 * u, 27 * u, { align: 'center', weight: 800, family: mono });
+        text(ctx, row.score?.time ?? 0, timeX + timeW / 2, statY + statH / 2 + 1, timeW - 6 * u, 18 * u, { align: 'center', color: colors.soft, weight: 700, family: mono, squeeze: .7 });
 
-        const logoY = y + 8 * u, size = L.logoW;
-        box(ctx, '#ffffff', L.logoX, logoY, size, size, 7 * u);
-        stroke(ctx, colors.line, L.logoX, logoY, size, size, 7 * u, Math.max(1, u));
-        if (!cropImage(ctx, logoOf(team), L.logoX + 4 * u, logoY + 4 * u, size - 8 * u, size - 8 * u, false, 5 * u)) {
-            seal(ctx, team?.organizationName || teamName(team), L.logoX + size / 2, logoY + size / 2, size * .9);
+        // The school mark sits in a soft tile centred on the row.
+        const size = L.logoW, logoY = y + (rowH - size) / 2;
+        box(ctx, '#f5f6f8', L.logoX, logoY, size, size, 8 * u);
+        stroke(ctx, '#e3e6ea', L.logoX, logoY, size, size, 8 * u, Math.max(1, u));
+        if (!cropImage(ctx, logoOf(team), L.logoX + 6 * u, logoY + 6 * u, size - 12 * u, size - 12 * u, false, 4 * u)) {
+            seal(ctx, team?.organizationName || teamName(team), L.logoX + size / 2, logoY + size / 2, size * .86);
         }
 
-        const nameY = y + 32 * u, icon = 22 * u;
-        if (team?.unrank) star(ctx, L.nameX + icon / 2, nameY, icon * 1.1, '#9ca3af');
-        else hexagon(ctx, L.nameX + icon / 2, nameY, icon, '#3b6fd8');
+        const nameY = y + 36 * u, icon = 21 * u;
+        if (team?.unrank) star(ctx, L.nameX + icon / 2, nameY, icon * 1.15, '#9ca3af');
+        else hexagon(ctx, L.nameX + icon / 2, nameY, icon, '#4a77d4');
         const school = data.showSchool && team?.organizationName;
-        const startX = L.nameX + icon + 12 * u, room = L.right - startX - 10 * u;
+        const startX = L.nameX + icon + 13 * u, room = L.right - startX - 10 * u;
         if (school) {
-            ctx.font = '800 ' + 36 * u + 'px "Contest Noto Sans SC", sans-serif';
+            ctx.font = '800 ' + 33 * u + 'px "Contest Noto Sans SC", sans-serif';
             const schoolW = Math.min(room * .55, ctx.measureText(school).width);
-            text(ctx, school, startX, nameY + u, schoolW, 36 * u, { weight: 800 });
-            const bar = startX + schoolW + 12 * u;
-            box(ctx, colors.accent, bar, nameY - 19 * u, 3 * u, 38 * u, 1.5 * u);
-            text(ctx, teamName(team), bar + 12 * u, nameY + u, L.right - bar - 22 * u, 28 * u, { color: colors.soft, weight: 600 });
-        } else text(ctx, teamName(team), startX, nameY + u, room, 34 * u, { weight: 800 });
+            text(ctx, school, startX, nameY + u, schoolW, 33 * u, { weight: 800, color: '#111827' });
+            const bar = startX + schoolW + 13 * u;
+            box(ctx, '#3b82f6', bar, nameY - 20 * u, 2 * u, 40 * u);
+            text(ctx, teamName(team), bar + 13 * u, nameY + u, L.right - bar - 23 * u, 25 * u, { color: '#4b5563', weight: 600 });
+        } else text(ctx, teamName(team), startX, nameY + u, room, 33 * u, { weight: 800, color: '#111827' });
 
         const cells = row.cells || data.state.results[row.id] || [];
-        const chipY = y + 70 * u, chipH = 34 * u;
+        const chipY = y + 72 * u, chipH = 32 * u;
         problems.forEach((problem, p) => {
             const judging = row.judging && data.problemIndex === p;
             chip(ctx, cells[p], problem, L.contentX + p * L.column + 3 * u, chipY, L.column - 6 * u, chipH, u,
@@ -284,6 +286,21 @@ function field(ctx, x, y, w, zh, en, value, size) {
     return y + 104;
 }
 
+/** A line ending in a diamond, the ornament at each end of an award plaque. */
+function ornament(ctx, x, y, length, color, flip) {
+    ctx.save();
+    ctx.translate(x, y);
+    if (flip) ctx.scale(-1, 1);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(0, -7); ctx.lineTo(7, 0); ctx.lineTo(0, 7); ctx.lineTo(-7, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillRect(10, -1, length, 2);
+    ctx.beginPath(); ctx.arc(length + 14, 0, 2.5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+}
+
 /** The award sheet: a 4:3 photo stage on the left and the team's details on the right. */
 export function awardCard(ctx, L, info, enter, photo, logo, summary) {
     const show = unit(enter);
@@ -292,10 +309,13 @@ export function awardCard(ctx, L, info, enter, photo, logo, summary) {
     const panelW = Math.max(420, Math.min(560, L.width * .24));
     const stageW = L.width - panelW;
     const sheet = stage(ctx, 0, 0, stageW, HEIGHT, summary.title, 'TEAM PHOTO');
-    const { frame } = sheet;
+    const { frame, plaque } = sheet;
     if (!cropImage(ctx, photo, frame.x, frame.y, frame.w, frame.h, true, 22)) {
-        medal(ctx, frame.x + frame.w / 2, frame.y + frame.h * .6, Math.min(frame.h * .62, frame.w * .5), info.medal);
-        box(ctx, 'rgba(255,255,255,0.35)', frame.x + frame.w * .07, frame.y + frame.h * .93, frame.w * .86, 4, 2);
+        // The flat medal stage: the medal hangs below the title plaque over a floor line.
+        const top = plaque.y + plaque.h + 40, floor = frame.y + frame.h * .9;
+        const size = Math.min((floor - top - 20) / 1.04, frame.w * .42);
+        medal(ctx, frame.x + frame.w / 2, top + size * .62, size, info.medal);
+        box(ctx, 'rgba(255,255,255,0.35)', frame.x + frame.w * .07, floor, frame.w * .86, 4, 2);
     }
     sheet.draw();
     const x = stageW + 24, w = panelW - 48;
@@ -303,8 +323,8 @@ export function awardCard(ctx, L, info, enter, photo, logo, summary) {
     box(ctx, '#ffffff', stageW, 0, panelW, HEIGHT);
     if (logo) {
         ctx.save();
-        ctx.globalAlpha *= .12;
-        cropImage(ctx, logo, stageW + panelW - 230, 30, 200, 200, false);
+        ctx.globalAlpha *= .14;
+        cropImage(ctx, logo, stageW + panelW - 236, 24, 212, 212, false);
         ctx.restore();
     }
     let y = 58;
@@ -319,17 +339,36 @@ export function awardCard(ctx, L, info, enter, photo, logo, summary) {
         box(ctx, vertical(ctx, y, 96, tone.top, tone.bottom), x, y, w, 96, 6);
         stroke(ctx, tone.edge, x, y, w, 96, 6, 2);
         stroke(ctx, tone.edge, x + 6, y + 6, w - 12, 84, 4, 1);
-        text(ctx, info.title + (tone.en ? '  ' + tone.en : ''), x + w / 2, y + 49, w - 40, 40, { align: 'center', color: tone.ink, weight: 800, squeeze: .55 });
+        ctx.save();
+        ctx.globalAlpha *= .7;
+        ornament(ctx, x + 24, y + 48, 26, tone.edge, false);
+        ornament(ctx, x + w - 24, y + 48, 26, tone.edge, true);
+        ctx.restore();
+        text(ctx, info.title + (tone.en ? '  ' + tone.en : ''), x + w / 2, y + 49, w - 140, 40, { align: 'center', color: tone.ink, weight: 800, squeeze: .55 });
         y += 112;
     }
-    for (const citation of info.others.slice(0, 4)) {
-        box(ctx, '#eef4ff', x, y, w, 54, 6);
-        stroke(ctx, '#c7d7fe', x, y, w, 54, 6, 1.5);
-        text(ctx, citation, x + w / 2, y + 28, w - 30, 24, { align: 'center', color: '#1e3a8a', weight: 700, squeeze: .55 });
-        y += 64;
+    for (const citation of info.others.slice(0, 3)) {
+        box(ctx, '#eef4ff', x, y, w, 52, 6);
+        stroke(ctx, '#c7d7fe', x, y, w, 52, 6, 1.5);
+        text(ctx, citation, x + w / 2, y + 27, w - 30, 24, { align: 'center', color: '#1e3a8a', weight: 700, squeeze: .55 });
+        y += 62;
     }
     const stats = [['全场排名', 'OVERALL RANK', info.rank], ['解题数', 'SOLVED', info.solved], ['首答', 'FIRST SOLVE', info.firsts || '—']];
     const boxH = stats.length * 62, top = HEIGHT - 30 - boxH;
+    // The team's problems fill the space above the totals, in the board's chip style.
+    const problems = info.problems || [];
+    if (problems.length && top - y > 120) {
+        y += 8;
+        text(ctx, '解题', x, y, w * .5, 17, { color: colors.soft, weight: 700 });
+        spaced(ctx, 'PROBLEMS', x + w, y, w * .5, 12, { align: 'right', color: colors.muted });
+        y += 22;
+        const columns = Math.min(problems.length, problems.length > 8 ? 5 : 4), gap = 8;
+        const chipW = (w - gap * (columns - 1)) / columns, chipH = 40;
+        const fit = Math.max(1, Math.floor((top - 16 - y) / (chipH + gap)));
+        problems.slice(0, fit * columns).forEach((problem, i) => {
+            chip(ctx, info.cells?.[i], problem, x + (i % columns) * (chipW + gap), y + Math.floor(i / columns) * (chipH + gap), chipW, chipH, 1.15);
+        });
+    }
     box(ctx, '#ffffff', x, top, w, boxH, 8);
     stroke(ctx, colors.line, x, top, w, boxH, 8, 1.5);
     stats.forEach(([zh, en, value], i) => {
@@ -337,7 +376,7 @@ export function awardCard(ctx, L, info, enter, photo, logo, summary) {
         if (i) box(ctx, colors.line, x, ry, w, 1);
         text(ctx, zh, x + 16, ry + 24, w * .5, 18, { weight: 700 });
         spaced(ctx, en, x + 16, ry + 45, w * .55, 11, { color: colors.muted });
-        text(ctx, value, x + w - 16, ry + 32, w * .42, 36, { align: 'right', weight: 800, squeeze: .6 });
+        text(ctx, value, x + w - 16, ry + 32, w * .42, 36, { align: 'right', weight: 800, squeeze: .6, family: mono });
     });
     ctx.restore();
 }

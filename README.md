@@ -18,12 +18,12 @@ Hydro OJ 的 ACM 办赛插件。工作人员可以在 Hydro 内配置赛制与�
 
 **从 v2.3.0 或更早版本升级**　升级后首次启动 Hydro 时，插件会永久清除历届比赛的证书配置、签发记录和上传素材。旧领取链接和验真二维码随之失效。需要留档时，请在升级前备份证书数据。[备份范围](docs/usage.md#升级前备份证书数据)
 
-需要 Hydro 5.x 和 Node.js 22 或更高版本。用运行 Hydro 的系统账号下载并校验 v2.6.0 安装包。使用自定义 profile、容器或其他进程管理器时，请按部署方式选择安装步骤。[安装与升级图解](https://albert-li-sz.github.io/Hydro-Contest-Better/#install)
+需要 Hydro 5.x 和 Node.js 22 或更高版本。用运行 Hydro 的系统账号下载并校验 v2.6.1 安装包。使用自定义 profile、容器或其他进程管理器时，请按部署方式选择安装步骤。[安装与升级图解](https://albert-li-sz.github.io/Hydro-Contest-Better/#install)
 
 ```sh
-release=https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/download/v2.6.0
-package=hydro-scoreboard-xcpcio-plus-2.6.0.tgz
-mkdir -p hydro-contest-2.6.0 && cd hydro-contest-2.6.0
+release=https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/download/v2.6.1
+package=hydro-scoreboard-xcpcio-plus-2.6.1.tgz
+mkdir -p hydro-contest-2.6.1 && cd hydro-contest-2.6.1
 curl -fLO "$release/$package" && curl -fLO "$release/$package.sha256"
 sha256sum -c "$package.sha256" && tar -xzf "$package"
 ```
@@ -46,7 +46,7 @@ sha256sum -c "$package.sha256" && tar -xzf "$package"
 | 制作颁奖台本、播放离线幻灯片或导出 PowerPoint | [赛后滚榜](https://albert-li-sz.github.io/Hydro-Contest-Better/#resolver) · [颁奖幻灯片](https://albert-li-sz.github.io/Hydro-Contest-Better/#ceremony) |
 | 复核重测结果、导出获奖名单或对接 CCS | [赛后滚榜](https://albert-li-sz.github.io/Hydro-Contest-Better/#resolver) · [成绩与导出](https://albert-li-sz.github.io/Hydro-Contest-Better/#results) · [CCS API](https://albert-li-sz.github.io/Hydro-Contest-Better/#integration) |
 
-媒体机是可选组件。在 **采集与播出 → 媒体机连接** 创建连接，将复制的 `HYDRO_MEDIA_CONNECTION` 写入媒体机的 `.env`，再用 Docker Compose 启动。插件 v2.6.0 配用媒体机镜像 `ghcr.io/albert-li-sz/reactions-generator-hydro:2.3.0`，支持 Linux amd64 和 arm64。[Compose 配置](https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.compose.yaml)
+媒体机是可选组件。在 **采集与播出 → 媒体机连接** 创建连接，将复制的 `HYDRO_MEDIA_CONNECTION` 写入媒体机的 `.env`，再用 Docker Compose 启动。插件 v2.6.1 配用媒体机镜像 `ghcr.io/albert-li-sz/reactions-generator-hydro:2.3.0`，支持 Linux amd64 和 arm64。[Compose 配置](https://albert-li-sz.github.io/Hydro-Contest-Better/media-worker.compose.yaml)
 
 ## 开发与许可
 

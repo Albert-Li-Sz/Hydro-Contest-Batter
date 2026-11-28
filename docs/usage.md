@@ -116,12 +116,12 @@ Schema 测试固定使用官方 2026-01 分支文件；上游 schema 对 runs �
 
 ### 手动安装
 
-从 v2.6.0 发布页下载 `hydro-scoreboard-xcpcio-plus-2.6.0.tgz` 和同名 `.sha256` 文件，放入同一个目录。首次安装按以下步骤校验、解压、注册 addon 并重启服务。[v2.6.0 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.6.0)
+从 v2.6.1 发布页下载 `hydro-scoreboard-xcpcio-plus-2.6.1.tgz` 和同名 `.sha256` 文件，放入同一个目录。首次安装按以下步骤校验、解压、注册 addon 并重启服务。[v2.6.1 发布页](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.6.1)
 
 ```bash
-sha256sum -c hydro-scoreboard-xcpcio-plus-2.6.0.tgz.sha256
+sha256sum -c hydro-scoreboard-xcpcio-plus-2.6.1.tgz.sha256
 mkdir -p "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
-tar -xzf hydro-scoreboard-xcpcio-plus-2.6.0.tgz \
+tar -xzf hydro-scoreboard-xcpcio-plus-2.6.1.tgz \
   -C "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus" --strip-components=1
 hydrooj addon add "$HOME/.hydro/addons/hydro-scoreboard-xcpcio-plus"
 pm2 restart hydrooj
@@ -134,9 +134,9 @@ pm2 restart hydrooj
 在新的临时目录中校验并解压安装包。
 
 ```bash
-sha256sum -c hydro-scoreboard-xcpcio-plus-2.6.0.tgz.sha256
+sha256sum -c hydro-scoreboard-xcpcio-plus-2.6.1.tgz.sha256
 mkdir -p xcpcio-update
-tar -xzf hydro-scoreboard-xcpcio-plus-2.6.0.tgz -C xcpcio-update
+tar -xzf hydro-scoreboard-xcpcio-plus-2.6.1.tgz -C xcpcio-update
 ```
 
 首次安装运行 `bash xcpcio-update/package/install.sh install`。升级已有安装运行 `bash xcpcio-update/package/install.sh upgrade`。
@@ -741,7 +741,7 @@ Hydro 的系统管理员（`PRIV_EDIT_SYSTEM`）可在控制面板（`/manage`�
 
 在比赛题目页打开「选手命令行 submit」，选择 Linux、macOS 或 Windows 的 amd64 / arm64 安装包。解压到同一目录，运行 `./submit install`，Windows 使用 `.\submit.exe install`。安装包包含本比赛站点的域地址。命令通过 onsite-toolkit 的机位 IP 绑定识别选手。
 
-管理员也可在发布页下载六个平台的独立程序和 SHA-256 清单。分发独立程序时，在 `install --server` 后填写比赛域的完整地址，例如 `https://oj.example.edu/d/contest`。从比赛题目页下载的 ZIP 已带该地址。[v2.6.0 发布附件](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.6.0)
+管理员也可在发布页下载六个平台的独立程序和 SHA-256 清单。分发独立程序时，在 `install --server` 后填写比赛域的完整地址，例如 `https://oj.example.edu/d/contest`。从比赛题目页下载的 ZIP 已带该地址。[v2.6.1 发布附件](https://github.com/Albert-Li-Sz/Hydro-Contest-Better/releases/tag/v2.6.1)
 
 ```sh
 submit info

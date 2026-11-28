@@ -1,7 +1,9 @@
 // Canvas 2D drawing primitives shared by the CCPCOJ-style resolver themes. Every function
 // paints in logical pixels: the stage is 1080 high and L.width wide.
 export const HEIGHT = 1080;
-const sans = '"Contest Noto Sans SC", "Microsoft YaHei", "PingFang SC", "Noto Sans SC", system-ui, sans-serif';
+export const sans = '"Contest Noto Sans SC", "Microsoft YaHei", "PingFang SC", "Noto Sans SC", system-ui, sans-serif';
+/** Figures on a scoreboard: fixed-width digits so columns of minutes and ranks line up. */
+export const mono = '"JetBrains Mono", "SF Mono", "SFMono-Regular", Menlo, Consolas, "Roboto Mono", "DejaVu Sans Mono", monospace';
 export const unit = x => Math.max(0, Math.min(1, x));
 
 export function teamName(team) {
@@ -20,11 +22,11 @@ export function teamName(team) {
  * would be) down to `squeeze` of its width, then cut with an ellipsis.
  */
 export function text(ctx, value, x, y, width, size, {
-    color = '#212529', align = 'left', weight = 700, squeeze = .62,
+    color = '#212529', align = 'left', weight = 700, squeeze = .62, family = sans,
 } = {}) {
     if (value == null || value === '' || width <= 0) return;
     let label = String(value);
-    ctx.font = weight + ' ' + size + 'px ' + sans;
+    ctx.font = weight + ' ' + size + 'px ' + family;
     ctx.textBaseline = 'middle';
     ctx.fillStyle = color;
     const natural = ctx.measureText(label).width;

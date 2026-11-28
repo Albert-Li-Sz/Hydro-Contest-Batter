@@ -279,7 +279,7 @@ export class ResolverViewCcpcoj {
         const rank = score?.rank || (team ? '*' : '');
         return {
             team, medal: medal ? tierOf(medal) : null, title: lead?.citation || '获奖', others,
-            rank, solved: score?.solved ?? 0, firsts: firsts.join(', '),
+            rank, solved: score?.solved ?? 0, firsts: firsts.join(', '), cells, problems: this.problems,
             rows: [['单位', team?.organizationName], ['队伍', teamName(team)], ['名次', rank],
                 ['首答', firsts.join(', ')], ['题数', score?.solved ?? ''], ['奖项', others.join('、')]],
         };

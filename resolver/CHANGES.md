@@ -125,3 +125,8 @@
 - 三维滚榜改为两种 Canvas 2D 样式：`public/js/ccpcoj/gen1.js`（CCPCOJ 一代，白底整屏榜单与获奖对话框）和 `gen2.js`（CCPCOJ 二代，深色开场幕布、双语表头、奖区名次块与全屏获奖页），共用 `draw.js` 的绘图工具和 `resolver-view-ccpcoj.js` 的揭晓节奏：先改变题目格和分数，再按 cubic-bezier(1, 0, 1, 1) 移到新名次，移动时长随距离增加。两种样式只参照 CCPCOJ 的版式，不含其代码或图片。删除 `public/js/render3d/`、Three.js 模块及其许可文件，机位选项随之移除。
 - 样式值为 `2d`、`ccpcoj`、`ccpcoj2`。引擎、滚榜配置和大屏设置把 v2.5 的旧值 `3d` 读作 `ccpcoj2`。
 - `public/js/render/renderer.js` 不再监听 WebGL 断连。CCPCOJ 样式模块加载或创建失败时回到原版 2D。缩略图上报不再需要先重绘 WebGL 缓冲区。
+
+## 2.6.1 的调整
+
+- `public/js/ccpcoj/gen2.js` 按 CCPCOJ-2 截图重做二代榜单细节：名次、题数、罚时、题号与分钟改用等宽字体；名次块加奖区深色描边，题数罚时改为浅底小格；校徽框在行内垂直居中；题目格按题目数平分整行，宽格把分钟居中；首解金星放大到格子右上角。获奖页的奖章改挂在标题牌下方，奖项牌匾两端加菱形线饰，右栏补充本队各题的解题格。`draw.js` 的 `text()` 增加字体族参数。
+
