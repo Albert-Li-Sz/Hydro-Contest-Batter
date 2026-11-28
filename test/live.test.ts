@@ -9,6 +9,8 @@ import { adminApi, defaultVisualConfig, overlayApi, overlayChannel, publicVisual
 import { stateEntries, stateFromEntries, type LiveStateEntries } from '../lib/live/state';
 import { QueueService } from '../lib/live/services';
 import { liveOverview } from '../lib/live/overview';
+import { OverlayClients, OVERLAY_KEEP_MS, OVERLAY_ONLINE_MS, overlayTokenHash, type OverlayEndpoint } from '../lib/live/overlay-clients';
+import { previewDatabase } from '../preview/resolver-memory-db';
 import { demoData } from './fixture';
 
 const minute = 60_000;
@@ -331,7 +333,11 @@ describe('live hub and admin api', () => {
         expect(JSON.parse((await adminApi(hub, store, request('POST', 'scoreboard/show_with_settings', { optimismLevel: 'optimistic', group: 'official' })))!.body))
             .toEqual({ status: 'ok', response: null });
         expect(screen.at(-1)).toMatchObject({ type: 'ShowWidget', widget: { type: 'ScoreboardWidget', widgetId: 'scoreboard', settings: { optimismLevel: 'optimistic', group: 'official', scrollDirection: 'Forward' } } });
+        expect(screen.at(-1).widget.settings.timeline).toBe(false);
         expect(actions).toEqual(['/api/admin/scoreboard/show_with_settings']);
+        await adminApi(hub, store, request('POST', 'scoreboard/show_with_settings', { timeline: true }));
+        expect(screen.at(-1).widget.settings.timeline).toBe(true);
+        expect((await adminApi(hub, store, request('POST', 'scoreboard', { timeline: 'true' })))!.status).toBe(400);
         expect(JSON.parse((await adminApi(hub, store, request('GET', 'scoreboard')))!.body)).toMatchObject({ shown: true, id: null });
         await adminApi(hub, store, request('POST', 'scoreboard/hide'));
         expect(screen.at(-1)).toEqual({ type: 'HideWidget', id: 'scoreboard' });
@@ -468,6 +474,9 @@ describe('live hub and admin api', () => {
         expect(overlayChannel('teamRuns/12')).toBe('teamRuns:12');
         expect(overlayChannel('scoreboard/other')).toBeNull();
         expect(overlayChannel('../secret')).toBeNull();
+        expect(overlayChannel('hydroControl')).toBeNull();
+        expect(overlayChannel('hydroControl', true)).toBe('hydroControl');
+        expect(await overlayApi(hub, 'hydroControl', '{}')).toBeNull();
         const visual = await overlayApi(hub, 'visualConfig.json', await store.visualConfig());
         expect(JSON.parse(visual!.body)).toMatchObject({ QUEUE_TITLE: '评测队列', SCOREBOARD_STANDINGS_NAME: '' });
         const info = JSON.parse((await overlayApi(hub, 'contestInfo', '{}'))!.body);
@@ -1037,5 +1046,70 @@ describe('live single-team bottom bar (school card and trend timeline)', () => {
         } finally {
             await hub.dispose();
         }
+    });
+});
+
+describe('live OBS overlay registrations', () => {
+    const contest = 'domain/contest';
+    const clientId = 'overlay-browser-A';
+    const now = 1_000_000;
+    const hello = { clientId, client: { width: 1920, height: 1080, dpr: 2, scene: 'stage', onlyWidgets: 'scoreboard', ua: 'OBS' } };
+    async function setup() {
+        const { db } = previewDatabase();
+        const docs = db.collection('xcpcio.live');
+        await docs.updateOne({ _id: contest }, { $set: { token: 'original' } }, { upsert: true });
+        const screen = new OverlayClients(db, () => {});
+        const staff = new OverlayClients(db, message => screen.receive(message));
+        const endpoint = (connection: string, token = 'original'): OverlayEndpoint => ({
+            contestKey: contest, connection, tokenHash: overlayTokenHash(token), ip: '127.0.0.1', send: vi.fn(),
+        });
+        await screen.ensureIndexes();
+        return { db, docs, screen, staff, endpoint };
+    }
+
+    it('routes commands across processes and only accepts receipts from the current connection', async () => {
+        const { screen, staff, endpoint } = await setup();
+        const first = endpoint('screen/1');
+        screen.attach(first);
+        await screen.hello(first, hello, now);
+        expect(await staff.list(contest, now)).toMatchObject([{ id: clientId, number: 1, online: true, client: hello.client }]);
+        expect(await staff.list('another/contest', now)).toEqual([]);
+        const { command } = await staff.command(contest, clientId, 'identify', now);
+        expect(first.send).toHaveBeenCalledExactlyOnceWith({ type: 'command', kind: 'identify', id: command.id, number: 1 });
+        const ack = { id: command.id, ok: true };
+        expect(await screen.acknowledge(first, ack, now + 1)).toMatchObject({ kind: 'identify', ok: true });
+        expect(await staff.list(contest, now + 2)).toMatchObject([{ ack: { id: command.id }, pending: [] }]);
+        const reconnect = endpoint('other/2');
+        screen.attach(reconnect);
+        await screen.hello(reconnect, hello, now + 5);
+        await screen.detach(first);
+        await screen.status(first, { client: {} }, now + 6);
+        const reload = await staff.command(contest, clientId, 'reload', now + 7);
+        expect(await screen.acknowledge(first, { id: reload.command.id, ok: true }, now + 8)).toBeNull();
+        await screen.status(reconnect, { client: { ...hello.client, width: 1280 } }, now + 10);
+        expect(await staff.list(contest, now + 10)).toMatchObject([{ number: 1, online: true, client: { width: 1280 }, pending: [reload.command] }]);
+        expect(await staff.list(contest, now + 10 + OVERLAY_ONLINE_MS)).toMatchObject([{ online: false }]);
+        await expect(staff.command(contest, clientId, 'reload', now + 10 + OVERLAY_ONLINE_MS)).rejects.toMatchObject({ status: 409 });
+        expect(await staff.list(contest, now + 11 + OVERLAY_KEEP_MS)).toEqual([]);
+    });
+
+    it('assigns distinct numbers, removes revoked links, and rejects delayed registrations for them', async () => {
+        const { db, docs, screen, staff, endpoint } = await setup();
+        const first = endpoint('a'), second = endpoint('b');
+        screen.attach(first); screen.attach(second);
+        await Promise.all([screen.hello(first, hello, now), screen.hello(second, { ...hello, clientId: 'overlay-browser-B' }, now)]);
+        expect((await staff.list(contest, now)).map(row => row.number)).toEqual([1, 2]);
+        await docs.updateOne({ _id: contest }, { $set: { token: 'replacement' } });
+        const next = endpoint('c', 'replacement');
+        screen.attach(next);
+        await screen.hello(next, hello, now + 1);
+        await staff.revoke(contest, 'original');
+        const late = endpoint('d');
+        screen.attach(late);
+        await expect(screen.hello(late, hello, now + 2)).rejects.toMatchObject({ status: 404 });
+        expect(await db.collection('xcpcio.live.overlays').countDocuments({ contestKey: contest })).toBe(1);
+        expect(await staff.list(contest, now + 2)).toMatchObject([{ number: 3, online: true }]);
+        await expect(staff.command(contest, clientId, 'unrecognised', now + 3)).rejects.toMatchObject({ status: 400 });
+        await expect(staff.command(contest, 'overlay-browser-B', 'reload', now + 3)).rejects.toMatchObject({ status: 404 });
     });
 });

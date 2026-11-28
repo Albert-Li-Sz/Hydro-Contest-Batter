@@ -59,6 +59,7 @@ export const queueSettings = (value: unknown) => ({ horizontal: bool(object(valu
 export const scoreboardSettings = (value: unknown) => {
     const input = object(value);
     return {
+        timeline: bool(input, 'timeline', false),
         scrollDirection: choice(input, 'scrollDirection', ['FirstPage', 'Back', 'Pause', 'Forward', 'LastPage'] as const, 'Forward'),
         optimismLevel: choice(input, 'optimismLevel', ['normal', 'optimistic', 'pessimistic'] as const, 'normal'),
         group: text(input, 'group', 'all', 100),

@@ -7,3 +7,12 @@
 .live-workspace .button { margin: 0; }
 .live-workspace pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .live-workspace > p { margin: 0; }
+
+.live-clients { list-style: none; margin: 0; padding: 0; }
+.live-client { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: center; gap: .75rem; padding: .75rem 0; border-top: 1px solid var(--resolver-border, #8885); overflow-wrap: anywhere; }
+.live-client:first-child { padding-top: 0; border-top: 0; }
+.live-client > div { min-width: 0; }
+.live-client [data-online] { margin-inline-start: .35rem; }
+.live-client[data-online="true"] [data-online] { color: var(--success-color, #15784d); }
+.live-client-actions { display: grid; gap: .25rem; }
+.live-client details p { margin: .25rem 0; }

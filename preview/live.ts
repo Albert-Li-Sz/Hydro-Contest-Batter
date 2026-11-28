@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
 import type { Environment } from 'nunjucks';
@@ -7,11 +8,13 @@ import type { BoardSettings } from '../lib/settings';
 import { toScriptJson } from '../lib/settings';
 import { resolverBoards, resolverCodeBase } from '../lib/resolver-data';
 import {
-    adminApi, adminChannel, adminRuntime, builtinMediaNames, defaultVisualConfig, liveUrls, overlayApi, overlayChannel, previewRuntime, readBuiltinMedia, shell, storeName,
+    adminApi, adminChannel, adminRuntime, builtinMediaNames, defaultVisualConfig, liveUrls, overlayApi, overlayChannel, overlayControlChannel, previewRuntime, readBuiltinMedia, shell, storeName,
 } from '../lib/live/api';
 import { LiveHub } from '../lib/live/hub';
+import { OverlayClients, OverlayError, OVERLAY_STATUS_MS, overlayTokenHash, type OverlayEndpoint } from '../lib/live/overlay-clients';
 import { stateFromEntries, type LiveStateEntries } from '../lib/live/state';
 import { createCapturePreview } from './capture';
+import { previewDatabase } from './resolver-memory-db';
 
 const verdicts = ['CORRECT', 'CORRECT', 'WRONG_ANSWER', 'TIME_LIMIT_EXCEEDED', 'RUNTIME_ERROR', 'COMPILATION_ERROR'];
 
@@ -26,6 +29,12 @@ export function createLivePreview(env: Environment, logoNames: Record<string, st
     let token = 'live0000000000000000000000000000000000000000000000';
     const mediaKey = 'media000000000000000000000000000000000000000000000';
     const urls = () => liveUrls(base, token, mediaKey);
+    // The OBS overlays open on the preview, kept in the same store the plugin uses (in memory here).
+    const contestKey = 'demo';
+    const memory = previewDatabase();
+    const liveDocs = memory.db.collection('xcpcio.live');
+    void liveDocs.updateOne({ _id: contestKey }, { $set: { token } }, { upsert: true });
+    const overlayClients = new OverlayClients(memory.db, () => {});
     const template = demo();
     const now = Date.now();
     const contest = {
@@ -113,9 +122,12 @@ export function createLivePreview(env: Environment, logoNames: Record<string, st
             if (request.method === 'POST') {
                 const body = await readBody(request);
                 if (body?.operation !== 'reset_token') { response.writeHead(400).end(); return true; }
-                token = `live${Date.now().toString(16).padStart(46, '0')}`;
+                const previous = token;
+                token = `live${randomUUID()}`;
+                await liveDocs.updateOne({ _id: contestKey }, { $set: { token } });
                 for (const [socket, used] of overlaySockets) if (used !== token) socket.close(4004, '直播链接已作废');
                 capture.revoke(token);
+                await overlayClients.revoke(contestKey, previous);
                 response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ overlay: urls().overlay }));
                 return true;
             }
@@ -124,6 +136,17 @@ export function createLivePreview(env: Environment, logoNames: Record<string, st
                 codeBase, tdoc: { title: contest.title },
                 runtimeJson: toScriptJson({ base: links.root, contestUrl: `${base}/scoreboard/xcpcio-plus`, title: contest.title, overlay: links.overlay, admin: links.adminBase }),
             }));
+            return true;
+        }
+        if (url.pathname === `${base}/live/overlays`) {
+            const json = (status: number, value: unknown) => response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(value));
+            if (request.method !== 'POST') { json(200, { overlays: await overlayClients.list(contestKey) }); return true; }
+            const body = await readBody(request);
+            try { json(200, await overlayClients.command(contestKey, body?.id, body?.action)); }
+            catch (error) {
+                if (!(error instanceof OverlayError)) throw error;
+                json(error.status, { error: error.message });
+            }
             return true;
         }
         if (url.pathname === `${base}/live/admin` || url.pathname.startsWith(`${base}/live/admin/`)) {
@@ -168,7 +191,7 @@ export function createLivePreview(env: Environment, logoNames: Record<string, st
         const overlay = /^\/contest\/demo\/live-overlay\/([^/]+)(?:\/api\/overlay\/(.*))?$/.exec(url.pathname);
         if (overlay) {
             if (overlay[1] !== token) { response.writeHead(404).end('直播链接无效或已作废'); return true; }
-            if (overlay[2] === undefined) { html(response, shell('overlay', urls(), `${contest.title} · 直播画面`)); return true; }
+            if (overlay[2] === undefined) { html(response, shell('overlay', { ...urls(), version }, `${contest.title} · 直播画面`)); return true; }
             const result = await overlayApi(hub, overlay[2], visualConfig);
             if (!result) response.writeHead(404).end('Not found');
             else response.writeHead(result.status, { 'Content-Type': result.type, 'Cache-Control': 'no-store' }).end(result.body);
@@ -198,10 +221,27 @@ export function createLivePreview(env: Environment, logoNames: Record<string, st
             const previewMatch = /^\/contest\/demo\/live\/ws\/overlay\/(.+)$/.exec(url.pathname);
             const channel = adminMatch ? adminChannel(adminMatch[1])
                 : previewMatch ? overlayChannel(previewMatch[1])
-                    : overlayMatch && overlayMatch[1] === token ? overlayChannel(overlayMatch[2]) : null;
+                    : overlayMatch && overlayMatch[1] === token ? overlayChannel(overlayMatch[2], true) : null;
             if (!channel) { socket.destroy(); return; }
             sockets.handleUpgrade(request, socket, head, (ws) => {
-                const unsubscribe = hub.subscribe(channel, (payload) => ws.send(typeof payload === 'string' ? payload : JSON.stringify(payload)));
+                let unsubscribe = () => {};
+                if (channel === overlayControlChannel) {
+                    // Like LiveOverlayConnectionHandler: hello, status reports and receipts.
+                    const endpoint: OverlayEndpoint = {
+                        contestKey, connection: `preview/${Math.random().toString(36).slice(2)}`, tokenHash: overlayTokenHash(overlayMatch![1]),
+                        ip: request.socket.remoteAddress || '', send: (message) => ws.send(JSON.stringify(message)),
+                    };
+                    overlayClients.attach(endpoint);
+                    const status = setInterval(() => endpoint.send({ type: 'requestStatus' }), OVERLAY_STATUS_MS);
+                    ws.on('message', async (data) => {
+                        let message: { type?: unknown } | null = null;
+                        try { message = JSON.parse(String(data)); } catch { return; }
+                        if (message?.type === 'hello') await overlayClients.hello(endpoint, message).catch(() => ws.close(4000));
+                        else if (message?.type === 'status') await overlayClients.status(endpoint, message);
+                        else if (message?.type === 'ack') await overlayClients.acknowledge(endpoint, message);
+                    });
+                    unsubscribe = () => { clearInterval(status); void overlayClients.detach(endpoint); };
+                } else unsubscribe = hub.subscribe(channel, (payload) => ws.send(typeof payload === 'string' ? payload : JSON.stringify(payload)));
                 if (overlayMatch) overlaySockets.set(ws, overlayMatch[1]);
                 ws.on('close', () => overlaySockets.delete(ws));
                 // Like Hydro's websocket layer (faster): text "ping" to a quiet client, closed if it never answers.
@@ -213,8 +253,10 @@ export function createLivePreview(env: Environment, logoNames: Record<string, st
                     } else if (Date.now() - heartbeat > 10_000) ws.send('ping');
                 }, 5000);
                 ws.on('message', () => { heartbeat = Date.now(); });
-                ws.on('close', () => { clearInterval(keepAlive); unsubscribe(); });
-                ws.on('error', () => { clearInterval(keepAlive); unsubscribe(); });
+                let done = false;
+                const end = () => { if (done) return; done = true; clearInterval(keepAlive); unsubscribe(); };
+                ws.on('close', end);
+                ws.on('error', end);
             });
         });
     };

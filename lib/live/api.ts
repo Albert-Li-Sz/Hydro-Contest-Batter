@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { toScriptJson } from '../settings';
+import { resolverCodeBase } from '../resolver-data';
 import type { LiveHub } from './hub';
 import { ApiActionError } from './widgets';
 import { teamViewPositions, type TeamViewPosition } from './widget-settings';
@@ -70,6 +71,10 @@ export interface LiveUrls {
     /** 画面采集 for the overlay (path only, like overlayWs). */
     captureWs: string;
     previewCaptureWs: string;
+    /** The overlay's control socket (path only), empty where the page is not an OBS overlay. */
+    controlWs: string;
+    /** Plugin version, reported by the overlay to the live settings page. */
+    version?: string;
 }
 
 export function liveUrls(contestBase: string, token: string, mediaKey: string): LiveUrls {
@@ -87,18 +92,21 @@ export function liveUrls(contestBase: string, token: string, mediaKey: string): 
         previewWs: `${contestBase}/live/ws/overlay`,
         captureWs: `${contestBase}/live-overlay/${token}/ws/capture`,
         previewCaptureWs: `${contestBase}/live/ws/capture`,
+        controlWs: `${contestBase}/live-overlay/${token}/ws/overlay/${overlayControlChannel}`,
     };
 }
 
 /** The console previews the overlay through its own login, so a token reset never breaks it. */
 export const adminRuntime = (urls: LiveUrls): LiveUrls => ({ ...urls, overlay: urls.preview });
-export const previewRuntime = (urls: LiveUrls): LiveUrls => ({ ...urls, overlayApi: urls.previewApi, overlayWs: urls.previewWs, captureWs: urls.previewCaptureWs });
+export const previewRuntime = (urls: LiveUrls): LiveUrls => ({ ...urls, overlayApi: urls.previewApi, overlayWs: urls.previewWs, captureWs: urls.previewCaptureWs, controlWs: '' });
 
 /** Admin websocket path -> hub channel. The console's contest info is the director's (full) view. */
 export function adminChannel(name: string) {
     if (!adminChannels.includes(name)) return null;
     return name === 'contestInfo' ? 'admin:contestInfo' : name;
 }
+
+export const overlayControlChannel = 'hydroControl';
 
 const shellCache = new Map<string, string>();
 /** A built ICPC Live page, told where its backend lives. */
@@ -122,7 +130,10 @@ export function shell(app: 'overlay' | 'admin', runtime: LiveUrls, title: string
         // ping away from their JSON handlers (this listener runs before any added later).
         + '(function(){var N=window.WebSocket;function W(u,p){var s=p===undefined?new N(u):new N(u,p);'
         + "s.addEventListener('message',function(e){if(e.data==='ping'){e.stopImmediatePropagation();try{s.send('pong');}catch(x){}}});return s;}"
-        + 'W.prototype=N.prototype;W.CONNECTING=0;W.OPEN=1;W.CLOSING=2;W.CLOSED=3;window.WebSocket=W;})();</script>';
+        + 'W.prototype=N.prototype;W.CONNECTING=0;W.OPEN=1;W.CLOSING=2;W.CLOSED=3;window.WebSocket=W;})();'
+        + '</script>'
+        + (app === 'overlay' && runtime.controlWs && runtime.version
+            ? `<script type="module" src="${resolverCodeBase(encodeURIComponent(runtime.version))}/js/hydro-live-overlay.js"></script>` : '');
     const escapedTitle = `<title>${title.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`)}</title>`;
     return html
         .replace(/<link rel="manifest"[^>]*>/g, '')
@@ -425,10 +436,12 @@ export async function adminApi(hub: LiveHub, store: LiveStore, request: ApiReque
 }
 
 /** Websocket and HTTP flow endpoints of /api/overlay. */
-export function overlayChannel(subpath: string) {
+export function overlayChannel(subpath: string, allowControl = false) {
     let parts: string[];
     try { parts = subpath.split('/').filter(Boolean).map(decodeURIComponent); }
     catch { return null; }
+    // Only the OBS overlay's own socket: not a hub channel, and not over HTTP.
+    if (parts.length === 1 && parts[0] === overlayControlChannel) return allowControl ? overlayControlChannel : null;
     if (parts.length === 1 && ['mainScreen', 'contestInfo', 'runs', 'queue', 'statistics', 'ticker', 'overview'].includes(parts[0])) return parts[0];
     if (parts.length === 2 && parts[0] === 'scoreboard' && ['normal', 'optimistic', 'pessimistic'].includes(parts[1])) return `scoreboard:${parts[1]}`;
     if (parts.length === 2 && (parts[0] === 'teamRuns' || parts[0] === 'teamTrend') && /^[\w-]{1,64}$/.test(parts[1])) return `${parts[0]}:${parts[1]}`;
