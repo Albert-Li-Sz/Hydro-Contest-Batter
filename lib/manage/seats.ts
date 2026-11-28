@@ -23,6 +23,7 @@ export interface SeatAccount {
     /** Display name in the domain, or the team name. */
     name: string;
     seat: string;
+    school?: string;
     loginat?: Date | null;
     loginip?: string;
     /** The team a member plays for, in a team contest. */
@@ -158,11 +159,76 @@ export function normalizeSeatEdit(input: unknown) {
     return { uid, kind, seat, ips };
 }
 
+/** Two tab-separated cells as copied from a spreadsheet. Validate the whole batch before writing. */
+export function parseSeatImport(mode: unknown, text: unknown) {
+    if (mode !== 'seat' && mode !== 'ip') throw new ManageError('请选择导入座位或 IP');
+    if (typeof text !== 'string' || text.length > 1_500_000) throw new ManageError('导入内容格式无效或过大');
+    const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/);
+    const entries: { account: string; value: string }[] = [];
+    for (const [index, line] of lines.entries()) {
+        if (!line.trim()) continue;
+        const cells = line.split('\t').map(cell => cell.trim());
+        if (cells.length !== 2 || !cells[0] || !cells[1] || cells[0].length > 128) throw new ManageError(`第 ${index + 1} 行请填写用制表符分隔的账号和${mode === 'ip' ? 'IP' : '座位'}`);
+        const value = mode === 'ip' ? normalizeIp(cells[1]) : cells[1];
+        if (mode === 'ip' ? !validIp(value) : value.length > 64) throw new ManageError(`第 ${index + 1} 行的${mode === 'ip' ? 'IP 地址' : '座位号'}无效`);
+        entries.push({ account: cells[0], value });
+    }
+    if (!entries.length || entries.length > SEAT_LIMIT) throw new ManageError(`请填写 1 至 ${SEAT_LIMIT} 行记录`);
+    return entries;
+}
+
+export function seatImportData(mode: unknown, entries: ReturnType<typeof parseSeatImport>, uids: number[], roster?: Set<number>): SeatBackupData {
+    const seats = new Map<number, string>();
+    const ips = new Map<string, number>();
+    for (const [index, { account, value }] of entries.entries()) {
+        const uid = uids[index];
+        if (!Number.isSafeInteger(uid) || !uid || (roster && !roster.has(uid))) throw new ManageError(`账号 ${account} 不在所选范围内`);
+        if (mode === 'ip') {
+            if (uid < 0) throw new ManageError(`${account} 是虚拟队伍，请填写可登录的队员账号`);
+            if (ips.has(value) && ips.get(value) !== uid) throw new ManageError(`IP ${value} 对应多个账号`);
+            ips.set(value, uid);
+        } else {
+            if (seats.has(uid) && seats.get(uid) !== value) throw new ManageError(`账号 ${account} 对应多个座位`);
+            seats.set(uid, value);
+        }
+    }
+    return { seats: [...seats].map(([uid, seat]) => ({ uid, kind: uid < 0 ? 'team' : 'user', seat })), ips: [...ips].map(([ip, uid]) => ({ ip, uid })) };
+}
+
+/** A virtual team and its (login-capable) members count once, including individual entrants. */
+export function seatCoverage(rows: SeatRow[], unmatched: { ip: string; uid: number }[]) {
+    const groups = new Map<number, SeatRow[]>();
+    for (const row of rows) {
+        if (row.missing) continue;
+        const key = row.group ?? row.uid;
+        const group = groups.get(key) || [];
+        group.push(row);
+        groups.set(key, group);
+    }
+    const teams = [...groups].map(([uid, group]) => {
+        const owner = group.find(row => row.uid === uid);
+        const members = group.filter(row => row.kind === 'user');
+        const schools = new Map<string, number>();
+        for (const row of members) if (row.school) schools.set(row.school, (schools.get(row.school) || 0) + 1);
+        return {
+            uid, name: owner?.name || group[0].team || group[0].name || group[0].uname,
+            school: owner?.school || [...schools].sort((a, b) => b[1] - a[1])[0]?.[0] || '',
+            seat: owner?.seat || group.find(row => row.seat)?.seat || '',
+            accounts: members.map(row => row.uname), ips: members.flatMap(row => row.ips),
+        };
+    });
+    teams.sort((a, b) => Number(!a.seat) - Number(!b.seat) || collator.compare(a.seat, b.seat) || a.uid - b.uid);
+    return { teams, bound: teams.filter(team => team.ips.length).length, unmatched };
+}
+
 // ---------------------------------------------------------------- Backup, cleanup, restore
 
 export interface SeatBackupData {
     seats: { uid: number; kind: SeatKind; seat: string }[];
     ips: { ip: string; uid: number }[];
+    /** Keys that were empty before an import or restore. */
+    emptySeats?: number[];
+    freeIps?: string[];
 }
 
 export function backupOf(rows: SeatRow[]): SeatBackupData {
@@ -174,7 +240,7 @@ export function backupOf(rows: SeatRow[]): SeatBackupData {
 
 /** The downloaded file, and what an uploaded one must look like. */
 export function backupFile(data: SeatBackupData, meta: { createdAt: Date; label: string }) {
-    return { format: BACKUP_FORMAT, version: 1, createdAt: meta.createdAt.toISOString(), label: meta.label, seats: data.seats, ips: data.ips };
+    return { format: BACKUP_FORMAT, version: 1, createdAt: meta.createdAt.toISOString(), label: meta.label, seats: data.seats, ips: data.ips, ...(data.emptySeats?.length ? { emptySeats: data.emptySeats } : {}), ...(data.freeIps?.length ? { freeIps: data.freeIps } : {}) };
 }
 
 export function normalizeBackup(input: unknown): SeatBackupData {
@@ -195,7 +261,11 @@ export function normalizeBackup(input: unknown): SeatBackupData {
         if (!Number.isSafeInteger(uid) || uid <= 0 || !validIp(ip)) throw new ManageError('备份中的 IP 登录记录无效');
         return { ip, uid };
     });
-    return { seats, ips };
+    const emptySeats = raw.emptySeats ?? [];
+    const freeIps = raw.freeIps ?? [];
+    if (!Array.isArray(emptySeats) || emptySeats.length + seats.length > SEAT_LIMIT || emptySeats.some(uid => !Number.isSafeInteger(uid) || !uid)
+        || !Array.isArray(freeIps) || freeIps.length + ips.length > SEAT_LIMIT || freeIps.some(ip => typeof ip !== 'string' || !validIp(ip))) throw new ManageError('备份中的空白记录无效');
+    return { seats, ips, ...(emptySeats.length ? { emptySeats } : {}), ...(freeIps.length ? { freeIps } : {}) };
 }
 
 export interface ClearOptions {

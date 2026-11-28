@@ -14,6 +14,7 @@ import type { ContestLinks } from './links';
 import { seatOf } from './print';
 import { resolverCodeBase } from './resolver-data';
 import { toScriptJson } from './settings';
+import { formatClock, zoneLabel } from './time-zone';
 import { describeTeam, isTeamEntry, loadSeats, memberIds, type TeamEntry } from './teams';
 
 interface SettingsDoc {
@@ -148,8 +149,8 @@ export function applyClarificationDesk(ctx: Context, dependencies: {
                     { $set: { reminder: { lock, id: new ObjectId() } } }, { returnDocument: 'after' },
                 ))?.reminder;
                 if (!reminder) continue;
-                // Contestants read Beijing time, as on the results page (lib/results-page.ts).
-                const time = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(lock);
+                // The venue's clock (plugin config timeZone), labelled for anyone reading from elsewhere.
+                const time = `${formatClock(lock)}（${zoneLabel(lock)}）`;
                 await announce(tdoc, `封榜提醒：本场比赛将于 ${time} 封榜（约 ${Math.ceil((lock - now) / 60_000)} 分钟后）。封榜期间仍可正常提交。`, 0, '', reminder.id);
                 await settings.updateOne(filter, { $set: { checkAt: null, checkedFreeze: lock } });
             } catch { /* A temporarily unavailable contest or database is retried in the next run. */ }

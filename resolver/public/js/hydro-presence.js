@@ -1,4 +1,6 @@
 // 机位监控: every team's computer by room, its state from the reports of its contest pages, and alerts.
+import { venueClock } from './venue-time.js';
+
 const runtime = JSON.parse(document.getElementById('presence-runtime').textContent);
 const $ = (id) => document.getElementById(id);
 
@@ -26,10 +28,42 @@ const ago = (ms) => {
     const minutes = Math.floor(seconds / 60);
     return minutes < 60 ? `${minutes} 分` : `${Math.floor(minutes / 60)} 时 ${minutes % 60} 分`;
 };
-const clock = (value) => (value ? new Date(value).toLocaleTimeString('zh-CN', { hour12: false }) : '—');
+const clock = venueClock(runtime.timeZone);
+const dateTime = venueClock(runtime.timeZone, { year: 'numeric', month: 'numeric', day: 'numeric', second: '2-digit' });
 
 $('contest-title').textContent = runtime.title;
 $('back-link').href = runtime.contestUrl;
+
+const collection = runtime.collect;
+if (collection) {
+    const enabled = $('collect-enabled'), networks = $('collect-networks'), link = $('collect-link'), message = $('collect-status');
+    let current = collection;
+    function render(value) {
+        current = value;
+        enabled.checked = value.enabled && Date.now() < value.deadline;
+        enabled.disabled = Date.now() >= value.deadline;
+        networks.value = value.networks.join(', ');
+        link.href = value.url;
+        link.hidden = !enabled.checked;
+        message.textContent = enabled.disabled ? '本场收集已截止' : `本场收集于 ${value.deadlineText} 截止（开赛前十分钟）`;
+    }
+    render(current);
+    const expiry = setInterval(() => {
+        if (Date.now() >= current.deadline) { render(current); clearInterval(expiry); }
+    }, 1000);
+    $('collect-config').addEventListener('submit', async event => {
+        event.preventDefault();
+        if (enabled.checked && !networks.value.trim()) { message.textContent = '请填写允许网段'; networks.focus(); return; }
+        try {
+            const response = await fetch(runtime.settingsUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify({ enabled: enabled.checked, networks: networks.value }) });
+            const result = await response.json();
+            if (!response.ok || result.error) throw new Error(result.error?.message || result.error || '保存失败');
+            render(result);
+            message.textContent = `已保存，${message.textContent}`;
+        } catch (error) { message.textContent = error.message; }
+    });
+}
 
 // ---------------------------------------------------------------- Sound for new alerts
 
@@ -122,7 +156,7 @@ function details(uid) {
         team.mapped.length ? ['IP 登录', team.mapped.join('、')] : null,
         team.recent.length > 1 ? ['10 分钟内', team.recent.join('、')] : null,
         team.browser?.name ? ['浏览器', `${team.browser.name} ${team.browser.version}`] : null,
-        team.firstSeen ? ['首次上线', new Date(team.firstSeen).toLocaleString('zh-CN', { hour12: false })] : null,
+        team.firstSeen ? ['首次上线', dateTime(team.firstSeen)] : null,
         team.capture === null ? null : ['画面采集', captureLabels[team.capture]],
     ].filter(Boolean);
     const issues = (last.alerts || []).filter((alert) => alert.uid === uid);

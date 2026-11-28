@@ -191,3 +191,9 @@
 .xcpcio-control .control-links a:hover, .xcpcio-control .control-links a:focus-visible { text-decoration-color: currentColor; }
 .theme--dark .xcpcio-control .control-links a { color: #8dbce1; }
 .xcpcio-control #control-status { margin-inline-start: .65em; }
+.seat-coverage { max-height: 19rem; }
+.seat-coverage:not(:empty) { margin-block: .5rem 1rem; }
+.seat-quick { max-height: 55vh; overflow: auto; }
+.seat-quick-row { display: grid; grid-template-columns: minmax(5em,1fr) minmax(5em,1fr) minmax(6em,9em) 4em; align-items: center; gap: .45em; margin: .4em 0; }
+.seat-quick-row .textbox, .seat-quick-row .select { min-width: 0; width: 100%; }
+@media (max-width: 540px) { .seat-quick-row { grid-template-columns: 1fr 1fr; padding-block: .5em; border-bottom: 1px solid #8886; } }

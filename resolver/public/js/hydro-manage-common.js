@@ -1,4 +1,5 @@
 // Shared helpers of the /manage pages: DOM building (text only, no HTML), requests and dialogs.
+import { venueClock } from './venue-time.js';
 import { helpTip } from './hydro-ui.js';
 
 export const runtime = JSON.parse(document.getElementById('manage-runtime').textContent);
@@ -44,10 +45,11 @@ export async function get(params = {}, path = runtime.dataUrl) {
     return parse(await fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } }));
 }
 
+const dateTime = venueClock(runtime.timeZone, { year: 'numeric', month: 'numeric', day: 'numeric', second: '2-digit' });
 export const formatTime = (value) => {
     if (!value) return '—';
     const date = new Date(value);
-    return Number.isNaN(date.getTime()) || date.getTime() <= 0 ? '—' : date.toLocaleString('zh-CN', { hour12: false });
+    return Number.isNaN(date.getTime()) || date.getTime() <= 0 ? '—' : dateTime(date);
 };
 
 export function randomPassword(length = 12) {

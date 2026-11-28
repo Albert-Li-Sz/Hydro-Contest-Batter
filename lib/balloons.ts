@@ -6,6 +6,7 @@
  * on the receipt printer the contest's plan assigns. Pure; lib/balloon-routes.ts stores and serves.
  */
 import { serverTakes } from './print';
+import { formatTimeOfDay } from './time-zone';
 
 export class BalloonError extends Error {
     constructor(message: string, public status = 400) { super(message); }
@@ -542,7 +543,7 @@ const clock = (ms: number) => {
     const seconds = Math.max(0, Math.floor(ms / 1000));
     return `${Math.floor(seconds / 3600)}:${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 };
-const wallTime = (ms: number) => new Date(ms).toLocaleTimeString('zh-CN', { hour12: false, timeZone: process.env.TZ || 'Asia/Shanghai' });
+const wallTime = (ms: number) => formatTimeOfDay(ms);
 
 export function ticketLines(input: TicketInput, options: { solvedList: boolean; members: boolean }): ReceiptLine[] {
     const lines: (ReceiptLine | null)[] = [

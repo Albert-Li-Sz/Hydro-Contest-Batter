@@ -1,5 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Environment } from 'nunjucks';
+import { previewCollection } from './ip-collect';
+import { timeZone } from '../lib/time-zone';
+import type { ContestLinks } from '../lib/links';
 import type { BoardData } from '../lib/board';
 import { applyBeat, type PresenceDoc, presenceSnapshot, type PresenceTeam } from '../lib/presence';
 import { resolverCodeBase } from '../lib/resolver-data';
@@ -13,10 +16,11 @@ const oldChrome = 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (
  * made up relative to the clock, with one of each problem the monitor looks for. `?phase=before`
  * shows the check-in before the start.
  */
-export function createPresencePreview(env: Environment, version: string, demo: () => BoardData) {
+export function createPresencePreview(env: Environment, version: string, demo: () => BoardData, collect: (ip: string, name: string) => Promise<unknown>, links: ContestLinks) {
     const codeBase = resolverCodeBase(version);
     const base = '/contest/demo';
     const data = demo();
+    const collection = previewCollection(env, codeBase, data.contest.contest_name, collect, links);
     const rooms = ['A', 'B', 'C'];
     const teams: PresenceTeam[] = Array.from({ length: 36 }, (_, index) => {
         const source = data.teams[index % data.teams.length];
@@ -52,13 +56,14 @@ export function createPresencePreview(env: Environment, version: string, demo: (
         return list;
     }
 
-    return async (_request: IncomingMessage, response: ServerResponse, url: URL) => {
+    return async (request: IncomingMessage, response: ServerResponse, url: URL) => {
+        if (await collection.handle(request, response, url)) return true;
         const before = url.searchParams.get('phase') === 'before';
         const query = before ? '?phase=before' : '';
         if (url.pathname === `${base}/presence`) {
             response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(env.render('xcpcio_presence.html', {
                 codeBase, tdoc: { title: data.contest.contest_name },
-                runtimeJson: toScriptJson({ dataUrl: `${base}/presence/data${query}`, contestUrl: base, title: data.contest.contest_name, seatsUrl: '/manage/xcpcio-users#seats', refreshMs: 5000 }),
+                runtimeJson: toScriptJson({ dataUrl: `${base}/presence/data${query}`, settingsUrl: `${base}/presence${query}`, collect: collection.summary(before), timeZone: timeZone(), contestUrl: base, title: data.contest.contest_name, seatsUrl: '/manage/xcpcio-users#seats', refreshMs: 5000 }),
             }));
             return true;
         }

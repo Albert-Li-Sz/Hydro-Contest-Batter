@@ -1,4 +1,5 @@
 // Contest overview screen: polls the overview data, keeps the clock on the server's time.
+import { venueClock } from './venue-time.js';
 import { inkOn } from './ink.js';
 
 const runtime = JSON.parse(document.getElementById('overview-runtime').textContent);
@@ -16,7 +17,8 @@ const clock = (ms) => {
 };
 const minutes = (minute) => `${Math.floor(minute / 60)}:${pad(minute % 60)}`;
 const thousands = (value) => Number(value).toLocaleString('zh-CN');
-const timeOfDay = (ms) => new Date(ms).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' });
+const timeOfDay = venueClock(runtime.timeZone, {});
+const timeWithSeconds = venueClock(runtime.timeZone);
 const statusText = { before: '未开始', running: '进行中', frozen: '已封榜', ended: '已结束' };
 const verdictColors = { ok: '#3ddc84', wa: '#ff6b6b', tle: '#ffb547', mle: '#c084fc', re: '#f472b6', ce: '#94a3b8', other: '#64748b', pending: '#4da3ff' };
 
@@ -276,7 +278,7 @@ function render() {
         freeze.style.width = `${share * 100}%`;
         placeLockMark(1 - share);
     }
-    $('updated').textContent = `含封榜后结果，请勿向选手展示 · 更新于 ${new Date(data.serverTime).toLocaleTimeString('zh-CN', { hour12: false })}`;
+    $('updated').textContent = `含封榜后结果，请勿向选手展示 · 更新于 ${timeWithSeconds(data.serverTime)}`;
     firstRender = false;
 }
 
@@ -296,7 +298,7 @@ function placeLockMark(at) {
 
 function tick() {
     const now = Date.now() + offset;
-    $('now').textContent = new Date(now).toLocaleTimeString('zh-CN', { hour12: false });
+    $('now').textContent = timeWithSeconds(now);
     if (data) {
         const total = data.endAt - data.beginAt;
         if (now < data.beginAt) {

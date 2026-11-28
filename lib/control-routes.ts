@@ -1,3 +1,4 @@
+import { timeZone } from './time-zone';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -112,7 +113,7 @@ export function applyControl(ctx: Context, dependencies: {
         async get() {
             const base = `${contestBase(this.tdoc)}/control`;
             this.response.template = 'xcpcio_control.html';
-            this.response.body = { tdoc: this.tdoc, codeBase, runtimeJson: toScriptJson({ base, dataUrl: `${base}/data` }) };
+            this.response.body = { tdoc: this.tdoc, codeBase, runtimeJson: toScriptJson({ timeZone: timeZone(), base, dataUrl: `${base}/data` }) };
         }
 
         @param('payload', Types.String)

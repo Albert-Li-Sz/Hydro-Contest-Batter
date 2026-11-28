@@ -1,3 +1,4 @@
+import { timeZone } from '../lib/time-zone';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Environment } from 'nunjucks';
 import type { BoardData } from '../lib/board';
@@ -225,7 +226,7 @@ export function createBalloonsPreview(env: Environment, version: string, demo: (
             const pageBase = manager ? `${base}/balloons` : `${base}/balloon-desk/${doc.token}`;
             response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(env.render('xcpcio_balloons.html', {
                 codeBase, tdoc: { title: data.contest.contest_name }, desk: !manager,
-                runtimeJson: toScriptJson({
+                runtimeJson: toScriptJson({ timeZone: timeZone(),
                     mode: manager ? 'manager' : 'desk', base: pageBase, dataUrl: `${pageBase}/data`, contestUrl: `${base}/scoreboard/xcpcio-plus`,
                     printersUrl: '/manage/xcpcio-printers', title: data.contest.contest_name,
                 }),

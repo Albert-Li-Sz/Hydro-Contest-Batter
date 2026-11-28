@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>机位 IP 登记 · {{ title }}</title><link rel="stylesheet" href="{{ codeBase }}/hydro-ip-collect.css"></head>
+<body><main><p>{{ title }}</p><h1>机位 IP 登记</h1>
+{% if closed %}<p role="alert">{{ closed }}</p>{% else %}
+<p>本机地址 <b>{{ ip }}</b></p>
+<form id="register"><label>本队登录账号<input name="account" maxlength="128" autocomplete="off" autocapitalize="none" spellcheck="false" required></label>
+<input type="hidden" name="nonce" value="{{ nonce }}"><button>登记本机 IP</button></form>
+<p id="message" role="status" aria-live="polite"></p><strong id="registered"></strong>
+<script type="module" src="{{ codeBase }}/js/hydro-ip-collect.js"></script>{% endif %}
+</main></body></html>

@@ -1,10 +1,12 @@
 // /manage user configuration, 座位与 IP tab: onsite-toolkit seats and IP login of one contest or the
 // whole site, with backup, cleanup, restore and the contest's no-login links.
-import { adminPassword, el, field, formatTime, get, input, notify, openDialog, post } from './hydro-manage-common.js';
+import { adminPassword, el, field, formatTime, get, input, notify, openDialog, post, runtime } from './hydro-manage-common.js';
+
+import { seatTools } from './hydro-seat-tools.js';
 
 const filters = [['all', '全部'], ['duplicate', '重复座位'], ['noSeat', '无座位'], ['noIp', '无 IP'], ['orphan', '失效映射']];
 const warning = new Set(['duplicate', 'orphan']);
-const reasons = { manual: '手动', clear: '清理前', restore: '恢复前' };
+const reasons = { manual: '手动', clear: '清理前', restore: '恢复前', import: '导入前' };
 
 function download(name, value) {
     const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }));
@@ -20,7 +22,7 @@ const stamp = (value) => {
     const pad = (number) => String(number).padStart(2, '0');
     return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}`;
 };
-const day = (value) => new Date(value).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+const day = (value) => new Date(value).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit', timeZone: runtime.timeZone });
 
 export function createSeatsPanel() {
     const state = { contest: '', zone: '', filter: 'all', q: '', page: 1, data: null };
@@ -35,13 +37,14 @@ export function createSeatsPanel() {
     const table = el('table', { class: 'data-table manage-seats' });
     const pager = el('div', { class: 'manage-pager' });
     const links = el('section', { class: 'manage-links', hidden: true, 'aria-label': '免登录链接' });
+    const tools = seatTools(load, message => notify(status, message));
     const node = el('div', { hidden: true },
         el('div', { class: 'manage-toolbar' }, contest, zone, search, el('span', { class: 'manage-spacer' }), backup, restore, clear),
-        links, chips, status, el('div', { class: 'manage-scroll' }, table), pager);
+        links, tools.section, chips, status, el('div', { class: 'manage-scroll' }, table), pager);
 
     const selection = () => ({ contest: state.contest, zone: state.zone, filter: state.filter, q: state.q });
-    const reload = (reset = true) => { if (reset) state.page = 1; load(); };
-    contest.addEventListener('change', () => { state.contest = contest.value; state.zone = ''; state.filter = 'all'; notify(status, ''); reload(); });
+    const reload = (reset = true) => { if (reset) state.page = 1; load(false); };
+    contest.addEventListener('change', () => { state.contest = contest.value; tools.refresh(null); state.zone = ''; state.filter = 'all'; notify(status, ''); reload(); });
     zone.addEventListener('change', () => { state.zone = zone.value; reload(); });
     let timer = 0;
     search.addEventListener('input', () => {
@@ -102,7 +105,8 @@ export function createSeatsPanel() {
         const handedOut = data.links.filter((item) => item.count && !(item.issuedAt && new Date(item.issuedAt).getTime() > ended));
         links.replaceChildren(
             el('span', { class: 'manage-links__title', text: '免登录链接' }),
-            ...data.links.map((item) => el('span', {
+            ...data.links.map((item) => el(item.url && item.count ? 'a' : 'span', {
+                href: item.count ? item.url : undefined,
                 class: `manage-link${!item.count ? ' is-none' : handedOut.includes(item) ? ' is-out' : ' is-fresh'}`,
                 title: item.issuedAt ? `签发于 ${formatTime(item.issuedAt)}` : undefined,
             }, item.label, item.count > 1 || (item.id === 'capture' && item.count) ? el('b', { text: item.count }) : null)),
@@ -110,14 +114,18 @@ export function createSeatsPanel() {
             el('button', { class: 'button manage-danger', type: 'button', text: '全部更换', disabled: !data.links.some((item) => item.count), onclick: () => revoke(data) }));
     }
 
-    async function load() {
+    let requestId = 0;
+    async function load(refreshRoster = true) {
+        const id = ++requestId;
         try {
             const data = await get({ tab: 'seats', ...selection(), page: state.page });
+            if (id !== requestId) return;
             state.data = data;
             if (data.contest === null && state.contest) state.contest = '';
             renderScope(data);
             renderRows(data);
             renderLinks(data);
+            await tools.refresh(data.contest, refreshRoster);
         } catch (error) { notify(status, error.message, true); }
     }
 

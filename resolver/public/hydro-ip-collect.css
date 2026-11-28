@@ -1,0 +1,8 @@
+:root { font: 18px/1.55 system-ui, sans-serif; color-scheme: light dark; }
+body { margin: 0; }
+main { max-width: 28rem; margin: min(12vh, 7rem) auto; padding: 1.25rem; }
+h1 { font-size: 2rem; margin: 0 0 1rem; }
+input,button { font: inherit; }
+input { box-sizing: border-box; width: 100%; padding: .5rem; margin: .25rem 0 .75rem; }
+button { padding: .4rem 1rem; cursor: pointer; }
+#registered { display: block; font-size: clamp(2rem, 8vw, 4rem); overflow-wrap: anywhere; }

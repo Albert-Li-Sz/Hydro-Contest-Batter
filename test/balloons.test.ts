@@ -4,6 +4,7 @@ import {
     STATUS_ACCEPTED, ticketLines, ticketReady, ticketTargets, zoneOf, type ReceiptPrinter, type StoredBalloon,
 } from '../lib/balloons';
 import { encodeGbk, escposTicket, receiptJob, wrapColumns } from '../lib/escpos';
+import { formatClock, setTimeZone, zoneLabel } from '../lib/time-zone';
 import { normalizePrinterPreference } from '../lib/print';
 
 const begin = new Date('2026-11-23T01:00:00Z');
@@ -217,4 +218,19 @@ describe('tickets', () => {
         expect(Buffer.from(raw.receipt.raw!, 'base64').subarray(0, 2)).toEqual(Buffer.from([0x1b, 0x40]));
         expect(receiptJob('balloon-1', '气球 #12', 'Driver', lines, { width: 58, mode: 'driver', cut: true }).receipt.raw).toBeUndefined();
     });
+});
+
+it('uses venue time for receipt walls and observes DST in labelled notices', () => {
+    const when = new Date('2026-11-23T01:00:00Z');
+    try {
+        expect(setTimeZone('America/New_York')).toBe(true);
+        expect(formatClock(when)).toBe('20:00');
+        expect(zoneLabel(when)).toBe('UTC-5');
+        expect(zoneLabel('2026-07-01T01:00:00Z')).toBe('UTC-4');
+        const lines = ticketLines({ contest: '校赛', seq: 1, seat: 'A-1', label: 'A', problemTitle: '', color: null, first: false, team: 'T', school: '', members: [],
+            unofficial: false, submittedAt: +when, beginAt: +when - 1000, solved: [], printedAt: +when, copy: 1 }, { solvedList: false, members: false });
+        expect(lines.some(line => line.text.includes('0:00:01（20:00:00）'))).toBe(true);
+        expect(setTimeZone('bad/unknown')).toBe(false);
+        expect(zoneLabel(when)).toBe('UTC+8');
+    } finally { setTimeZone(undefined); }
 });

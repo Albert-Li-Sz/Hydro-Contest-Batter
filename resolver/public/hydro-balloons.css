@@ -81,3 +81,12 @@
 .theme--dark .xcpcio-balloons .balloon-pill b { background: rgba(0, 0, 0, .55); color: #fff; }
 .xcpcio-balloons .balloon-intro p, .xcpcio-balloons .balloon-intro li { font-size: 14px; line-height: 1.7; }
 .xcpcio-balloons .balloon-intro ul { margin: 6px 0 12px 1.2em; }
+.balloon-stats button { appearance: none; border: 0; background: none; text-align: inherit; color: inherit; font: inherit; padding: 0; cursor: pointer; }
+.balloon-stats button:disabled { cursor: default; }
+.balloon-team-matrix .manage-scroll { max-height: 52vh; }
+.balloon-team-matrix td { text-align: center; }
+.balloon-team-matrix td[data-state=pending] { background: #f0c464; color: #523300; }
+.balloon-team-matrix td[data-state=delivered] { background: #a2daba; color: #174a2e; }
+.balloon-team-matrix td[data-state=held] { background: #b3c9ed; color: #203c66; }
+.balloon-team-matrix td[data-state=revoked] { background: #e7b9b7; color: #6c2929; }
+.balloon-team-matrix td:focus { outline: 3px solid currentColor; outline-offset: -3px; }

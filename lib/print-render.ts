@@ -6,6 +6,7 @@
  */
 import { tokenize, type TokenType } from './print-highlight';
 import type { PrintSettings } from './print';
+import { formatDateTime } from './time-zone';
 
 export interface PrintSheet {
     id: string;
@@ -47,12 +48,8 @@ export interface PrintJob {
     printer?: string;
 }
 
-const formatTime = (value: string | Date) => {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
-    // Contest time as the venue reads it: China Standard Time unless the server says otherwise.
-    return date.toLocaleString('zh-CN', { hour12: false, timeZone: process.env.TZ || 'Asia/Shanghai' });
-};
+// Contest time as the venue reads it (plugin config timeZone).
+const formatTime = (value: string | Date) => formatDateTime(value);
 
 export function printJob(sheet: PrintSheet, settings: PrintSettings, contestTitle: string): PrintJob {
     const show = new Set<string>(settings.header);

@@ -52,11 +52,11 @@ const screensPreview = createScreensPreview(env, logoNames, pluginVersion, previ
     subject: item.subject, text: item.content, at: item.docId.getTimestamp().getTime(),
 })), reactionsPreview.visible, reactionsPreview.layouts, demoLinks, reactionsPreview.playSample);
 const monitorPreview = createMonitorPreview(env, pluginVersion, demoData);
-const presencePreview = createPresencePreview(env, pluginVersion, demoData);
 const overviewPreview = createOverviewPreview(env, pluginVersion);
 const resultsPreview = createResultsPreview(env, pluginVersion, previewDb);
 const ceremonyPreview = createCeremonyPreview(env, pluginVersion, logoNames, resultsPreview);
 const managePreview = createManagePreview(env, pluginVersion, demoLinks);
+const presencePreview = createPresencePreview(env, pluginVersion, demoData, managePreview.collect, demoLinks);
 // 气球配送 tickets print on the receipt printers of the print servers preview, which takes them from it.
 const balloonsPreview = createBalloonsPreview(env, pluginVersion, demoData, () => printersPreview.receiptPrinters());
 const printersPreview = createPrintersPreview(env, pluginVersion, demoData, () => balloonsPreview.receipts);
